@@ -1,0 +1,7 @@
+name "code_checker"
+description "Tool to check the quality of code for a review/inspection/PR"
+authors "Joakim Brännström"
+copyright "Copyright © 2018, Joakim Brännström"
+license "BSL-1.0"
+
+targetPath "build"
