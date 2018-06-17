@@ -5,3 +5,15 @@ copyright "Copyright © 2018, Joakim Brännström"
 license "BSL-1.0"
 
 targetPath "build"
+
+configuration "application" {
+    targetType "executable"
+}
+
+configuration "unittest" {
+    targetType "executable"
+    dependency "unit-threaded" version="~>0.7.46"
+    mainSourceFile "build/ut.d"
+    preBuildCommands "dub run unit-threaded -c gen_ut_main -- -f build/ut.d"
+    excludedSourceFiles "source/app.d"
+}
