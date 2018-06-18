@@ -10,6 +10,7 @@ import std.algorithm : among;
 import logger = std.experimental.logger;
 
 int main(string[] args) {
+    import std.functional : toDelegate;
     import code_checker.logger;
 
     Config conf;
@@ -17,14 +18,27 @@ int main(string[] args) {
     confLogger(conf.verbose);
     logger.trace(conf);
 
-    final switch (conf.mode) {
-        case AppMode.none:
-            return 0;
-        case AppMode.help:
-            return 0;
-        case AppMode.helpUnknownCommand:
-            return 1;
+    alias Command = int delegate(const ref Config conf);
+    Command[AppMode] cmds;
+    cmds[AppMode.none] = toDelegate(&modeNone);
+    cmds[AppMode.help] = toDelegate(&modeNone);
+    cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
+
+    if (auto v = conf.mode in cmds) {
+        return (*v)(conf);
     }
+
+    logger.error("Unknown mode %s", conf.mode);
+
+    return 1;
+}
+
+int modeNone(const ref Config conf) {
+    return 0;
+}
+
+int modeNone_Error(const ref Config conf) {
+    return 1;
 }
 
 enum AppMode {
@@ -63,13 +77,11 @@ void parseCLI(string[] args, ref Config conf) {
                 return VerboseMode.info;
             return VerboseMode.minimal;
         }();
-    }
-    catch (std.getopt.GetOptException e) {
+    } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
         conf.mode = AppMode.helpUnknownCommand;
-    }
-    catch (Exception e) {
+    } catch (Exception e) {
         logger.error(e.msg);
         conf.mode = AppMode.helpUnknownCommand;
     }
@@ -78,6 +90,7 @@ void parseCLI(string[] args, ref Config conf) {
         import std.getopt : defaultGetoptPrinter;
         import std.format : format;
         import std.path : baseName;
+
         defaultGetoptPrinter(format("usage: %s\n", args[0].baseName), help_info.options);
     }
 
