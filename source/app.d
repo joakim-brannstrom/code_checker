@@ -10,17 +10,20 @@ import std.algorithm : among;
 import logger = std.experimental.logger;
 
 int main(string[] args) {
-    Config conf;
+    import code_checker.logger;
 
+    Config conf;
     parseCLI(args, conf);
+    confLogger(conf.verbose);
+    logger.trace(conf);
 
     final switch (conf.mode) {
-    case AppMode.none:
-        return 0;
-    case AppMode.help:
-        return 0;
-    case AppMode.helpUnknownCommand:
-        return 1;
+        case AppMode.none:
+            return 0;
+        case AppMode.help:
+            return 0;
+        case AppMode.helpUnknownCommand:
+            return 1;
     }
 }
 
@@ -31,38 +34,50 @@ enum AppMode {
 }
 
 struct Config {
+    import code_checker.logger : VerboseMode;
+
     AppMode mode;
+    VerboseMode verbose;
 }
 
 void parseCLI(string[] args, ref Config conf) {
+    import code_checker.logger : VerboseMode;
     static import std.getopt;
 
-    int dummy;
+    bool verbose_info;
+    bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
-            "x", "dummy", &dummy,
+            "v|verbose", "verbose mode is set to information", &verbose_info,
+            "vverbose", "verbose mode is set to trace", &verbose_trace,
             );
         // dfmt on
         conf.mode = help_info.helpWanted ? AppMode.help : AppMode.none;
-    } catch (std.getopt.GetOptException e) {
+        conf.verbose = () {
+            if (verbose_trace)
+                return VerboseMode.trace;
+            if (verbose_info)
+                return VerboseMode.info;
+            return VerboseMode.minimal;
+        }();
+    }
+    catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
         conf.mode = AppMode.helpUnknownCommand;
-    } catch (Exception e) {
+    }
+    catch (Exception e) {
         logger.error(e.msg);
         conf.mode = AppMode.helpUnknownCommand;
     }
-
-    logger.trace(conf);
 
     void printHelp() {
         import std.getopt : defaultGetoptPrinter;
         import std.format : format;
         import std.path : baseName;
-
         defaultGetoptPrinter(format("usage: %s\n", args[0].baseName), help_info.options);
     }
 
