@@ -9,7 +9,7 @@ one at http://mozilla.org/MPL/2.0/.
 
 Utility functions for Clang Compilation Databases.
 */
-module dextool.compile_db;
+module code_checker.compile_db;
 
 import std.json : JSONValue;
 import std.typecons : Nullable;
