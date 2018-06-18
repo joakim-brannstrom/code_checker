@@ -11,6 +11,8 @@ import std.exception : collectException;
 import logger = std.experimental.logger;
 import code_checker.types : AbsolutePath, Path;
 
+immutable compileCommandsFile = "compile_commands.json";
+
 int main(string[] args) {
     import std.functional : toDelegate;
     import code_checker.logger;
@@ -44,12 +46,31 @@ int modeNone_Error(const ref Config conf) {
 }
 
 int modeNormal(const ref Config conf) {
-    auto compile_dbs = findCompileDbs(conf.compileDbs);
+    import std.array : appender;
+    import std.file : exists;
+    import std.stdio : File;
+
+    if (!exists(compileCommandsFile)) {
+        auto compile_db = appender!string();
+        try {
+            auto dbs = findCompileDbs(conf.compileDbs);
+            if (dbs.length == 0) {
+                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDbs);
+                return 1;
+            }
+            unifyCompileDb(dbs, compile_db);
+        } catch (Exception e) {
+            logger.error(e.msg);
+            return 1;
+        }
+
+        File(compileCommandsFile, "w").write(compile_db.data);
+    }
 
     return 0;
 }
 
-auto findCompileDbs(const(AbsolutePath)[] paths) {
+auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
     import std.algorithm : filter, map;
     import std.file : exists, isDir, isFile, dirEntries, SpanMode;
 
@@ -60,7 +81,7 @@ auto findCompileDbs(const(AbsolutePath)[] paths) {
 
         AbsolutePath[] rval;
         foreach (a; dirEntries(p, SpanMode.depth).filter!(a => a.isFile)
-                .filter!(a => a.name.baseName == "compile_commands.json").map!(a => a.name)) {
+                .filter!(a => a.name.baseName == compileCommandsFile).map!(a => a.name)) {
             try {
                 rval ~= AbsolutePath(Path(a));
             } catch (Exception e) {
@@ -78,11 +99,65 @@ auto findCompileDbs(const(AbsolutePath)[] paths) {
             } else if (a.isFile)
                 rval ~= a;
         } catch (Exception e) {
-            logger.warning(e.msg);
+            logger.warning(e.msg).collectException;
         }
     }
 
     return rval;
+}
+
+/// Unify multiple compilation databases to one json file.
+void unifyCompileDb(AppT)(const(AbsolutePath)[] paths, ref AppT app) {
+    import std.algorithm : map, joiner;
+    import std.array : array;
+    import std.ascii : newline;
+    import std.format : formattedWrite;
+    import std.range : put;
+    import std.json : JSONValue;
+    import code_checker.compile_db;
+
+    auto db = fromArgCompileDb(paths.map!(a => cast(string) a.dup).array);
+    auto flag_filter = CompileCommandFilter(defaultCompilerFilter.filter.dup, 0);
+    logger.trace(flag_filter);
+
+    void writeEntry(T)(ref const T e) {
+        import std.exception : assumeUnique;
+        import std.utf : byChar;
+
+        string raw_flags = assumeUnique(e.parseFlag(flag_filter).flags.joiner(" ").byChar.array());
+
+        formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
+
+        if (e.arguments.hasValue) {
+            formattedWrite(app, `"command": "g++ %s",`, raw_flags);
+            formattedWrite(app, `"arguments": "%s",`, raw_flags);
+        } else {
+            formattedWrite(app, `"command": "%s",`, raw_flags);
+        }
+
+        if (e.output.hasValue)
+            formattedWrite(app, `"output": "%s",`, cast(string) e.absoluteOutput);
+        formattedWrite(app, `"file": "%s"`, cast(string) e.absoluteFile);
+    }
+
+    if (db.length == 0) {
+        return;
+    }
+
+    formattedWrite(app, "[");
+
+    foreach (ref const e; db[0 .. $ - 1]) {
+        formattedWrite(app, "{");
+        writeEntry(e);
+        formattedWrite(app, "},");
+        put(app, newline);
+    }
+
+    formattedWrite(app, "{");
+    writeEntry(db[$ - 1]);
+    formattedWrite(app, "}");
+
+    formattedWrite(app, "]");
 }
 
 enum AppMode {
