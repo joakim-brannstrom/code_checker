@@ -9,9 +9,14 @@ import std.algorithm : among;
 import std.exception : collectException;
 
 import logger = std.experimental.logger;
+import code_checker.compile_db : CompileCommandDB;
 import code_checker.types : AbsolutePath, Path;
 
 immutable compileCommandsFile = "compile_commands.json";
+
+struct ClangTidy {
+    static immutable bin = "clang-tidy";
+}
 
 int main(string[] args) {
     import std.functional : toDelegate;
@@ -46,11 +51,17 @@ int modeNone_Error(const ref Config conf) {
 }
 
 int modeNormal(const ref Config conf) {
-    import std.array : appender;
+    import std.algorithm : map;
+    import std.array : appender, array;
     import std.file : exists;
+    import std.process;
     import std.stdio : File;
+    import code_checker.compile_db : fromArgCompileDb, parseFlag,
+        defaultCompilerFilter;
 
     if (!exists(compileCommandsFile)) {
+        logger.trace("Creating a unified compile_commands.json");
+
         auto compile_db = appender!string();
         try {
             auto dbs = findCompileDbs(conf.compileDbs);
@@ -58,13 +69,19 @@ int modeNormal(const ref Config conf) {
                 logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDbs);
                 return 1;
             }
-            unifyCompileDb(dbs, compile_db);
+
+            auto db = fromArgCompileDb(dbs.map!(a => cast(string) a.dup).array);
+            unifyCompileDb(db, compile_db);
+            File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
             logger.error(e.msg);
             return 1;
         }
+    }
 
-        File(compileCommandsFile, "w").write(compile_db.data);
+    auto db = fromArgCompileDb([compileCommandsFile]);
+    foreach (cmd; db) {
+        auto res = spawnProcess([ClangTidy.bin, "-p", ".", `-config=`, cmd.absoluteFile]).wait;
     }
 
     return 0;
@@ -107,7 +124,7 @@ auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
 }
 
 /// Unify multiple compilation databases to one json file.
-void unifyCompileDb(AppT)(const(AbsolutePath)[] paths, ref AppT app) {
+void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     import std.algorithm : map, joiner;
     import std.array : array;
     import std.ascii : newline;
@@ -116,7 +133,6 @@ void unifyCompileDb(AppT)(const(AbsolutePath)[] paths, ref AppT app) {
     import std.json : JSONValue;
     import code_checker.compile_db;
 
-    auto db = fromArgCompileDb(paths.map!(a => cast(string) a.dup).array);
     auto flag_filter = CompileCommandFilter(defaultCompilerFilter.filter.dup, 0);
     logger.trace(flag_filter);
 
@@ -124,6 +140,7 @@ void unifyCompileDb(AppT)(const(AbsolutePath)[] paths, ref AppT app) {
         import std.exception : assumeUnique;
         import std.utf : byChar;
 
+        // TODO: refactor. this is not necessary
         string raw_flags = assumeUnique(e.parseFlag(flag_filter).flags.joiner(" ").byChar.array());
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
