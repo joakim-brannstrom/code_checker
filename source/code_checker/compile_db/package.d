@@ -88,7 +88,7 @@ version (unittest) {
 
     /// The raw command from the tuples "command" value.
     static struct Command {
-        string payload;
+        string[] payload;
         alias payload this;
         bool hasValue() @safe pure nothrow const @nogc {
             return payload.length != 0;
@@ -97,7 +97,7 @@ version (unittest) {
 
     /// The raw arguments from the tuples "arguments" value.
     static struct Arguments {
-        string payload;
+        string[] payload;
         alias payload this;
         bool hasValue() @safe pure nothrow const @nogc {
             return payload.length != 0;
@@ -182,30 +182,31 @@ struct CompileCommandSearch {
  * remove the trusted attribute when the minimal requirement is upgraded.
  */
 private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbDirectory db_dir) nothrow @trusted {
-    import std.algorithm : map, filter, joiner;
+    import std.algorithm : map, filter, joiner, splitter;
+    import std.array : array;
     import std.exception : assumeUnique;
     import std.json : JSON_TYPE;
     import std.range : only;
     import std.utf : byUTF;
 
-    string command;
+    string[] command;
     try {
-        command = v["command"].str;
+        command = v["command"].str.splitter.filter!(a => a.length != 0).array;
     } catch (Exception ex) {
     }
 
-    string arguments;
+    string[] arguments;
     try {
         enum j_arg = "arguments";
         const auto j_type = v[j_arg].type;
         if (j_type == JSON_TYPE.STRING)
-            arguments = v[j_arg].str;
+            arguments = v[j_arg].str.splitter.filter!(a => a.length != 0).array;
         else if (j_type == JSON_TYPE.ARRAY) {
             import std.range;
 
             // TODO unnecessary to join it
             arguments = v[j_arg].arrayNoRef.filter!(a => a.type == JSON_TYPE.STRING)
-                .map!(a => a.str).joiner(" ").byUTF!char.array().assumeUnique;
+                .map!(a => a.str).filter!(a => a.length != 0).array;
         }
     } catch (Exception ex) {
     }
@@ -248,7 +249,7 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
  * order of the strings for their meaning.
  */
 private Nullable!CompileCommand toCompileCommand(string directory, string file,
-        string command, AbsoluteCompileDbDirectory db_dir, string arguments, string output) nothrow {
+        string[] command, AbsoluteCompileDbDirectory db_dir, string[] arguments, string output) nothrow {
     // expects that v is a tuple of 3 json values with the keys directory,
     // command, file
 
@@ -536,7 +537,7 @@ struct ParseFlags {
  *  - Remove excess white space.
  *  - Convert all filenames to absolute path.
  */
-ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter) @safe {
+ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_filter) @safe {
     import std.algorithm : among;
 
     static bool excludeStartWith(string flag, const FilterClangFlag[] flag_filter) @safe {
@@ -653,25 +654,17 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter)
         return ParseFlags(ParseFlags.Includes(includes.data), rval.data);
     }
 
-    import std.algorithm : filter, splitter;
+    import std.algorithm : filter, splitter, min;
 
-    auto raw = cast(string)(cmd.arguments.hasValue ? cmd.arguments : cmd.command);
-
-    // dfmt off
-    auto pass1 = raw.splitter(' ')
-        // remove empty strings
-        .filter!(a => a.length != 0);
-    // dfmt on
-
-    // skip parameters matching the filter IF `command` where used.
-    // If `arguments` is used then it is already _perfect_.
-    if (!cmd.arguments.hasValue && flag_filter.skipCompilerArgs != 0) {
-        foreach (_; 0 .. flag_filter.skipCompilerArgs) {
-            if (!pass1.empty) {
-                pass1.popFront;
-            }
-        }
-    }
+    string[] pass1 = () @safe{
+        // If `arguments` is used then it is already _perfect_.
+        if (cmd.arguments.hasValue)
+            return cmd.arguments.payload;
+        if (flag_filter.skipCompilerArgs != 0)
+            return cmd.command.payload;
+        // skip parameters matching the filter IF `command` where used.
+        return cmd.command[min(flag_filter.skipCompilerArgs, cmd.command.length) .. $];
+    }().dup;
 
     // `arguments` in a compilation database do not have the compiler binary in
     // the string thus skipCompilerArgs isn't needed.
