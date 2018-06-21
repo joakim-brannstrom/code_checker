@@ -10,12 +10,14 @@ import std.exception : collectException;
 
 import logger = std.experimental.logger;
 import code_checker.compile_db : CompileCommandDB;
-import code_checker.types : AbsolutePath, Path;
+import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 immutable compileCommandsFile = "compile_commands.json";
 
 struct ClangTidy {
     static immutable bin = "clang-tidy";
+    static immutable conf = import("default_clang_tidy.conf");
+    static immutable confFile = ".clang-tidy";
 }
 
 int main(string[] args) {
@@ -57,7 +59,7 @@ int modeNormal(const ref Config conf) {
     import std.process;
     import std.stdio : File;
     import code_checker.compile_db : fromArgCompileDb, parseFlag,
-        defaultCompilerFilter;
+        CompileCommandFilter;
 
     if (!exists(compileCommandsFile)) {
         logger.trace("Creating a unified compile_commands.json");
@@ -79,9 +81,13 @@ int modeNormal(const ref Config conf) {
         }
     }
 
+    if (!exists(ClangTidy.confFile)) {
+        File(ClangTidy.confFile, "w").write(ClangTidy.conf);
+    }
+
     auto db = fromArgCompileDb([compileCommandsFile]);
     foreach (cmd; db) {
-        run([ClangTidy.bin, "-p", ".", cmd.absoluteFile]);
+        runClangTidy(cmd.parseFlag(CompileCommandFilter.init).flags, cmd.absoluteFile.payload);
     }
 
     return 0;
@@ -125,12 +131,13 @@ auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
 
 /// Unify multiple compilation databases to one json file.
 void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
-    import std.algorithm : map, joiner;
-    import std.array : array;
+    import std.algorithm : map, joiner, filter, copy;
+    import std.array : array, appender;
     import std.ascii : newline;
     import std.format : formattedWrite;
-    import std.range : put;
     import std.json : JSONValue;
+    import std.path : stripExtension;
+    import std.range : put;
     import code_checker.compile_db;
 
     auto flag_filter = CompileCommandFilter(defaultCompilerFilter.filter.dup, 0);
@@ -140,13 +147,20 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
         import std.exception : assumeUnique;
         import std.utf : byChar;
 
-        // TODO: refactor. this is not necessary
-        string raw_flags = assumeUnique(e.parseFlag(flag_filter).flags.joiner(" ").byChar.array());
+        auto raw_flags = () @safe{
+            auto app = appender!string;
+            e.parseFlag(flag_filter).flags.joiner(" ").copy(app);
+
+            // add back dummy -c and -o otherwise clang-tidy do not work
+            app.put(" ");
+            ["-c", cast(string) e.absoluteFile, "-o", e.absoluteFile.stripExtension ~ ".o"].joiner(" ")
+                .copy(app);
+            return app.data;
+        }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
 
         if (e.arguments.hasValue) {
-            formattedWrite(app, `"command": "g++ %s",`, raw_flags);
             formattedWrite(app, `"arguments": "%s",`, raw_flags);
         } else {
             formattedWrite(app, `"command": "%s",`, raw_flags);
@@ -247,10 +261,24 @@ void parseCLI(string[] args, ref Config conf) {
     }
 }
 
-int run(const(char)[][] cmd) {
+int run(string[] cmd) {
     import std.algorithm : joiner;
     import std.process : spawnProcess, wait;
 
     logger.trace("run: ", cmd.joiner(" "));
     return spawnProcess(cmd).wait;
+}
+
+int runClangTidy(string[] compiler_args, AbsoluteFileName fname) {
+    import std.algorithm : map, copy;
+    import std.format : format;
+    import std.array : appender;
+
+    auto app = appender!(string[])();
+    app.put(ClangTidy.bin);
+    app.put("-p=.");
+    app.put("-config=");
+    app.put(fname);
+
+    return run(app.data);
 }
