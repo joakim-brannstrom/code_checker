@@ -81,7 +81,7 @@ int modeNormal(const ref Config conf) {
 
     auto db = fromArgCompileDb([compileCommandsFile]);
     foreach (cmd; db) {
-        auto res = spawnProcess([ClangTidy.bin, "-p", ".", `-config=`, cmd.absoluteFile]).wait;
+        run([ClangTidy.bin, "-p", ".", cmd.absoluteFile]);
     }
 
     return 0;
@@ -245,4 +245,12 @@ void parseCLI(string[] args, ref Config conf) {
         printHelp;
         return;
     }
+}
+
+int run(const(char)[][] cmd) {
+    import std.algorithm : joiner;
+    import std.process : spawnProcess, wait;
+
+    logger.trace("run: ", cmd.joiner(" "));
+    return spawnProcess(cmd).wait;
 }
