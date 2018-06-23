@@ -4,7 +4,10 @@ authors "Joakim Brännström"
 copyright "Copyright © 2018, Joakim Brännström"
 license "BSL-1.0"
 
+dependency "code_checker:toml" version="*"
+
 subPackage "./vendor/unit-threaded"
+subPackage "./vendor/toml"
 
 targetPath "build"
 

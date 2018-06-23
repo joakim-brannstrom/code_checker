@@ -7,11 +7,13 @@ license "BSL-1.0"
 targetPath "build"
 
 subPackage "../vendor/unit-threaded"
+subPackage "../vendor/toml"
 
 configuration "unittest" {
     targetType "executable"
 
     dependency "code_checker_integration_test:unit-threaded" version="*"
+    dependency "code_checker_integration_test:toml" version="*"
 
     mainSourceFile "build/ut.d"
     preBuildCommands "../update_ut.d build/ut.d"
