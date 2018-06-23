@@ -1,4 +1,4 @@
-# code_checker
+# code_checker [![Build Status](https://travis-ci.org/joakim-brannstrom/code_checker.svg?branch=master)](https://travis-ci.org/joakim-brannstrom/code_checker)
 
 **code_checker** is a tool that perform a quality check of source code. The intended use is as an automated sanity check of code before e.g. a PR is accepted, a manual inspection by a human etc.
 
