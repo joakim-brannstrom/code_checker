@@ -1,0 +1,6 @@
+name "state-machine"
+description "Turn types into state machines."
+copyright "Copyright © 2016, Mihail K"
+authors "Mihail-K"
+license "MIT"
+targetType "library"
