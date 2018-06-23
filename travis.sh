@@ -2,6 +2,7 @@
 
 set -e
 
+dub test
 dub build
 
 pushd test
