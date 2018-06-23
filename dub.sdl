@@ -18,6 +18,6 @@ configuration "unittest" {
     dependency "code_checker:unit-threaded" version="*"
 
     mainSourceFile "build/ut.d"
-    preBuildCommands "dub run unit-threaded -c gen_ut_main -- -f build/ut.d"
+    preBuildCommands "./update_ut.d build/ut.d"
     excludedSourceFiles "source/app.d"
 }
