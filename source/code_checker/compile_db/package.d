@@ -21,7 +21,6 @@ import code_checker.types : AbsolutePath;
 version (unittest) {
     import std.path : buildPath;
     import unit_threaded : Name, shouldEqual;
-    import test.extra_should : shouldEqualPretty;
 }
 
 @safe:
@@ -457,10 +456,10 @@ string toString(CompileCommand[] db) @safe pure {
         }
 
         if (a.command.hasValue)
-            formattedWrite(app, "  %s\n", a.command);
+            formattedWrite(app, "  %-(%s %)\n", a.command);
 
         if (a.arguments.hasValue)
-            formattedWrite(app, "  %s\n", a.arguments);
+            formattedWrite(app, "  %-(%s %)\n", a.arguments);
     }
 
     return app.data;
@@ -700,52 +699,51 @@ struct FilterClangFlag {
 
 @("Should be cflags with all unnecessary flags removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", `g++ -MD -lfoo.a -l bar.a -I bar -Igun -c a_filename.c`,
-            AbsoluteCompileDbDirectory("/home"), null, null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I",
+            "bar", "-Igun", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqualPretty(["-I", "/home/bar", "-I", "/home/gun"]);
-    s.includes.shouldEqualPretty(["/home/bar", "/home/gun"]);
+    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
 @("Should be cflags with some excess spacing")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp",
-            `g++           -MD     -lfoo.a -l bar.a       -I    bar     -Igun`,
-            AbsoluteCompileDbDirectory("/home"), null, null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l",
+            "bar.a", "-I", "bar", "-Igun"], AbsoluteCompileDbDirectory("/home"), null, null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqualPretty(["-I", "/home/bar", "-I", "/home/gun"]);
-    s.includes.shouldEqualPretty(["/home/bar", "/home/gun"]);
+    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
 @("Should be cflags with machine dependent removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp",
-            `g++ -mfoo -m bar -MD -lfoo.a -l bar.a -I bar -Igun -c a_filename.c`,
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-mfoo", "-m", "bar",
+            "-MD", "-lfoo.a", "-l", "bar.a", "-I", "bar", "-Igun", "-c", "a_filename.c"],
             AbsoluteCompileDbDirectory("/home"), null, null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqualPretty(["-I", "/home/bar", "-I", "/home/gun"]);
-    s.includes.shouldEqualPretty(["/home/bar", "/home/gun"]);
+    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
 @("Should be cflags with all -f removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", `g++ -fmany-fooo -I bar -fno-fooo -Igun -flolol -c a_filename.c`,
-            AbsoluteCompileDbDirectory("/home"), null, null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-fmany-fooo", "-I", "bar", "-fno-fooo", "-Igun",
+            "-flolol", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqualPretty(["-I", "/home/bar", "-I", "/home/gun"]);
-    s.includes.shouldEqualPretty(["/home/bar", "/home/gun"]);
+    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
 @("Shall keep all compiler flags as they are")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", `g++ -Da -D b`,
-            AbsoluteCompileDbDirectory("/home"), null, null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-Da", "-D",
+            "b"], AbsoluteCompileDbDirectory("/home"), null, null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqualPretty(["-Da", "-D", "b"]);
+    s.shouldEqual(["-Da", "-D", "b"]);
 }
 
 version (unittest) {
@@ -835,7 +833,7 @@ unittest {
 
     assert(cmds.length == 1);
     cmds[0].directory.shouldEqual(dummy_dir ~ "/dir1/dir2");
-    cmds[0].command.shouldEqual("g++ -Idir1 -c -o binary file1.cpp");
+    cmds[0].command.shouldEqual(["g++", "-Idir1", "-c", "-o", "binary", "file1.cpp"]);
     cmds[0].file.shouldEqual("file1.cpp");
     cmds[0].absoluteFile.shouldEqual(dummy_dir ~ "/dir1/dir2/file1.cpp");
 }
@@ -882,7 +880,7 @@ unittest {
     auto found = cmds.find(dummy_dir ~ "/dir2/file3.cpp");
     assert(found.length == 1);
 
-    found.toString.shouldEqualPretty(format("%s/dir2
+    found.toString.shouldEqual(format("%s/dir2
   file3.cpp
   %s/dir2/file3.cpp
   g++ -Idir1 -c -o binary file3.cpp
@@ -896,7 +894,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
     auto found = cmds.find(dummy_dir ~ "/dir/file2.cpp");
 
-    found.toString.shouldEqualPretty(format("%s/dir
+    found.toString.shouldEqual(format("%s/dir
   file2.cpp
   %s/dir/file2.cpp
   g++ -Idir1 -c -o binary file2.cpp
@@ -934,7 +932,7 @@ unittest {
     auto found = cmds.find(abs_path ~ "/dir2/file3.cpp");
     assert(found.length == 1);
 
-    found.toString.shouldEqualPretty(format("%s/dir2
+    found.toString.shouldEqual(format("%s/dir2
   file3.cpp
   %s/dir2/file3.cpp
   g++ -Idir1 -c -o binary file3.cpp
@@ -953,7 +951,7 @@ unittest {
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
 
-    found.toString.shouldEqualPretty(format("%s/dir2
+    found.toString.shouldEqual(format("%s/dir2
   file3.cpp
   %s/dir2/file3.cpp
   file3.o
@@ -974,7 +972,7 @@ unittest {
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
 
-    found[0].parseFlag(defaultCompilerFilter).flags.shouldEqualPretty(["-I",
+    found[0].parseFlag(defaultCompilerFilter).flags.shouldEqual(["-I",
             buildPath(abs_path, "dir2", "dir1")]);
 }
 
