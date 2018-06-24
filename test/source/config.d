@@ -18,6 +18,8 @@ public import std.stdio;
 public import std.string;
 public import logger = std.experimental.logger;
 
+public import unit_threaded.light;
+
 immutable codeCherckerBin = "../build/code_checker";
 immutable compileCommandsFile = "compile_commands.json";
 immutable testData = "testdata";

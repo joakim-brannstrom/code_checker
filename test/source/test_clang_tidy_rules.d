@@ -14,5 +14,6 @@ unittest {
             "cpp", "empty", compileCommandsFile));
 
     // assert
-    assert(res.status == 0, "failed executing: " ~ res.output);
+    writeln(res.output);
+    res.status.shouldEqual(0);
 }
