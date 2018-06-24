@@ -89,7 +89,7 @@ int modeNormal(const ref Config conf) {
     env.files = env.compileDb.map!(a => cast(AbsolutePath) a.absoluteFile.payload).array;
 
     Registry reg;
-    reg.put(new ClangTidy, Type.staticCode);
+    reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
     execute(env, reg);
 
     return 0;
@@ -206,8 +206,11 @@ struct Config {
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] compileDbs;
 
-    // Do not remove the merged compile_commands.json file
+    /// Do not remove the merged compile_commands.json file
     bool keepDb;
+
+    /// Apply the clang tidy fixits.
+    bool clangTidyFixit;
 }
 
 void parseCLI(string[] args, ref Config conf) {
@@ -226,6 +229,7 @@ void parseCLI(string[] args, ref Config conf) {
             std.getopt.config.keepEndOfOptions,
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
+            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             );
