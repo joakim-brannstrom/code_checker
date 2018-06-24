@@ -143,21 +143,19 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
         import std.utf : byChar;
 
         auto raw_flags = () @safe{
-            auto app = appender!string;
-            e.parseFlag(flag_filter).flags.joiner(" ").copy(app);
-
+            auto app = appender!(string[]);
+            e.parseFlag(flag_filter).flags.copy(app);
             // add back dummy -c otherwise clang-tidy do not work
-            app.put(" ");
-            ["-c", cast(string) e.absoluteFile].joiner(" ").copy(app);
+            ["-c", cast(string) e.absoluteFile].copy(app);
             return app.data;
         }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
 
         if (e.arguments.hasValue) {
-            formattedWrite(app, `"arguments": "%s",`, raw_flags);
+            formattedWrite(app, `"arguments": %s,`, raw_flags);
         } else {
-            formattedWrite(app, `"command": "%s",`, raw_flags);
+            formattedWrite(app, `"command": "%-(%s %)",`, raw_flags);
         }
 
         if (e.output.hasValue)
