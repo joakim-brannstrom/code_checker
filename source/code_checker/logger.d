@@ -31,7 +31,9 @@ enum VerboseMode {
     /// Info+
     info,
     /// Trace+
-    trace
+    trace,
+    /// Warnings+
+    warning,
 }
 
 void confLogger(VerboseMode mode) {
@@ -45,8 +47,12 @@ void confLogger(VerboseMode mode) {
         logger.sharedLog = new DebugLogger(logger.LogLevel.all);
         logger.info("Debug mode activated");
         break;
-    default:
+    case VerboseMode.warning:
         logger.globalLogLevel = logger.LogLevel.warning;
+        logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
+        break;
+    default:
+        logger.globalLogLevel = logger.LogLevel.info;
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
     }
 }
