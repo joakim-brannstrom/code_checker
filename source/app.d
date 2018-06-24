@@ -49,15 +49,22 @@ int modeNone_Error(const ref Config conf) {
 int modeNormal(const ref Config conf) {
     import std.algorithm : map;
     import std.array : appender, array;
-    import std.file : exists;
+    import std.file : exists, remove;
     import std.process;
     import std.stdio : File;
     import code_checker.compile_db : fromArgCompileDb, parseFlag,
         CompileCommandFilter;
     import code_checker.engine;
 
+    bool removeCompileDb;
+    scope (exit) {
+        if (removeCompileDb && !conf.keepDb)
+            remove(compileCommandsFile).collectException;
+    }
+
     if (!exists(compileCommandsFile)) {
         logger.trace("Creating a unified compile_commands.json");
+        removeCompileDb = true;
 
         auto compile_db = appender!string();
         try {
@@ -198,6 +205,9 @@ struct Config {
 
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] compileDbs;
+
+    // Do not remove the merged compile_commands.json file
+    bool keepDb;
 }
 
 void parseCLI(string[] args, ref Config conf) {
@@ -215,8 +225,9 @@ void parseCLI(string[] args, ref Config conf) {
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "v|verbose", "verbose mode is set to information", &verbose_info,
+            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
+            "v|verbose", "verbose mode is set to information", &verbose_info,
             );
         // dfmt on
         conf.mode = help_info.helpWanted ? AppMode.help : AppMode.normal;
