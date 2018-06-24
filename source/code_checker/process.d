@@ -10,6 +10,7 @@ import logger = std.experimental.logger;
 int run(string[] cmd) @trusted {
     import std.array : appender;
     import std.algorithm : joiner, copy;
+    import std.ascii : newline;
     import std.process : pipeProcess, tryWait, Redirect;
     import std.stdio : writeln;
     import core.thread : Thread;
@@ -38,10 +39,11 @@ int run(string[] cmd) @trusted {
     }
 
     if (exit_status != 0) {
-        import std.ascii : newline;
-
         writeln(app_out.data.joiner(newline));
         writeln(app_err.data.joiner(newline));
+    } else {
+        logger.trace("stdout: ", app_out.data.joiner(newline));
+        logger.trace("stderr: ", app_err.data.joiner(newline));
     }
 
     return exit_status;
