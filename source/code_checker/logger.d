@@ -102,6 +102,7 @@ class SimpleLogger : logger.Logger {
         auto out_ = stderr;
         auto use_color = Color.red;
         auto use_mode = Mode.bold;
+        const use_bg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
@@ -119,7 +120,8 @@ class SimpleLogger : logger.Logger {
         import std.conv : to;
         import colorize;
 
-        out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color), payload.msg);
+        out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color,
+                use_bg, use_mode), payload.msg);
     }
 }
 
@@ -133,6 +135,7 @@ class DebugLogger : logger.Logger {
         auto out_ = stderr;
         auto use_color = Color.red;
         auto use_mode = Mode.bold;
+        const use_bg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
@@ -151,6 +154,6 @@ class DebugLogger : logger.Logger {
         import colorize;
 
         out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(use_color,
-                Background.init, use_mode), payload.msg, payload.funcName, payload.line);
+                use_bg, use_mode), payload.msg, payload.funcName, payload.line);
     }
 }
