@@ -22,23 +22,7 @@ import std.stdio : writeln, writefln, stderr, stdout;
 import logger = std.experimental.logger;
 import std.experimental.logger : LogLevel;
 
-import colorize : fg, bg, mode;
-
-/**
- * An enum listing possible colors for terminal output, useful to set the color
- * of a tag. Re-exported from d-colorize in dub.internal.colorize. See the enum
- * definition there for a list of possible values.
-*/
-alias Color = fg;
-alias Background = bg;
-
-/**
- * An enum listing possible text "modes" for terminal output, useful to set
- * the text to bold, underline, blinking, etc...
- * Re-exported from d-colorize in dub.internal.colorize. See the enum
- * definition there for a list of possible values.
-*/
-alias Mode = mode;
+import colorize : Color, Background, Mode;
 
 /// The verbosity level of the logging to use.
 enum VerboseMode {
@@ -47,7 +31,9 @@ enum VerboseMode {
     /// Info+
     info,
     /// Trace+
-    trace
+    trace,
+    /// Warnings+
+    warning,
 }
 
 void confLogger(VerboseMode mode) {
@@ -61,8 +47,12 @@ void confLogger(VerboseMode mode) {
         logger.sharedLog = new DebugLogger(logger.LogLevel.all);
         logger.info("Debug mode activated");
         break;
-    default:
+    case VerboseMode.warning:
         logger.globalLogLevel = logger.LogLevel.warning;
+        logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
+        break;
+    default:
+        logger.globalLogLevel = logger.LogLevel.info;
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
     }
 }
@@ -118,6 +108,7 @@ class SimpleLogger : logger.Logger {
         auto out_ = stderr;
         auto use_color = Color.red;
         auto use_mode = Mode.bold;
+        const use_bg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
@@ -135,7 +126,8 @@ class SimpleLogger : logger.Logger {
         import std.conv : to;
         import colorize;
 
-        out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color), payload.msg);
+        out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color,
+                use_bg, use_mode), payload.msg);
     }
 }
 
@@ -149,6 +141,7 @@ class DebugLogger : logger.Logger {
         auto out_ = stderr;
         auto use_color = Color.red;
         auto use_mode = Mode.bold;
+        const use_bg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
@@ -167,6 +160,6 @@ class DebugLogger : logger.Logger {
         import colorize;
 
         out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(use_color,
-                Background.init, use_mode), payload.msg, payload.funcName, payload.line);
+                use_bg, use_mode), payload.msg, payload.funcName, payload.line);
     }
 }

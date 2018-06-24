@@ -14,12 +14,6 @@ import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 immutable compileCommandsFile = "compile_commands.json";
 
-struct ClangTidy {
-    static immutable bin = "clang-tidy";
-    static immutable conf = import("default_clang_tidy.conf");
-    static immutable confFile = ".clang-tidy";
-}
-
 int main(string[] args) {
     import std.functional : toDelegate;
     import code_checker.logger;
@@ -55,14 +49,22 @@ int modeNone_Error(const ref Config conf) {
 int modeNormal(const ref Config conf) {
     import std.algorithm : map;
     import std.array : appender, array;
-    import std.file : exists;
+    import std.file : exists, remove;
     import std.process;
     import std.stdio : File;
     import code_checker.compile_db : fromArgCompileDb, parseFlag,
         CompileCommandFilter;
+    import code_checker.engine;
+
+    bool removeCompileDb;
+    scope (exit) {
+        if (removeCompileDb && !conf.keepDb)
+            remove(compileCommandsFile).collectException;
+    }
 
     if (!exists(compileCommandsFile)) {
         logger.trace("Creating a unified compile_commands.json");
+        removeCompileDb = true;
 
         auto compile_db = appender!string();
         try {
@@ -81,14 +83,14 @@ int modeNormal(const ref Config conf) {
         }
     }
 
-    if (!exists(ClangTidy.confFile)) {
-        File(ClangTidy.confFile, "w").write(ClangTidy.conf);
-    }
+    Environment env;
+    env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
+    env.compileDb = fromArgCompileDb([env.compileDbFile]);
+    env.files = env.compileDb.map!(a => cast(AbsolutePath) a.absoluteFile.payload).array;
 
-    auto db = fromArgCompileDb([compileCommandsFile]);
-    foreach (cmd; db) {
-        runClangTidy(cmd.parseFlag(CompileCommandFilter.init).flags, cmd.absoluteFile.payload);
-    }
+    Registry reg;
+    reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
+    execute(env, reg);
 
     return 0;
 }
@@ -148,22 +150,19 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
         import std.utf : byChar;
 
         auto raw_flags = () @safe{
-            auto app = appender!string;
-            e.parseFlag(flag_filter).flags.joiner(" ").copy(app);
-
-            // add back dummy -c and -o otherwise clang-tidy do not work
-            app.put(" ");
-            ["-c", cast(string) e.absoluteFile, "-o", e.absoluteFile.stripExtension ~ ".o"].joiner(" ")
-                .copy(app);
+            auto app = appender!(string[]);
+            e.parseFlag(flag_filter).flags.copy(app);
+            // add back dummy -c otherwise clang-tidy do not work
+            ["-c", cast(string) e.absoluteFile].copy(app);
             return app.data;
         }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
 
         if (e.arguments.hasValue) {
-            formattedWrite(app, `"arguments": "%s",`, raw_flags);
+            formattedWrite(app, `"arguments": %s,`, raw_flags);
         } else {
-            formattedWrite(app, `"command": "%s",`, raw_flags);
+            formattedWrite(app, `"command": "%-(%s %)",`, raw_flags);
         }
 
         if (e.output.hasValue)
@@ -206,6 +205,12 @@ struct Config {
 
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] compileDbs;
+
+    /// Do not remove the merged compile_commands.json file
+    bool keepDb;
+
+    /// Apply the clang tidy fixits.
+    bool clangTidyFixit;
 }
 
 void parseCLI(string[] args, ref Config conf) {
@@ -223,8 +228,10 @@ void parseCLI(string[] args, ref Config conf) {
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "v|verbose", "verbose mode is set to information", &verbose_info,
+            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
+            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
+            "v|verbose", "verbose mode is set to information", &verbose_info,
             );
         // dfmt on
         conf.mode = help_info.helpWanted ? AppMode.help : AppMode.normal;
@@ -259,26 +266,4 @@ void parseCLI(string[] args, ref Config conf) {
         printHelp;
         return;
     }
-}
-
-int run(string[] cmd) {
-    import std.algorithm : joiner;
-    import std.process : spawnProcess, wait;
-
-    logger.trace("run: ", cmd.joiner(" "));
-    return spawnProcess(cmd).wait;
-}
-
-int runClangTidy(string[] compiler_args, AbsoluteFileName fname) {
-    import std.algorithm : map, copy;
-    import std.format : format;
-    import std.array : appender;
-
-    auto app = appender!(string[])();
-    app.put(ClangTidy.bin);
-    app.put("-p=.");
-    app.put("-config=");
-    app.put(fname);
-
-    return run(app.data);
 }

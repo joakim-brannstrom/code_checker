@@ -14,5 +14,17 @@ unittest {
             "cpp", "empty", compileCommandsFile));
 
     // assert
-    assert(res.status == 0, "failed executing: " ~ res.output);
+    writeln(res.output);
+    res.status.shouldEqual(0);
+}
+
+@("shall warn about name style in a c++ file")
+unittest {
+    // action
+    auto res = executeShell(codeCherckerBin ~ " --vverbose -c " ~ buildPath(testData,
+            "cpp", "name_style", compileCommandsFile));
+
+    // assert
+    writeln(res.output);
+    res.status.shouldNotEqual(0);
 }
