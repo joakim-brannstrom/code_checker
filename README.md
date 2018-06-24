@@ -1,10 +1,6 @@
 # code_checker [![Build Status](https://travis-ci.org/joakim-brannstrom/code_checker.svg?branch=master)](https://travis-ci.org/joakim-brannstrom/code_checker)
 
-**code_checker** is a tool that perform a quality check of source code. The intended use is as an automated sanity check of code before e.g. a PR is accepted, a manual inspection by a human etc.
-
-It is intended to be language agnostic by first defining certain hooks that encode best practise.
-
-For now it has hooks ready made for C++ using clang static analyzers.
+**code_checker** is a tool that perform a quality check of C/C++ code. The intended use is as an automated sanity check of code before e.g. a pull request is accepted, a manual inspection by a human etc.
 
 # Getting Started
 
