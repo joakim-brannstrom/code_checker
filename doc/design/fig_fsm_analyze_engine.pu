@@ -1,0 +1,55 @@
+@startuml
+'This file is the overall state machine for how the analyzers are executed
+
+SetupAnalyzers: default settings or\nfrom config
+
+LoadConfig: from file
+LoadConfig --> SetupAnalyzers
+SetupAnalyzers -> RunAnalyzers
+
+state RunAnalyzers {
+    Execute: Send conf to\nSingleAnalyze
+    DisplayResult: Display result\nto user
+    CheckResult: Continue or halt analyze.\ndepending on result.
+    NextAnalyzer: Iterate to next analyser
+    Done: All analyzers used
+
+    [*] -> Execute
+
+    Execute --> SingleAnalyze
+    SingleAnalyze --> DisplayResult
+    DisplayResult --> CheckResult
+
+    CheckResult --> NextAnalyzer : ok
+    CheckResult --> StopWithFailure
+
+    NextAnalyzer --> Execute
+    NextAnalyzer --> Done : done
+
+    Done -> [*]
+    StopWithFailure -> [*]
+}
+
+'This is like a TestRunner with a fixture
+state SingleAnalyze {
+    Setup: Prepare env for test
+    Test: Run the analyze
+    Teardown: cleanup if needed
+    Result: of the analyzer
+
+    [*] -> Setup
+
+    Setup --> Test : ok
+    Setup --> Failed
+
+    Test --> Passed : ok
+    Test --> Failed
+
+    Passed --> Teardown
+    Failed --> Teardown
+
+    Teardown -> Result
+    Result -> [*]
+}
+
+@enduml

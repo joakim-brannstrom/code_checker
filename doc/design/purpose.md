@@ -7,12 +7,6 @@ These checks are then executed on the source code provided by the user.
 
 The checks are language agnostic.
 
-## Reading
-
-This chapter is a reading guide to the requirements.
-
-A cursive text in a requirement is a definition. The explanation for the definition can be found under the [Definitions chapter](#Definitions).
-
 ## Dump 1
 
 For the first version the focus is on C++. In the future other languages will be considred.
@@ -65,12 +59,3 @@ The program shall convert all relative paths to absolute paths when reading a co
 
 The program shall merge multiple compilation databases to one when given more than one compilation database as input.
 
-# <a name="D-Definitions"></a> Definitions
-
-## Converted Database
-
-A compilation database that consist of only absolute paths. All relative have been converted.
-
-## Compilation Database
-
-See [for more](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
