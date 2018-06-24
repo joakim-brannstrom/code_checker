@@ -1,0 +1,8 @@
+---
+title: Design and Requirements for Code Checker
+author: Joakim Brännström
+rights: CCO
+language: en-US
+abstract: |
+    This document contains the design and requirements for the CodeChecker tool. The tool is a generic framework where checks can be intergrated to automatically evaluate the quality of source code.
+...

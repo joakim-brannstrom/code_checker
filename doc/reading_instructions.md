@@ -1,10 +1,11 @@
-# Instructions
+# Reading Instructions
+
+This chapter is a reading guide to the requirements.
 
 ## Cursive text
 
-Cursive text is references to [definitions](definitions.md).
-
-It should be possible to look it up there.
+Cursive text in a requirement is a definition.
+The explanation for the definition can be found under the [Definitions chapter](#Definitions).
 
 ## Assertions
 (copied from the Artifact git repo)
