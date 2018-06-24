@@ -146,10 +146,9 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
             auto app = appender!string;
             e.parseFlag(flag_filter).flags.joiner(" ").copy(app);
 
-            // add back dummy -c and -o otherwise clang-tidy do not work
+            // add back dummy -c otherwise clang-tidy do not work
             app.put(" ");
-            ["-c", cast(string) e.absoluteFile, "-o", e.absoluteFile.stripExtension ~ ".o"].joiner(" ")
-                .copy(app);
+            ["-c", cast(string) e.absoluteFile].joiner(" ").copy(app);
             return app.data;
         }();
 
