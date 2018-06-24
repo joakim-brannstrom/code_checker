@@ -14,12 +14,6 @@ import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 immutable compileCommandsFile = "compile_commands.json";
 
-struct ClangTidy {
-    static immutable bin = "clang-tidy";
-    static immutable conf = import("default_clang_tidy.conf");
-    static immutable confFile = ".clang-tidy";
-}
-
 int main(string[] args) {
     import std.functional : toDelegate;
     import code_checker.logger;
@@ -81,14 +75,7 @@ int modeNormal(const ref Config conf) {
         }
     }
 
-    if (!exists(ClangTidy.confFile)) {
-        File(ClangTidy.confFile, "w").write(ClangTidy.conf);
-    }
-
     auto db = fromArgCompileDb([compileCommandsFile]);
-    foreach (cmd; db) {
-        runClangTidy(cmd.parseFlag(CompileCommandFilter.init).flags, cmd.absoluteFile.payload);
-    }
 
     return 0;
 }
@@ -259,26 +246,4 @@ void parseCLI(string[] args, ref Config conf) {
         printHelp;
         return;
     }
-}
-
-int run(string[] cmd) {
-    import std.algorithm : joiner;
-    import std.process : spawnProcess, wait;
-
-    logger.trace("run: ", cmd.joiner(" "));
-    return spawnProcess(cmd).wait;
-}
-
-int runClangTidy(string[] compiler_args, AbsoluteFileName fname) {
-    import std.algorithm : map, copy;
-    import std.format : format;
-    import std.array : appender;
-
-    auto app = appender!(string[])();
-    app.put(ClangTidy.bin);
-    app.put("-p=.");
-    app.put("-config=");
-    app.put(fname);
-
-    return run(app.data);
 }
