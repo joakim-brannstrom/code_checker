@@ -10,6 +10,9 @@ module code_checker.engine.types;
 /** The base fixture that an analyzer implement
  */
 interface BaseFixture {
+    /// Explain what the analyser is.
+    string explain();
+
     /// The environment the analysers execute in.
     void putEnv(Environment);
 
@@ -43,10 +46,17 @@ struct Environment {
 
 /// The summary of an analyzers result.
 enum Status {
+    none,
     /// The analyze failed
     failed,
     /// The analyze passed without any remarks.
     passed
+}
+
+Status mergeStatus(Status old, Status new_) {
+    if (old == Status.none)
+        return new_;
+    return old == Status.failed ? old : new_;
 }
 
 /// The amount of points the analyzer adjusts the overall score
@@ -57,23 +67,38 @@ struct Score {
 
 /// The severity of a user message.
 enum Severity {
-    /// Trace info used for debugging
-    trace,
-    /// General info about the analyzer that is useful to the user
-    info,
     /// Why an analyzer failed to execute
     unableToExecute,
     /// Why an analyzer reports failed
     failReason,
     /// Improvement suggestions for how to fix the score intended for the user
-    improvSuggestion,
+    improveSuggestion,
 }
 
 /// A message from an analyzer.
 struct Msg {
     Severity severity;
-    string[] value;
+    string value;
     alias value this;
+
+    int opCmp(ref const Msg rhs) @safe pure nothrow const {
+        if (severity < rhs.severity)
+            return -1;
+        else if (severity > rhs.severity)
+            return 1;
+        else
+            return value < rhs.value ? -1 : (value > rhs.value ? 1 : 0);
+    }
+
+    bool opEquals(ref const Msg o) @safe pure nothrow const @nogc scope {
+        return severity == o.severity && value == o.value;
+    }
+
+    string toString() @safe const {
+        import std.format : format;
+
+        return format("%s: %s", severity, value);
+    }
 }
 
 /// Messages from an analyzer intended to be displayed to the user.

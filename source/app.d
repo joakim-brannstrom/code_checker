@@ -54,6 +54,7 @@ int modeNormal(const ref Config conf) {
     import std.stdio : File;
     import code_checker.compile_db : fromArgCompileDb, parseFlag,
         CompileCommandFilter;
+    import code_checker.engine;
 
     if (!exists(compileCommandsFile)) {
         logger.trace("Creating a unified compile_commands.json");
@@ -75,7 +76,14 @@ int modeNormal(const ref Config conf) {
         }
     }
 
-    auto db = fromArgCompileDb([compileCommandsFile]);
+    Environment env;
+    env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
+    env.compileDb = fromArgCompileDb([env.compileDbFile]);
+    env.files = env.compileDb.map!(a => cast(AbsolutePath) a.absoluteFile.payload).array;
+
+    Registry reg;
+    reg.put(new ClangTidy, Type.staticCode);
+    execute(env, reg);
 
     return 0;
 }
