@@ -22,23 +22,7 @@ import std.stdio : writeln, writefln, stderr, stdout;
 import logger = std.experimental.logger;
 import std.experimental.logger : LogLevel;
 
-import colorize : fg, bg, mode;
-
-/**
- * An enum listing possible colors for terminal output, useful to set the color
- * of a tag. Re-exported from d-colorize in dub.internal.colorize. See the enum
- * definition there for a list of possible values.
-*/
-alias Color = fg;
-alias Background = bg;
-
-/**
- * An enum listing possible text "modes" for terminal output, useful to set
- * the text to bold, underline, blinking, etc...
- * Re-exported from d-colorize in dub.internal.colorize. See the enum
- * definition there for a list of possible values.
-*/
-alias Mode = mode;
+import colorize : Color, Background, Mode;
 
 /// The verbosity level of the logging to use.
 enum VerboseMode {

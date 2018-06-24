@@ -62,7 +62,7 @@ static enum mode : int {
  * ---
  */
 
-string color(const string str, const fg c = fg.init, const bg b = bg.init, const mode m = mode.init) pure {
+string color(const string str, const fg c = fg.init, const bg b = bg.init, const mode m = mode.init) pure @safe {
     return format("\033[%d;%d;%dm%s\033[0m", m, c, b, str);
 }
 
