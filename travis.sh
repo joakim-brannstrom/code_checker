@@ -6,5 +6,6 @@ dub test
 dub build
 
 pushd test
-dub test
+# the tests do not support running in parallel
+dub test -- -s
 popd

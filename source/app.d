@@ -9,6 +9,8 @@ import std.algorithm : among;
 import std.exception : collectException;
 
 import logger = std.experimental.logger;
+
+import code_checker.cli : Config;
 import code_checker.compile_db : CompileCommandDB;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
@@ -16,6 +18,7 @@ immutable compileCommandsFile = "compile_commands.json";
 
 int main(string[] args) {
     import std.functional : toDelegate;
+    import code_checker.cli : AppMode, parseCLI;
     import code_checker.logger;
 
     Config conf;
@@ -90,9 +93,7 @@ int modeNormal(const ref Config conf) {
 
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
-    execute(env, reg);
-
-    return 0;
+    return execute(env, reg) == Status.passed ? 0 : 1;
 }
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
@@ -188,82 +189,4 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     formattedWrite(app, "}");
 
     formattedWrite(app, "]");
-}
-
-enum AppMode {
-    none,
-    help,
-    helpUnknownCommand,
-    normal,
-}
-
-struct Config {
-    import code_checker.logger : VerboseMode;
-
-    AppMode mode;
-    VerboseMode verbose;
-
-    /// Either a path to a compilation database or a directory to search for one in.
-    AbsolutePath[] compileDbs;
-
-    /// Do not remove the merged compile_commands.json file
-    bool keepDb;
-
-    /// Apply the clang tidy fixits.
-    bool clangTidyFixit;
-}
-
-void parseCLI(string[] args, ref Config conf) {
-    import std.algorithm : map;
-    import std.array : array;
-    import code_checker.logger : VerboseMode;
-    static import std.getopt;
-
-    bool verbose_info;
-    bool verbose_trace;
-    std.getopt.GetoptResult help_info;
-    try {
-        string[] compile_dbs;
-        // dfmt off
-        help_info = std.getopt.getopt(args,
-            std.getopt.config.keepEndOfOptions,
-            "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
-            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
-            "vverbose", "verbose mode is set to trace", &verbose_trace,
-            "v|verbose", "verbose mode is set to information", &verbose_info,
-            );
-        // dfmt on
-        conf.mode = help_info.helpWanted ? AppMode.help : AppMode.normal;
-        conf.verbose = () {
-            if (verbose_trace)
-                return VerboseMode.trace;
-            if (verbose_info)
-                return VerboseMode.info;
-            return VerboseMode.minimal;
-        }();
-        conf.compileDbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
-        if (compile_dbs.length == 0)
-            conf.compileDbs = [AbsolutePath(Path("."))];
-    } catch (std.getopt.GetOptException e) {
-        // unknown option
-        logger.error(e.msg);
-        conf.mode = AppMode.helpUnknownCommand;
-    } catch (Exception e) {
-        logger.error(e.msg);
-        conf.mode = AppMode.helpUnknownCommand;
-    }
-
-    void printHelp() {
-        import std.getopt : defaultGetoptPrinter;
-        import std.format : format;
-        import std.path : baseName;
-
-        defaultGetoptPrinter(format("usage: %s\n", args[0].baseName), help_info.options);
-    }
-
-    if (conf.mode.among(AppMode.help, AppMode.helpUnknownCommand)) {
-        printHelp;
-        return;
-    }
 }

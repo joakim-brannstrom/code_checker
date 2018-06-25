@@ -21,10 +21,10 @@ unittest {
 @("shall warn about name style in a c++ file")
 unittest {
     // action
-    auto res = executeShell(codeCherckerBin ~ " --vverbose -c " ~ buildPath(testData,
-            "cpp", "name_style", compileCommandsFile));
+    auto res = run([codeCherckerBin, "--vverbose", "-c", buildPath(testData,
+            "cpp", "name_style", compileCommandsFile)]);
 
     // assert
-    writeln(res.output);
+    res.print;
     res.status.shouldNotEqual(0);
 }
