@@ -42,6 +42,9 @@ struct Environment {
 
     /// The files to analyse
     string[] files;
+
+    /// Filter warnings to only those in these files/paths
+    string[] analyzeFilter;
 }
 
 /// The summary of an analyzers result.

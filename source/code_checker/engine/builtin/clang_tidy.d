@@ -38,26 +38,38 @@ class ClangTidy : BaseFixture {
     /// Setup the environment for analyze.
     override void setup() {
         import std.algorithm;
-        import std.array : appender;
+        import std.array : appender, array;
         import std.ascii;
         import std.file : exists;
         import std.range : put;
 
-        if (!exists(ClangTidyConstants.confFile)) {
-            auto app = appender!string();
+        auto app = appender!(string[])();
 
-            put(app, "-config=");
+        if (env.analyzeFilter.length == 0) {
+            app.put("-header-filter=.*");
+        } else {
+            env.analyzeFilter.map!(a => ["-header-filter", a]).joiner.copy(app);
+        }
+
+        if (exists(ClangTidyConstants.confFile)) {
+            logger.infof("Using clang-tidy settings from the local '%s'",
+                    ClangTidyConstants.confFile);
+        } else {
+            auto c = appender!string();
             // dfmt off
             ClangTidyConstants .conf
                 .splitter(newline)
                 // remove comments
                 .filter!(a => !a.startsWith("#"))
                 .joiner
-                .copy(app);
+                .copy(c);
             // dfmt on
 
-            tidyArgs ~= app.data;
+            app.put("-config");
+            app.put(c.data);
         }
+
+        tidyArgs ~= app.data;
     }
 
     /// Execute the analyzer.
@@ -123,7 +135,6 @@ int runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname)
     auto app = appender!(string[])();
     app.put(ClangTidyConstants.bin);
     app.put("-warnings-as-errors=*");
-    app.put("-header-filter=.*");
     app.put("-p=.");
     tidy_args.copy(app);
     app.put(fname);
