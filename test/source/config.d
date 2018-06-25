@@ -42,3 +42,48 @@ struct TestArea {
         mkdirRecurse(workdir);
     }
 }
+
+struct RunResult {
+    int status;
+    string[] stdout;
+    string[] stderr;
+
+    void print() {
+        writeln("stdout: ", stdout);
+        writeln("stderr: ", stderr);
+    }
+}
+
+RunResult run(string[] cmd) {
+    import std.array : appender;
+    import std.algorithm : joiner, copy;
+    import std.ascii : newline;
+    import std.process : pipeProcess, tryWait, Redirect;
+    import std.stdio : writeln;
+    import core.thread : Thread;
+    import core.time : dur;
+
+    logger.trace("run: ", cmd.joiner(" "));
+
+    auto app_out = appender!(string[])();
+    auto app_err = appender!(string[])();
+
+    auto p = pipeProcess(cmd, Redirect.all);
+    int exit_status = -1;
+
+    while (true) {
+        auto pres = p.pid.tryWait;
+
+        p.stdout.byLineCopy.copy(app_out);
+        p.stderr.byLineCopy.copy(app_err);
+
+        if (pres.terminated) {
+            exit_status = pres.status;
+            break;
+        }
+
+        Thread.sleep(25.dur!"msecs");
+    }
+
+    return RunResult(exit_status, app_out.data, app_err.data);
+}
