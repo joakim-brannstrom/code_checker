@@ -93,9 +93,7 @@ int modeNormal(const ref Config conf) {
 
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
-    execute(env, reg);
-
-    return 0;
+    return execute(env, reg) == Status.passed ? 0 : 1;
 }
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
