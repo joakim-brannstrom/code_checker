@@ -18,6 +18,7 @@ enum AppMode {
     normal,
 }
 
+/// Configuration of how to use the program.
 struct Config {
     import code_checker.logger : VerboseMode;
 
@@ -32,6 +33,12 @@ struct Config {
 
     /// Apply the clang tidy fixits.
     bool clangTidyFixit;
+
+    /// Filter warnings to only those in these paths.
+    AbsolutePath[] srcFilter;
+
+    /// If set then only analyze these files
+    string[] analyzeFiles;
 }
 
 void parseCLI(string[] args, ref Config conf) {
@@ -46,12 +53,16 @@ void parseCLI(string[] args, ref Config conf) {
     std.getopt.GetoptResult help_info;
     try {
         string[] compile_dbs;
+        string[] src_filter;
+
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
-            "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
+            "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
+            "f|file", "if set then analyze only these files", &conf.analyzeFiles,
+            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
+            "src-filter", "filter analyzer warnings to those in this paths", &src_filter,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             );
@@ -67,6 +78,7 @@ void parseCLI(string[] args, ref Config conf) {
         conf.compileDbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
         if (compile_dbs.length == 0)
             conf.compileDbs = [AbsolutePath(Path("."))];
+        conf.srcFilter = src_filter.map!(a => Path(a).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);

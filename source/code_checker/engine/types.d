@@ -41,7 +41,7 @@ struct Environment {
     CompileCommandDB compileDb;
 
     /// The files to analyse
-    AbsolutePath[] files;
+    string[] files;
 }
 
 /// The summary of an analyzers result.

@@ -89,7 +89,12 @@ int modeNormal(const ref Config conf) {
     Environment env;
     env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
     env.compileDb = fromArgCompileDb([env.compileDbFile]);
-    env.files = env.compileDb.map!(a => cast(AbsolutePath) a.absoluteFile.payload).array;
+    env.files = () {
+        if (conf.analyzeFiles.length == 0)
+            return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile.payload).array;
+        else
+            return conf.analyzeFiles.dup;
+    }();
 
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);

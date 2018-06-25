@@ -63,13 +63,21 @@ class ClangTidy : BaseFixture {
     /// Execute the analyzer.
     override void execute() {
         import std.format : format;
-        import code_checker.compile_db;
+        import code_checker.compile_db : UserFileRange, parseFlag,
+            CompileCommandFilter;
 
         bool logged_failure;
 
-        foreach (cmd; env.compileDb) {
-            auto st = runClangTidy(tidyArgs, cmd.parseFlag(CompileCommandFilter.init)
-                    .flags, cmd.absoluteFile.payload);
+        foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
+            if (cmd.isNull) {
+                result_.status = Status.failed;
+                result_.score -= 100;
+                result_.msg ~= Msg(Severity.failReason,
+                        "clang-tidy where unable to find one of the specified files in compile_commands.json");
+                break;
+            }
+
+            auto st = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
             // just chose some numbers. The intent is that warnings should be a high penalty
             result_.score += st == 0 ? 1 : -10;
 
@@ -106,7 +114,7 @@ struct ClangTidyConstants {
     static immutable confFile = ".clang-tidy";
 }
 
-int runClangTidy(string[] tidy_args, string[] compiler_args, AbsoluteFileName fname) {
+int runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname) {
     import std.algorithm : map, copy;
     import std.format : format;
     import std.array : appender;
