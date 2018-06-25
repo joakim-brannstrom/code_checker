@@ -38,38 +38,58 @@ class ClangTidy : BaseFixture {
     /// Setup the environment for analyze.
     override void setup() {
         import std.algorithm;
-        import std.array : appender;
+        import std.array : appender, array;
         import std.ascii;
         import std.file : exists;
         import std.range : put;
 
-        if (!exists(ClangTidyConstants.confFile)) {
-            auto app = appender!string();
+        auto app = appender!(string[])();
 
-            put(app, "-config=");
+        if (env.analyzeFilter.length == 0) {
+            app.put("-header-filter=.*");
+        } else {
+            env.analyzeFilter.map!(a => ["-header-filter", a]).joiner.copy(app);
+        }
+
+        if (exists(ClangTidyConstants.confFile)) {
+            logger.infof("Using clang-tidy settings from the local '%s'",
+                    ClangTidyConstants.confFile);
+        } else {
+            auto c = appender!string();
             // dfmt off
             ClangTidyConstants .conf
                 .splitter(newline)
                 // remove comments
                 .filter!(a => !a.startsWith("#"))
                 .joiner
-                .copy(app);
+                .copy(c);
             // dfmt on
 
-            tidyArgs ~= app.data;
+            app.put("-config");
+            app.put(c.data);
         }
+
+        tidyArgs ~= app.data;
     }
 
     /// Execute the analyzer.
     override void execute() {
         import std.format : format;
-        import code_checker.compile_db;
+        import code_checker.compile_db : UserFileRange, parseFlag,
+            CompileCommandFilter;
 
         bool logged_failure;
 
-        foreach (cmd; env.compileDb) {
-            auto st = runClangTidy(tidyArgs, cmd.parseFlag(CompileCommandFilter.init)
-                    .flags, cmd.absoluteFile.payload);
+        foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
+            if (cmd.isNull) {
+                result_.status = Status.failed;
+                result_.score -= 100;
+                result_.msg ~= Msg(Severity.failReason,
+                        "clang-tidy where unable to find one of the specified files in compile_commands.json");
+                break;
+            }
+
+            auto st = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
             // just chose some numbers. The intent is that warnings should be a high penalty
             result_.score += st == 0 ? 1 : -10;
 
@@ -106,7 +126,7 @@ struct ClangTidyConstants {
     static immutable confFile = ".clang-tidy";
 }
 
-int runClangTidy(string[] tidy_args, string[] compiler_args, AbsoluteFileName fname) {
+int runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname) {
     import std.algorithm : map, copy;
     import std.format : format;
     import std.array : appender;
@@ -115,7 +135,6 @@ int runClangTidy(string[] tidy_args, string[] compiler_args, AbsoluteFileName fn
     auto app = appender!(string[])();
     app.put(ClangTidyConstants.bin);
     app.put("-warnings-as-errors=*");
-    app.put("-header-filter=.*");
     app.put("-p=.");
     tidy_args.copy(app);
     app.put(fname);

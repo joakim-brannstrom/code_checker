@@ -18,6 +18,8 @@ import std.exception : collectException;
 
 import code_checker.types : AbsolutePath;
 
+public import code_checker.compile_db.user_filerange;
+
 version (unittest) {
     import std.path : buildPath;
     import unit_threaded : Name, shouldEqual;

@@ -41,7 +41,10 @@ struct Environment {
     CompileCommandDB compileDb;
 
     /// The files to analyse
-    AbsolutePath[] files;
+    string[] files;
+
+    /// Filter warnings to only those in these files/paths
+    string[] analyzeFilter;
 }
 
 /// The summary of an analyzers result.

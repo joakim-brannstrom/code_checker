@@ -68,7 +68,9 @@ int modeNormal(const ref Config conf) {
     if (!exists(compileCommandsFile)) {
         logger.trace("Creating a unified compile_commands.json");
         removeCompileDb = true;
+    }
 
+    if (conf.compileDbs.length != 0) {
         auto compile_db = appender!string();
         try {
             auto dbs = findCompileDbs(conf.compileDbs);
@@ -89,7 +91,13 @@ int modeNormal(const ref Config conf) {
     Environment env;
     env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
     env.compileDb = fromArgCompileDb([env.compileDbFile]);
-    env.files = env.compileDb.map!(a => cast(AbsolutePath) a.absoluteFile.payload).array;
+    env.files = () {
+        if (conf.analyzeFiles.length == 0)
+            return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile.payload).array;
+        else
+            return conf.analyzeFiles.dup;
+    }();
+    env.analyzeFilter = conf.analyzeFilter.dup;
 
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
