@@ -18,15 +18,23 @@ immutable compileCommandsFile = "compile_commands.json";
 
 int main(string[] args) {
     import std.functional : toDelegate;
-    import code_checker.cli : AppMode, parseCLI;
+    import code_checker.cli : AppMode, parseCLI, loadConfig, Config;
     import code_checker.logger;
 
-    Config conf;
+    auto conf = () {
+        try {
+            return loadConfig;
+        } catch (Exception e) {
+            logger.warning(e.msg);
+            logger.warning("Unable to read configuration");
+            return Config.init;
+        }
+    }();
     parseCLI(args, conf);
     confLogger(conf.verbose);
     logger.trace(conf);
 
-    alias Command = int delegate(const ref Config conf);
+    alias Command = int delegate(ref Config conf);
     Command[AppMode] cmds;
     cmds[AppMode.none] = toDelegate(&modeNone);
     cmds[AppMode.help] = toDelegate(&modeNone);
@@ -41,15 +49,15 @@ int main(string[] args) {
     return 1;
 }
 
-int modeNone(const ref Config conf) {
+int modeNone(ref Config conf) {
     return 0;
 }
 
-int modeNone_Error(const ref Config conf) {
+int modeNone_Error(ref Config conf) {
     return 1;
 }
 
-int modeNormal(const ref Config conf) {
+int modeNormal(ref Config conf) {
     import std.algorithm : map;
     import std.array : appender, array;
     import std.file : exists, remove;
@@ -97,7 +105,9 @@ int modeNormal(const ref Config conf) {
         else
             return conf.analyzeFiles.dup;
     }();
-    env.analyzeFilter = conf.analyzeFilter.dup;
+    env.genCompileDb = conf.genCompileDb;
+    env.staticCode = conf.staticCode;
+    env.clangTidy = conf.clangTidy;
 
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
