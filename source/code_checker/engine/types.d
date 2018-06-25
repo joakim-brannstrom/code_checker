@@ -5,6 +5,8 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.types;
 
+public import code_checker.cli : ConfigStaticCode, ConfigClangTidy;
+
 @safe:
 
 /** The base fixture that an analyzer implement
@@ -34,6 +36,12 @@ struct Environment {
     import code_checker.types : AbsolutePath;
     import code_checker.compile_db : CompileCommandDB;
 
+    ConfigStaticCode staticCode;
+    ConfigClangTidy clangTidy;
+
+    /// Command to generate the compile_commands.json
+    string genCompileDb;
+
     /// The compile_commands.json that contains all files to analyse.
     AbsolutePath compileDbFile;
 
@@ -42,9 +50,6 @@ struct Environment {
 
     /// The files to analyse
     string[] files;
-
-    /// Filter warnings to only those in these files/paths
-    string[] analyzeFilter;
 }
 
 /// The summary of an analyzers result.

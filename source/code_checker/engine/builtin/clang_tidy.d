@@ -17,6 +17,7 @@ import code_checker.types;
 class ClangTidy : BaseFixture {
     public {
         Environment env;
+
         Result result_;
 
         string[] tidyArgs;
@@ -45,19 +46,34 @@ class ClangTidy : BaseFixture {
 
         auto app = appender!(string[])();
 
-        if (env.analyzeFilter.length == 0) {
+        if (env.clangTidy.headerFilter.length == 0)
             app.put("-header-filter=.*");
-        } else {
-            env.analyzeFilter.map!(a => ["-header-filter", a]).joiner.copy(app);
-        }
+        else
+            ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
                     ClangTidyConstants.confFile);
+        } else if (env.clangTidy.checks.length != 0 || env.clangTidy.options.length != 0) {
+            logger.trace("Using config from the TOML file");
+
+            auto c = appender!string();
+            c.put(`{Checks: "`);
+            env.clangTidy.checks.joiner(",").copy(c);
+            c.put(`"},`);
+            c.put("CheckOptions: [");
+            env.clangTidy.options.joiner(",").copy(c);
+            c.put("]");
+            c.put("}");
+
+            app.put("-config");
+            app.put(c.data);
         } else {
+            logger.trace("Using default config");
+
             auto c = appender!string();
             // dfmt off
-            ClangTidyConstants .conf
+            ClangTidyConstants.conf
                 .splitter(newline)
                 // remove comments
                 .filter!(a => !a.startsWith("#"))
