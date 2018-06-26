@@ -70,20 +70,20 @@ int modeNormal(ref Config conf) {
         CompileCommandFilter;
     import code_checker.engine;
 
-    bool removeCompileDb = !exists(compileCommandsFile) && !conf.keepDb;
+    bool removeCompileDb = !exists(compileCommandsFile) && !conf.compileDb.keep;
     scope (exit) {
         if (removeCompileDb)
             remove(compileCommandsFile).collectException;
     }
 
-    if (conf.compileDbs.length != 0) {
+    if (conf.compileDb.dbs.length != 0) {
         logger.trace("Creating a unified compile_commands.json");
 
         auto compile_db = appender!string();
         try {
-            auto dbs = findCompileDbs(conf.compileDbs);
+            auto dbs = findCompileDbs(conf.compileDb.dbs);
             if (dbs.length == 0) {
-                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDbs);
+                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDb.dbs);
                 return 1;
             }
 
@@ -105,7 +105,7 @@ int modeNormal(ref Config conf) {
         else
             return conf.analyzeFiles.dup;
     }();
-    env.genCompileDb = conf.genCompileDb;
+    env.genCompileDb = conf.compileDb.generateDb;
     env.staticCode = conf.staticCode;
     env.clangTidy = conf.clangTidy;
 

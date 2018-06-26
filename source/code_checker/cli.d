@@ -39,6 +39,18 @@ struct ConfigClangTidy {
     bool applyFixit;
 }
 
+/// Configuration data for the compile_commands.json
+struct ConfigCompileDb {
+    /// Command to generate the compile_commands.json
+    string generateDb;
+
+    /// Either a path to a compilation database or a directory to search for one in.
+    AbsolutePath[] dbs;
+
+    /// Do not remove the merged compile_commands.json file
+    bool keep;
+}
+
 /// Configuration of how to use the program.
 struct Config {
     import code_checker.logger : VerboseMode;
@@ -48,15 +60,7 @@ struct Config {
 
     ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
-
-    /// Command to generate the compile_commands.json
-    string genCompileDb;
-
-    /// Either a path to a compilation database or a directory to search for one in.
-    AbsolutePath[] compileDbs;
-
-    /// Do not remove the merged compile_commands.json file
-    bool keepDb;
+    ConfigCompileDb compileDb;
 
     /// If set then only analyze these files
     string[] analyzeFiles;
@@ -80,7 +84,7 @@ struct Config {
         app.put(format("check_name_standard = %s", false));
 
         app.put("[compile_commands]");
-        app.put(format("search_paths = %s", compileDbs));
+        app.put(format("search_paths = %s", compileDb.dbs));
 
         app.put("[clang_tidy]");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
@@ -113,7 +117,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "dump-conf", "dump the configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
-            "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
+            "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             );
@@ -131,7 +135,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             return VerboseMode.minimal;
         }();
         if (compile_dbs.length != 0)
-            conf.compileDbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
+            conf.compileDb.dbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -161,16 +165,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * ---
  * [defaults]
  * check_name_standard = true
- *
- * [compile_commands]
- * search_paths = [ "./foo/bar" ]
- * cmd_generate = "gen_db #a command that generates a database"
- *
- * # detailed configuration
- * [clang_tidy]
- * header_filter = [ ".*" ]
- * checks = [ "*", "-readability-*" ]
- * options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
  * ---
  */
 void loadConfig(ref Config rval) @trusted {
@@ -213,10 +207,10 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
-        c.compileDbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
+        c.compileDb.dbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
     };
     callbacks["compile_commands.cmd_generate"] = (ref Config c, ref TOMLValue v) {
-        c.genCompileDb = v.str;
+        c.compileDb.generateDb = v.str;
     };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.headerFilter = v.str;
