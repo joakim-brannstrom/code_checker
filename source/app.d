@@ -76,6 +76,14 @@ int modeNormal(ref Config conf) {
             remove(compileCommandsFile).collectException;
     }
 
+    if (conf.compileDb.generateDb.length != 0) {
+        auto res = spawnShell(conf.compileDb.generateDb).wait;
+        if (res != 0) {
+            logger.error("Failed running command to generate the compile_commands.json");
+            return 1;
+        }
+    }
+
     if (conf.compileDb.dbs.length != 0) {
         logger.trace("Creating a unified compile_commands.json");
 
@@ -123,7 +131,7 @@ int modeDumpConfig(ref Config conf) {
 
     writeln(conf.toTOML);
 
-    return 1;
+    return 0;
 }
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {

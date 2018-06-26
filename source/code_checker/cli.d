@@ -85,6 +85,7 @@ struct Config {
 
         app.put("[compile_commands]");
         app.put(format("search_paths = %s", compileDb.dbs));
+        app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
 
         app.put("[clang_tidy]");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
@@ -209,7 +210,7 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.dbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
     };
-    callbacks["compile_commands.cmd_generate"] = (ref Config c, ref TOMLValue v) {
+    callbacks["compile_commands.generate_cmd"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.generateDb = v.str;
     };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
