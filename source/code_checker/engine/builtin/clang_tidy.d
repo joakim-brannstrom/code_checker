@@ -77,6 +77,7 @@ class ClangTidy : BaseFixture {
         import std.format : format;
         import code_checker.compile_db : UserFileRange, parseFlag,
             CompileCommandFilter;
+        import colorize : Color, color, Background, Mode;
 
         bool logged_failure;
 
@@ -88,6 +89,9 @@ class ClangTidy : BaseFixture {
                         "clang-tidy where unable to find one of the specified files in compile_commands.json");
                 break;
             }
+
+            logger.infof("%s '%s'", "Analyzing".color(Color.yellow,
+                    Background.black), cmd.absoluteFile);
 
             auto st = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
             // just chose some numbers. The intent is that warnings should be a high penalty
