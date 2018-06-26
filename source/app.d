@@ -22,14 +22,15 @@ int main(string[] args) {
     import code_checker.logger;
 
     auto conf = () {
+        auto conf = Config.make;
         try {
             confLogger(VerboseMode.info);
-            return loadConfig;
+            loadConfig(conf);
         } catch (Exception e) {
             logger.warning(e.msg);
             logger.warning("Unable to read configuration");
-            return Config.init;
         }
+        return conf;
     }();
     parseCLI(args, conf);
     confLogger(conf.verbose);

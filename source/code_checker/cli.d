@@ -11,6 +11,7 @@ This allows the user to override the configuration via the CLI.
 module code_checker.cli;
 
 import std.exception : collectException, ifThrown;
+import std.typecons : Tuple;
 import logger = std.experimental.logger;
 
 import code_checker.types : AbsolutePath, Path;
@@ -60,6 +61,13 @@ struct Config {
 
     /// If set then only analyze these files
     string[] analyzeFiles;
+
+    /// Returns: a config object with default values.
+    static Config make() @safe nothrow {
+        Config c;
+        setClangTidyFromDefault(c);
+        return c;
+    }
 }
 
 void parseCLI(string[] args, ref Config conf) @trusted {
@@ -83,7 +91,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
-            "clang-tidy-header-filter", "Regular expression matching the names of the files to output diagnostics from (default: .*)", &conf.clangTidy.headerFilter,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             );
@@ -139,7 +146,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
  * ---
  */
-Config loadConfig() @trusted {
+void loadConfig(ref Config rval) @trusted {
     import std.algorithm;
     import std.array : array;
     import std.file : exists, readText;
@@ -147,7 +154,7 @@ Config loadConfig() @trusted {
 
     immutable conf_file = ".code_checker.toml";
     if (!exists(conf_file))
-        return Config.init;
+        return;
 
     static auto tryLoading(string conf_file) {
         auto txt = readText(conf_file);
@@ -162,7 +169,7 @@ Config loadConfig() @trusted {
     } catch (Exception e) {
         logger.warning("Unable to read the configuration from ", conf_file);
         logger.warning(e.msg);
-        return Config.init;
+        return;
     }
 
     static bool isTomlBool(TOML_TYPE t) {
@@ -178,6 +185,7 @@ Config loadConfig() @trusted {
     }
 
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
+
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
         c.compileDbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
     };
@@ -196,6 +204,7 @@ Config loadConfig() @trusted {
 
     void iterSection(ref Config c, string sectionName) {
         if (auto section = sectionName in doc) {
+            // specific configuration from section members
             foreach (k, v; *section) {
                 if (auto cb = sectionName ~ "." ~ k in callbacks)
                     (*cb)(c, v);
@@ -205,10 +214,31 @@ Config loadConfig() @trusted {
         }
     }
 
-    Config rval;
     iterSection(rval, "defaults");
     iterSection(rval, "clang_tidy");
     iterSection(rval, "compile_commands");
+}
 
-    return rval;
+/// Returns: default configuration as embedded in the binary
+void setClangTidyFromDefault(ref Config c) @safe nothrow {
+    import std.algorithm;
+    import std.array;
+    import std.ascii : newline;
+
+    static auto readConf(immutable string raw) {
+        // dfmt off
+        return raw
+            .splitter(newline)
+            // remove comments
+            .filter!(a => !a.startsWith("#"))
+            .array;
+        // dfmt on
+    }
+
+    immutable raw_checks = import("clang_tidy_checks.conf");
+    immutable raw_options = import("clang_tidy_options.conf");
+
+    c.clangTidy.checks = readConf(raw_checks);
+    c.clangTidy.options = readConf(raw_options);
+    c.clangTidy.headerFilter = ".*";
 }
