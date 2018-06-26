@@ -12,7 +12,8 @@ unittest {
     auto ta = TestArea(__FILE__, __LINE__);
     mkdir(buildPath(ta, "db"));
     copy(buildPath(testData, "conf", "all_sections.toml"), buildPath(ta, ".code_checker.toml"));
-    copy(buildPath(testData, "conf", "compile_commands.json"), buildPath(ta, "db", "compile_commands.json"));
+    copy(buildPath(testData, "conf", "compile_commands.json"), buildPath(ta,
+            "db", "compile_commands.json"));
     copy(buildPath(testData, "conf", "empty.cpp"), buildPath(ta, "empty.cpp"));
 
     auto res = run([codeCherckerBin, "--vverbose"], ta);
