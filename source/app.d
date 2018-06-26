@@ -23,6 +23,7 @@ int main(string[] args) {
 
     auto conf = () {
         try {
+            confLogger(VerboseMode.info);
             return loadConfig;
         } catch (Exception e) {
             logger.warning(e.msg);
