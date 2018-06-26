@@ -134,7 +134,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  *
  * # detailed configuration
  * [clang_tidy]
- * header_filter = [ ".* ]
+ * header_filter = [ ".*" ]
  * checks = [ "*", "-readability-*" ]
  * options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
  * ---
@@ -169,50 +169,46 @@ Config loadConfig() @trusted {
         return t.among(TOML_TYPE.TRUE, TOML_TYPE.FALSE) != -1;
     }
 
-    Config rval;
-
-    alias Fn = void delegate(ref TOMLValue v);
+    alias Fn = void delegate(ref Config c, ref TOMLValue v);
     Fn[string] callbacks;
 
-    void defaults__check_name_standard(ref TOMLValue v) {
+    void defaults__check_name_standard(ref Config c, ref TOMLValue v) {
         if (isTomlBool(v.type))
-            rval.staticCode.checkNameStandard = v == true;
-    }
-
-    void clang_tidy__header_filter(ref TOMLValue v) {
+            c.staticCode.checkNameStandard = v == true;
     }
 
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
-    callbacks["compile_commands.search_paths"] = (ref TOMLValue v) {
-        rval.compileDbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
+    callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
+        c.compileDbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
     };
-    callbacks["compile_commands.cmd_generate"] = (ref TOMLValue v) {
-        rval.genCompileDb = v.str;
+    callbacks["compile_commands.cmd_generate"] = (ref Config c, ref TOMLValue v) {
+        c.genCompileDb = v.str;
     };
-    callbacks["clang_tidy.header_filter"] = (ref TOMLValue v) {
-        rval.clangTidy.headerFilter = v.str;
+    callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.headerFilter = v.str;
     };
-    callbacks["clang_tidy.checks"] = (ref TOMLValue v) {
-        rval.clangTidy.checks = v.array.map!(a => a.str).array;
+    callbacks["clang_tidy.checks"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.checks = v.array.map!(a => a.str).array;
     };
-    callbacks["clang_tidy.options"] = (ref TOMLValue v) {
-        rval.clangTidy.options = v.array.map!(a => a.str).array;
+    callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.options = v.array.map!(a => a.str).array;
     };
 
-    void iterSection(string sectionName) {
+    void iterSection(ref Config c, string sectionName) {
         if (auto section = sectionName in doc) {
             foreach (k, v; *section) {
                 if (auto cb = sectionName ~ "." ~ k in callbacks)
-                    (*cb)(v);
+                    (*cb)(c, v);
                 else
                     logger.infof("Unknown key '%s' in configuration section '%s'", k, sectionName);
             }
         }
     }
 
-    iterSection("defaults");
-    iterSection("clang_tidy");
-    iterSection("compile_commands");
+    Config rval;
+    iterSection(rval, "defaults");
+    iterSection(rval, "clang_tidy");
+    iterSection(rval, "compile_commands");
 
     return rval;
 }
