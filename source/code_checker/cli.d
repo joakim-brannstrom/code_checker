@@ -23,6 +23,7 @@ enum AppMode {
     help,
     helpUnknownCommand,
     normal,
+    dumpConfig,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -68,6 +69,28 @@ struct Config {
         setClangTidyFromDefault(c);
         return c;
     }
+
+    string toTOML() @trusted {
+        import std.algorithm : joiner;
+        import std.ascii : newline;
+        import std.array : appender, array;
+        import std.format : format;
+        import std.utf : toUTF8;
+
+        auto app = appender!(string[])();
+        app.put("[defaults]");
+        app.put(format("check_name_standard = %s", false));
+
+        app.put("[compile_commands]");
+        app.put(format("search_paths = %s", compileDbs));
+
+        app.put("[clang_tidy]");
+        app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
+        app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
+        app.put(format("options = [%(%s,\n%)]", clangTidy.options));
+
+        return app.data.joiner(newline).toUTF8;
+    }
 }
 
 void parseCLI(string[] args, ref Config conf) @trusted {
@@ -83,19 +106,25 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     try {
         string[] compile_dbs;
         string[] src_filter;
+        bool dump_conf;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
+            "dump-conf", "dump the configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.keepDb,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             );
         // dfmt on
-        conf.mode = help_info.helpWanted ? AppMode.help : AppMode.normal;
+        conf.mode = AppMode.normal;
+        if (help_info.helpWanted)
+            conf.mode = AppMode.help;
+        else if (dump_conf)
+            conf.mode = AppMode.dumpConfig;
         conf.verbose = () {
             if (verbose_trace)
                 return VerboseMode.trace;
@@ -159,7 +188,6 @@ void loadConfig(ref Config rval) @trusted {
     static auto tryLoading(string conf_file) {
         auto txt = readText(conf_file);
         auto doc = parseTOML(txt);
-        logger.trace("Loaded config: ", doc.toString);
         return doc;
     }
 
@@ -229,6 +257,8 @@ void setClangTidyFromDefault(ref Config c) @safe nothrow {
         // dfmt off
         return raw
             .splitter(newline)
+            // remove empty lines
+            .filter!(a => a.length != 0)
             // remove comments
             .filter!(a => !a.startsWith("#"))
             .array;

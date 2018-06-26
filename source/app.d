@@ -42,6 +42,7 @@ int main(string[] args) {
     cmds[AppMode.help] = toDelegate(&modeNone);
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
+    cmds[AppMode.dumpConfig] = toDelegate(&modeDumpConfig);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);
@@ -111,6 +112,18 @@ int modeNormal(ref Config conf) {
     Registry reg;
     reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
     return execute(env, reg) == Status.passed ? 0 : 1;
+}
+
+int modeDumpConfig(ref Config conf) {
+    import std.stdio : writeln, stderr;
+
+    // make it easy for a user to pipe the output to the confi file
+    stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
+    stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
+
+    writeln(conf.toTOML);
+
+    return 1;
 }
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
