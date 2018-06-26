@@ -68,18 +68,15 @@ int modeNormal(ref Config conf) {
         CompileCommandFilter;
     import code_checker.engine;
 
-    bool removeCompileDb;
+    bool removeCompileDb = !exists(compileCommandsFile) && !conf.keepDb;
     scope (exit) {
-        if (removeCompileDb && !conf.keepDb)
+        if (removeCompileDb)
             remove(compileCommandsFile).collectException;
     }
 
-    if (!exists(compileCommandsFile)) {
-        logger.trace("Creating a unified compile_commands.json");
-        removeCompileDb = true;
-    }
-
     if (conf.compileDbs.length != 0) {
+        logger.trace("Creating a unified compile_commands.json");
+
         auto compile_db = appender!string();
         try {
             auto dbs = findCompileDbs(conf.compileDbs);
