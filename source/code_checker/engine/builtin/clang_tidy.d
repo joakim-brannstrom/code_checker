@@ -50,6 +50,9 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
+        if (!env.staticCode.checkNameStandard)
+            env.clangTidy.checks ~= ["-readability-identifier-naming"];
+
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
                     ClangTidyConstants.confFile);

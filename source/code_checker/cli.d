@@ -28,7 +28,7 @@ enum AppMode {
 
 /// Configuration options only relevant for static code checkers.
 struct ConfigStaticCode {
-    bool checkNameStandard;
+    bool checkNameStandard = true;
 }
 
 /// Configuration options only relevant for clang-tidy.
@@ -47,7 +47,7 @@ struct ConfigCompileDb {
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] dbs;
 
-    /// Do not remove the merged compile_commands.json file
+    /// Do not remove the merged compile_commands.json
     bool keep;
 }
 
@@ -81,7 +81,7 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
-        app.put(format("check_name_standard = %s", false));
+        app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
 
         app.put("[compile_commands]");
         app.put(format("search_paths = %s", compileDb.dbs));
