@@ -36,6 +36,7 @@ struct ConfigClangTidy {
     string[] checks;
     string[] options;
     string headerFilter;
+    bool applyFixit;
 }
 
 /// Configuration of how to use the program.
@@ -56,9 +57,6 @@ struct Config {
 
     /// Do not remove the merged compile_commands.json file
     bool keepDb;
-
-    /// Apply the clang tidy fixits.
-    bool clangTidyFixit;
 
     /// If set then only analyze these files
     string[] analyzeFiles;
@@ -111,7 +109,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
-            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidyFixit,
+            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "dump-conf", "dump the configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,

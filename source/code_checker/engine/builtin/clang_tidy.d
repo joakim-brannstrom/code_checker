@@ -23,8 +23,7 @@ class ClangTidy : BaseFixture {
         string[] tidyArgs;
     }
 
-    this(bool applyFixits) {
-        this.tidyArgs = applyFixits ? ["-fix"] : null;
+    this() {
     }
 
     override string explain() {
@@ -45,6 +44,9 @@ class ClangTidy : BaseFixture {
         import std.range : put;
 
         auto app = appender!(string[])();
+
+        if (env.clangTidy.applyFixit)
+            app.put(["-fix"]);
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 

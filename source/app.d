@@ -110,7 +110,7 @@ int modeNormal(ref Config conf) {
     env.clangTidy = conf.clangTidy;
 
     Registry reg;
-    reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
+    reg.put(new ClangTidy, Type.staticCode);
     return execute(env, reg) == Status.passed ? 0 : 1;
 }
 
