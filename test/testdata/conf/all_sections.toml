@@ -1,0 +1,11 @@
+[defaults]
+check_name_standard = true
+
+[compile_commands]
+search_paths = [ "db" ]
+cmd_generate = "gen_db #a command that generates a database"
+
+[clang_tidy]
+header_filter = ".*"
+checks = [ "*", "-readability-*" ]
+options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]

@@ -23,8 +23,7 @@ class ClangTidy : BaseFixture {
         string[] tidyArgs;
     }
 
-    this(bool applyFixits) {
-        this.tidyArgs = applyFixits ? ["-fix"] : null;
+    this() {
     }
 
     override string explain() {
@@ -46,40 +45,28 @@ class ClangTidy : BaseFixture {
 
         auto app = appender!(string[])();
 
-        if (env.clangTidy.headerFilter.length == 0)
-            app.put("-header-filter=.*");
-        else
-            ["-header-filter", env.clangTidy.headerFilter].copy(app);
+        if (env.clangTidy.applyFixit)
+            app.put(["-fix"]);
+
+        ["-header-filter", env.clangTidy.headerFilter].copy(app);
+
+        if (!env.staticCode.checkNameStandard)
+            env.clangTidy.checks ~= ["-readability-identifier-naming"];
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
                     ClangTidyConstants.confFile);
-        } else if (env.clangTidy.checks.length != 0 || env.clangTidy.options.length != 0) {
+        } else {
             logger.trace("Using config from the TOML file");
 
             auto c = appender!string();
             c.put(`{Checks: "`);
             env.clangTidy.checks.joiner(",").copy(c);
-            c.put(`"},`);
+            c.put(`",`);
             c.put("CheckOptions: [");
             env.clangTidy.options.joiner(",").copy(c);
             c.put("]");
             c.put("}");
-
-            app.put("-config");
-            app.put(c.data);
-        } else {
-            logger.trace("Using default config");
-
-            auto c = appender!string();
-            // dfmt off
-            ClangTidyConstants.conf
-                .splitter(newline)
-                // remove comments
-                .filter!(a => !a.startsWith("#"))
-                .joiner
-                .copy(c);
-            // dfmt on
 
             app.put("-config");
             app.put(c.data);
@@ -93,6 +80,7 @@ class ClangTidy : BaseFixture {
         import std.format : format;
         import code_checker.compile_db : UserFileRange, parseFlag,
             CompileCommandFilter;
+        import colorize : Color, color, Background, Mode;
 
         bool logged_failure;
 
@@ -104,6 +92,9 @@ class ClangTidy : BaseFixture {
                         "clang-tidy where unable to find one of the specified files in compile_commands.json");
                 break;
             }
+
+            logger.infof("%s '%s'", "Analyzing".color(Color.yellow,
+                    Background.black), cmd.absoluteFile);
 
             auto st = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
             // just chose some numbers. The intent is that warnings should be a high penalty
@@ -138,7 +129,6 @@ package:
 
 struct ClangTidyConstants {
     static immutable bin = "clang-tidy";
-    static immutable conf = import("default_clang_tidy.conf");
     static immutable confFile = ".clang-tidy";
 }
 

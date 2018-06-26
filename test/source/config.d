@@ -20,10 +20,14 @@ public import logger = std.experimental.logger;
 
 public import unit_threaded.light;
 
-immutable codeCherckerBin = "../build/code_checker";
+immutable string codeCherckerBin;
 immutable compileCommandsFile = "compile_commands.json";
 immutable testData = "testdata";
 immutable tmpDir = "./build/test_area";
+
+shared static this() {
+    codeCherckerBin = absolutePath("../build/code_checker");
+}
 
 struct TestArea {
     const string workdir;
@@ -49,12 +53,14 @@ struct RunResult {
     string[] stderr;
 
     void print() {
-        writeln("stdout: ", stdout);
-        writeln("stderr: ", stderr);
+        import std.ascii : newline;
+
+        writeln("stdout: ", stdout.joiner(newline));
+        writeln("stderr: ", stderr.joiner(newline));
     }
 }
 
-RunResult run(string[] cmd) {
+RunResult run(string[] cmd, string workdir = null) {
     import std.array : appender;
     import std.algorithm : joiner, copy;
     import std.ascii : newline;
@@ -68,7 +74,7 @@ RunResult run(string[] cmd) {
     auto app_out = appender!(string[])();
     auto app_err = appender!(string[])();
 
-    auto p = pipeProcess(cmd, Redirect.all);
+    auto p = pipeProcess(cmd, Redirect.all, null, Config.none, workdir);
     int exit_status = -1;
 
     while (true) {

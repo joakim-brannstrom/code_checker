@@ -22,13 +22,15 @@ int main(string[] args) {
     import code_checker.logger;
 
     auto conf = () {
+        auto conf = Config.make;
         try {
-            return loadConfig;
+            confLogger(VerboseMode.info);
+            loadConfig(conf);
         } catch (Exception e) {
             logger.warning(e.msg);
             logger.warning("Unable to read configuration");
-            return Config.init;
         }
+        return conf;
     }();
     parseCLI(args, conf);
     confLogger(conf.verbose);
@@ -40,6 +42,7 @@ int main(string[] args) {
     cmds[AppMode.help] = toDelegate(&modeNone);
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
+    cmds[AppMode.dumpConfig] = toDelegate(&modeDumpConfig);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);
@@ -67,23 +70,28 @@ int modeNormal(ref Config conf) {
         CompileCommandFilter;
     import code_checker.engine;
 
-    bool removeCompileDb;
+    bool removeCompileDb = !exists(compileCommandsFile) && !conf.compileDb.keep;
     scope (exit) {
-        if (removeCompileDb && !conf.keepDb)
+        if (removeCompileDb)
             remove(compileCommandsFile).collectException;
     }
 
-    if (!exists(compileCommandsFile)) {
-        logger.trace("Creating a unified compile_commands.json");
-        removeCompileDb = true;
+    if (conf.compileDb.generateDb.length != 0) {
+        auto res = spawnShell(conf.compileDb.generateDb).wait;
+        if (res != 0) {
+            logger.error("Failed running command to generate the compile_commands.json");
+            return 1;
+        }
     }
 
-    if (conf.compileDbs.length != 0) {
+    if (conf.compileDb.dbs.length != 0) {
+        logger.trace("Creating a unified compile_commands.json");
+
         auto compile_db = appender!string();
         try {
-            auto dbs = findCompileDbs(conf.compileDbs);
+            auto dbs = findCompileDbs(conf.compileDb.dbs);
             if (dbs.length == 0) {
-                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDbs);
+                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDb.dbs);
                 return 1;
             }
 
@@ -105,13 +113,25 @@ int modeNormal(ref Config conf) {
         else
             return conf.analyzeFiles.dup;
     }();
-    env.genCompileDb = conf.genCompileDb;
+    env.genCompileDb = conf.compileDb.generateDb;
     env.staticCode = conf.staticCode;
     env.clangTidy = conf.clangTidy;
 
     Registry reg;
-    reg.put(new ClangTidy(conf.clangTidyFixit), Type.staticCode);
+    reg.put(new ClangTidy, Type.staticCode);
     return execute(env, reg) == Status.passed ? 0 : 1;
+}
+
+int modeDumpConfig(ref Config conf) {
+    import std.stdio : writeln, stderr;
+
+    // make it easy for a user to pipe the output to the confi file
+    stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
+    stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
+
+    writeln(conf.toTOML);
+
+    return 0;
 }
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
