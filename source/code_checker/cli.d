@@ -84,15 +84,23 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
+        app.put("# working directory when executing commands");
+        app.put(format(`workdir = "%s"`, workDir));
+        app.put("# affects static code analysis to check against the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
 
         app.put("[compile_commands]");
-        app.put(format("search_paths = %s", compileDb.dbs));
+        app.put("# command to execute to generate compile_commands.json");
         app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
+        app.put("# search for compile_commands.json in this paths");
+        app.put(format("search_paths = %s", compileDb.dbs));
 
         app.put("[clang_tidy]");
+        app.put("# arguments to -header-filter");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
+        app.put("# checks to use");
         app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
+        app.put("# options affecting the checks");
         app.put(format("options = [%(%s,\n%)]", clangTidy.options));
 
         return app.data.joiner(newline).toUTF8;
@@ -127,12 +135,12 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] compile_dbs;
         string[] src_filter;
         bool dump_conf;
-        string conf_file;
+        bool junk_parameter;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
-            "c|config", "load configuration (default: .code_checker.toml)", &conf_file,
+            "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "dump-config", "dump the configuration used", &dump_conf,
@@ -156,7 +164,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         }();
         if (compile_dbs.length != 0)
             conf.compileDb.dbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
-        conf.workDir = AbsolutePath(Path(conf_file.dirName));
+        if (conf.workDir.length == 0)
+            conf.workDir = Path(".").AbsolutePath;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -224,6 +233,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
             c.staticCode.checkNameStandard = v == true;
     }
 
+    callbacks["defaults.workdir"] = (ref Config c, ref TOMLValue v) {
+        c.workDir = Path(v.str).AbsolutePath;
+    };
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {

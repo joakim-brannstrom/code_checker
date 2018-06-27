@@ -29,6 +29,7 @@ private:
 struct NormalFSM {
     enum State {
         init_,
+        changeWorkDir,
         checkForDb,
         genDb,
         checkGenDb,
@@ -48,6 +49,9 @@ struct NormalFSM {
     State st;
     Config conf;
     bool removeCompileDb;
+    /// Root directory from which the program where initially started.
+    AbsolutePath root;
+    /// Exit status of used to indicate the success to the user.
     int exitStatus;
 
     this(Config conf) {
@@ -61,10 +65,12 @@ struct NormalFSM {
 
         while (st != State.done) {
             debug logger.tracef("state: %s data: %s", st, d);
-            d.exitStatus = exitStatus;
 
             st = next(st, d);
             action(st);
+
+            // sync with changed struct members as needed
+            d.exitStatus = exitStatus;
         }
 
         return d.exitStatus;
@@ -79,6 +85,9 @@ struct NormalFSM {
 
         final switch (curr) {
         case State.init_:
+            next_ = State.changeWorkDir;
+            break;
+        case State.changeWorkDir:
             next_ = State.checkForDb;
             break;
         case State.checkForDb:
@@ -115,6 +124,14 @@ struct NormalFSM {
         }
 
         return next_;
+    }
+
+    void act_changeWorkDir() {
+        import std.file : getcwd, chdir;
+
+        root = Path(getcwd).AbsolutePath;
+        if (conf.workDir != root)
+            chdir(conf.workDir);
     }
 
     void act_checkForDb() {
@@ -187,10 +204,12 @@ struct NormalFSM {
     }
 
     void act_cleanup() {
-        import std.file : remove;
+        import std.file : remove, chdir;
 
         if (removeCompileDb)
             remove(compileCommandsFile).collectException;
+
+        chdir(root);
     }
 
     /// Generate a callback for each state.
@@ -206,8 +225,10 @@ struct NormalFSM {
                     const actfn = format("act_%s", a);
                     static if (__traits(hasMember, NormalFSM, actfn))
                         s ~= format("case State.%s: %s();break;", a, actfn);
-                    else
+                    else {
+                        pragma(msg, __FILE__ ~ ": no callback found: " ~ actfn);
                         s ~= format("case State.%s: break;", a);
+                    }
                 }
             }
             s ~= "}";
