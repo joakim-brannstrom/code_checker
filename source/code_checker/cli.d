@@ -11,7 +11,7 @@ This allows the user to override the configuration via the CLI.
 module code_checker.cli;
 
 import std.exception : collectException, ifThrown;
-import std.typecons : Tuple;
+import std.typecons : Tuple, Flag;
 import logger = std.experimental.logger;
 
 import code_checker.types : AbsolutePath, Path;
@@ -24,6 +24,7 @@ enum AppMode {
     helpUnknownCommand,
     normal,
     dumpConfig,
+    dumpFullConfig,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -75,7 +76,7 @@ struct Config {
         return c;
     }
 
-    string toTOML() @trusted {
+    string toTOML(Flag!"fullConfig" full) @trusted {
         import std.algorithm : joiner;
         import std.ascii : newline;
         import std.array : appender, array;
@@ -98,10 +99,12 @@ struct Config {
         app.put("[clang_tidy]");
         app.put("# arguments to -header-filter");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
-        app.put("# checks to use");
-        app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
-        app.put("# options affecting the checks");
-        app.put(format("options = [%(%s,\n%)]", clangTidy.options));
+        if (full) {
+            app.put("# checks to use");
+            app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
+            app.put("# options affecting the checks");
+            app.put(format("options = [%(%s,\n%)]", clangTidy.options));
+        }
 
         return app.data.joiner(newline).toUTF8;
     }
@@ -135,6 +138,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] compile_dbs;
         string[] src_filter;
         bool dump_conf;
+        bool dump_full_config;
         bool junk_parameter;
 
         // dfmt off
@@ -143,7 +147,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "dump-config", "dump the configuration used", &dump_conf,
+            "dump-config", "dump a default configuration to use", &dump_conf,
+            "dump-full-config", "dump the full, detailed configuration used", &dump_full_config,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
@@ -155,6 +160,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.help;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
+        else if (dump_full_config)
+            conf.mode = AppMode.dumpFullConfig;
         conf.verbose = () {
             if (verbose_trace)
                 return VerboseMode.trace;

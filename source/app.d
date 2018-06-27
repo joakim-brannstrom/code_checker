@@ -7,6 +7,7 @@ module app;
 
 import std.algorithm : among;
 import std.exception : collectException;
+import std.typecons : Flag, Yes, No;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
@@ -42,6 +43,7 @@ int main(string[] args) {
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
     cmds[AppMode.dumpConfig] = toDelegate(&modeDumpConfig);
+    cmds[AppMode.dumpFullConfig] = toDelegate(&modeDumpFullConfig);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);
@@ -66,7 +68,19 @@ int modeDumpConfig(ref Config conf) {
     stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
     stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
 
-    writeln(conf.toTOML);
+    writeln(conf.toTOML(No.fullConfig));
+
+    return 0;
+}
+
+int modeDumpFullConfig(ref Config conf) {
+    import std.stdio : writeln, stderr;
+
+    // make it easy for a user to pipe the output to the confi file
+    stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
+    stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
+
+    writeln(conf.toTOML(Yes.fullConfig));
 
     return 0;
 }
