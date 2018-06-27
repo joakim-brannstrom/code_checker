@@ -7,7 +7,6 @@ module app;
 
 import std.algorithm : among;
 import std.exception : collectException;
-
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;

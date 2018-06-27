@@ -2,12 +2,13 @@
 Copyright: Copyright (c) 2018, Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
+
+Normal appliation mode.
 */
 module app_normal;
 
 import std.algorithm : among;
 import std.exception : collectException;
-
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
@@ -17,30 +18,123 @@ import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 immutable compileCommandsFile = "compile_commands.json";
 
 int modeNormal(ref Config conf) {
-    import std.algorithm : map;
-    import std.array : appender, array;
-    import std.file : exists, remove;
-    import std.process;
-    import std.stdio : File;
-    import code_checker.compile_db : fromArgCompileDb, parseFlag,
-        CompileCommandFilter;
-    import code_checker.engine;
+    auto fsm = NormalFSM(conf);
+    return fsm.run;
+}
 
-    bool removeCompileDb = !exists(compileCommandsFile) && !conf.compileDb.keep;
-    scope (exit) {
-        if (removeCompileDb)
-            remove(compileCommandsFile).collectException;
+private:
+
+/** FSM over the control flow when in normal mode.
+ */
+struct NormalFSM {
+    enum State {
+        init_,
+        checkForDb,
+        genDb,
+        checkGenDb,
+        fixDb,
+        checkFixDb,
+        runRegistry,
+        cleanup,
+        done,
     }
 
-    if (conf.compileDb.generateDb.length != 0) {
+    struct StateData {
+        int exitStatus;
+        bool hasGenerateDbCommand;
+        bool hasCompileDbs;
+    }
+
+    State st;
+    Config conf;
+    bool removeCompileDb;
+    int exitStatus;
+
+    this(Config conf) {
+        this.conf = conf;
+    }
+
+    int run() {
+        StateData d;
+        d.hasGenerateDbCommand = conf.compileDb.generateDb.length != 0;
+        d.hasCompileDbs = conf.compileDb.dbs.length != 0;
+
+        while (st != State.done) {
+            debug logger.tracef("state: %s data: %s", st, conf);
+            d.exitStatus = exitStatus;
+
+            st = next(st, d);
+            action(st);
+        }
+
+        return d.exitStatus;
+    }
+
+    static State next(const State curr, const StateData d) {
+        State next_ = curr;
+
+        final switch (curr) {
+        case State.init_:
+            next_ = State.checkForDb;
+            break;
+        case State.checkForDb:
+            next_ = State.fixDb;
+            if (d.hasGenerateDbCommand)
+                next_ = State.genDb;
+            break;
+        case State.genDb:
+            next_ = State.checkGenDb;
+            break;
+        case State.checkGenDb:
+            next_ = State.fixDb;
+            if (d.exitStatus != 0)
+                next_ = State.cleanup;
+            else if (d.hasCompileDbs)
+                next_ = State.fixDb;
+            break;
+        case State.fixDb:
+            next_ = State.checkFixDb;
+            break;
+        case State.checkFixDb:
+            next_ = State.runRegistry;
+            if (d.exitStatus != 0)
+                next_ = State.cleanup;
+            break;
+        case State.runRegistry:
+            next_ = State.cleanup;
+            break;
+        case State.cleanup:
+            next_ = State.done;
+            break;
+        case State.done:
+            break;
+        }
+
+        return next_;
+    }
+
+    void act_checkForDb() {
+        import std.file : exists;
+
+        removeCompileDb = !exists(compileCommandsFile) && !conf.compileDb.keep;
+    }
+
+    void act_genDb() {
+        import std.process : spawnShell, wait;
+
         auto res = spawnShell(conf.compileDb.generateDb).wait;
         if (res != 0) {
             logger.error("Failed running command to generate the compile_commands.json");
-            return 1;
+            exitStatus = 1;
         }
     }
 
-    if (conf.compileDb.dbs.length != 0) {
+    void act_fixDb() {
+        import std.algorithm : map;
+        import std.array : appender, array;
+        import std.stdio : File;
+        import code_checker.compile_db : fromArgCompileDb;
+
         logger.trace("Creating a unified compile_commands.json");
 
         auto compile_db = appender!string();
@@ -48,7 +142,8 @@ int modeNormal(ref Config conf) {
             auto dbs = findCompileDbs(conf.compileDb.dbs);
             if (dbs.length == 0) {
                 logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDb.dbs);
-                return 1;
+                exitStatus = 1;
+                return;
             }
 
             auto db = fromArgCompileDb(dbs.map!(a => cast(string) a.dup).array);
@@ -56,29 +151,66 @@ int modeNormal(ref Config conf) {
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
             logger.error(e.msg);
-            return 1;
+            exitStatus = 1;
         }
     }
 
-    Environment env;
-    env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
-    env.compileDb = fromArgCompileDb([env.compileDbFile]);
-    env.files = () {
-        if (conf.analyzeFiles.length == 0)
-            return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile.payload).array;
-        else
-            return conf.analyzeFiles.dup;
-    }();
-    env.genCompileDb = conf.compileDb.generateDb;
-    env.staticCode = conf.staticCode;
-    env.clangTidy = conf.clangTidy;
+    void act_runRegistry() {
+        import std.algorithm : map;
+        import std.array : array;
+        import code_checker.engine;
+        import code_checker.compile_db : fromArgCompileDb, parseFlag,
+            CompileCommandFilter;
 
-    Registry reg;
-    reg.put(new ClangTidy, Type.staticCode);
-    return execute(env, reg) == Status.passed ? 0 : 1;
+        Environment env;
+        env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
+        env.compileDb = fromArgCompileDb([env.compileDbFile]);
+        env.files = () {
+            if (conf.analyzeFiles.length == 0)
+                return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile.payload)
+                    .array;
+            else
+                        return conf.analyzeFiles.dup;
+        }();
+        env.genCompileDb = conf.compileDb.generateDb;
+        env.staticCode = conf.staticCode;
+        env.clangTidy = conf.clangTidy;
+
+        Registry reg;
+        reg.put(new ClangTidy, Type.staticCode);
+        exitStatus = execute(env, reg) == Status.passed ? 0 : 1;
+    }
+
+    void act_cleanup() {
+        import std.file : remove;
+
+        if (removeCompileDb)
+            remove(compileCommandsFile).collectException;
+    }
+
+    void action(const State st) {
+        string genCallAction() {
+            import std.format : format;
+            import std.traits : EnumMembers;
+
+            string s;
+            s ~= "final switch(st) {";
+            static foreach (a; EnumMembers!State) {
+                {
+                    const actfn = format("act_%s", a);
+                    static if (__traits(hasMember, NormalFSM, actfn))
+                        s ~= format("case State.%s: %s();break;", a, actfn);
+                    else
+                        s ~= format("case State.%s: break;", a);
+                }
+            }
+            s ~= "}";
+            return s;
+        }
+
+        mixin(genCallAction);
+    }
 }
-
-private:
 
 auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
     import std.algorithm : filter, map;
