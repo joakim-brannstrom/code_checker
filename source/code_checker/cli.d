@@ -11,7 +11,7 @@ This allows the user to override the configuration via the CLI.
 module code_checker.cli;
 
 import std.exception : collectException, ifThrown;
-import std.typecons : Tuple;
+import std.typecons : Tuple, Flag;
 import logger = std.experimental.logger;
 
 import code_checker.types : AbsolutePath, Path;
@@ -24,6 +24,7 @@ enum AppMode {
     helpUnknownCommand,
     normal,
     dumpConfig,
+    dumpFullConfig,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -62,17 +63,20 @@ struct Config {
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
 
-    /// If set then only analyze these files
+    /// If set then only analyze these files.
     string[] analyzeFiles;
 
+    /// Directory to use as root when running the tests.
+    AbsolutePath workDir;
+
     /// Returns: a config object with default values.
-    static Config make() @safe nothrow {
+    static Config make() @safe {
         Config c;
         setClangTidyFromDefault(c);
         return c;
     }
 
-    string toTOML() @trusted {
+    string toTOML(Flag!"fullConfig" full) @trusted {
         import std.algorithm : joiner;
         import std.ascii : newline;
         import std.array : appender, array;
@@ -81,25 +85,49 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
+        app.put("# working directory when executing commands");
+        app.put(format(`workdir = "%s"`, workDir));
+        app.put("# affects static code analysis to check against the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
 
         app.put("[compile_commands]");
-        app.put(format("search_paths = %s", compileDb.dbs));
+        app.put("# command to execute to generate compile_commands.json");
         app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
+        app.put("# search for compile_commands.json in this paths");
+        app.put(format("search_paths = %s", compileDb.dbs));
 
         app.put("[clang_tidy]");
+        app.put("# arguments to -header-filter");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
-        app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
-        app.put(format("options = [%(%s,\n%)]", clangTidy.options));
+        if (full) {
+            app.put("# checks to use");
+            app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
+            app.put("# options affecting the checks");
+            app.put(format("options = [%(%s,\n%)]", clangTidy.options));
+        }
 
         return app.data.joiner(newline).toUTF8;
     }
 }
 
+/// Returns: path to the configuration file.
+string parseConfigCLI(string[] args) @trusted nothrow {
+    static import std.getopt;
+
+    string conf_file = ".code_checker.toml";
+    try {
+        std.getopt.getopt(args, std.getopt.config.keepEndOfOptions, std.getopt.config.passThrough,
+                "c|config", "none not visible to the user", &conf_file,);
+    } catch (Exception e) {
+    }
+
+    return conf_file;
+}
+
 void parseCLI(string[] args, ref Config conf) @trusted {
-    import std.algorithm : map;
-    import std.algorithm : among;
+    import std.algorithm : map, among;
     import std.array : array;
+    import std.path : dirName;
     import code_checker.logger : VerboseMode;
     static import std.getopt;
 
@@ -110,13 +138,17 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] compile_dbs;
         string[] src_filter;
         bool dump_conf;
+        bool dump_full_config;
+        bool junk_parameter;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
+            "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
-            "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "dump-conf", "dump the configuration used", &dump_conf,
+            "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
+            "dump-config", "dump a default configuration to use", &dump_conf,
+            "dump-full-config", "dump the full, detailed configuration used", &dump_full_config,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
@@ -128,6 +160,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.help;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
+        else if (dump_full_config)
+            conf.mode = AppMode.dumpFullConfig;
         conf.verbose = () {
             if (verbose_trace)
                 return VerboseMode.trace;
@@ -137,6 +171,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         }();
         if (compile_dbs.length != 0)
             conf.compileDb.dbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
+        if (conf.workDir.length == 0)
+            conf.workDir = Path(".").AbsolutePath;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -168,27 +204,26 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * check_name_standard = true
  * ---
  */
-void loadConfig(ref Config rval) @trusted {
+void loadConfig(ref Config rval, string configFile) @trusted {
     import std.algorithm;
     import std.array : array;
     import std.file : exists, readText;
     import toml;
 
-    immutable conf_file = ".code_checker.toml";
-    if (!exists(conf_file))
+    if (!exists(configFile))
         return;
 
-    static auto tryLoading(string conf_file) {
-        auto txt = readText(conf_file);
+    static auto tryLoading(string configFile) {
+        auto txt = readText(configFile);
         auto doc = parseTOML(txt);
         return doc;
     }
 
     TOMLDocument doc;
     try {
-        doc = tryLoading(conf_file);
+        doc = tryLoading(configFile);
     } catch (Exception e) {
-        logger.warning("Unable to read the configuration from ", conf_file);
+        logger.warning("Unable to read the configuration from ", configFile);
         logger.warning(e.msg);
         return;
     }
@@ -205,6 +240,9 @@ void loadConfig(ref Config rval) @trusted {
             c.staticCode.checkNameStandard = v == true;
     }
 
+    callbacks["defaults.workdir"] = (ref Config c, ref TOMLValue v) {
+        c.workDir = Path(v.str).AbsolutePath;
+    };
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {

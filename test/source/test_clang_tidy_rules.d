@@ -10,7 +10,7 @@ import config;
 @("shall successfully run clang-tidy on a c++ file")
 unittest {
     // action
-    auto res = executeShell(codeCherckerBin ~ " --vverbose -c " ~ buildPath(testData,
+    auto res = executeShell(codeCherckerBin ~ " --vverbose --compile-db " ~ buildPath(testData,
             "cpp", "empty", compileCommandsFile));
 
     // assert
@@ -21,8 +21,8 @@ unittest {
 @("shall warn about name style in a c++ file")
 unittest {
     // action
-    auto res = run([codeCherckerBin, "--vverbose", "-c", buildPath(testData,
-            "cpp", "name_style", compileCommandsFile)]);
+    auto res = run([codeCherckerBin, "--vverbose", "--compile-db",
+            buildPath(testData, "cpp", "name_style", compileCommandsFile)]);
 
     // assert
     res.print;
