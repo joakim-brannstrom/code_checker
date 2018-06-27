@@ -62,11 +62,14 @@ struct Config {
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
 
-    /// If set then only analyze these files
+    /// If set then only analyze these files.
     string[] analyzeFiles;
 
+    /// Directory to use as root when running the tests.
+    AbsolutePath workDir;
+
     /// Returns: a config object with default values.
-    static Config make() @safe nothrow {
+    static Config make() @safe {
         Config c;
         setClangTidyFromDefault(c);
         return c;
@@ -96,10 +99,24 @@ struct Config {
     }
 }
 
+/// Returns: path to the configuration file.
+string parseConfigCLI(string[] args) @trusted nothrow {
+    static import std.getopt;
+
+    string conf_file = ".code_checker.toml";
+    try {
+        std.getopt.getopt(args, std.getopt.config.keepEndOfOptions, std.getopt.config.passThrough,
+                "c|config", "none not visible to the user", &conf_file,);
+    } catch (Exception e) {
+    }
+
+    return conf_file;
+}
+
 void parseCLI(string[] args, ref Config conf) @trusted {
-    import std.algorithm : map;
-    import std.algorithm : among;
+    import std.algorithm : map, among;
     import std.array : array;
+    import std.path : dirName;
     import code_checker.logger : VerboseMode;
     static import std.getopt;
 
@@ -110,13 +127,15 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] compile_dbs;
         string[] src_filter;
         bool dump_conf;
+        string conf_file;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
+            "c|config", "load configuration (default: .code_checker.toml)", &conf_file,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
-            "c|compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "dump-conf", "dump the configuration used", &dump_conf,
+            "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
+            "dump-config", "dump the configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
@@ -137,6 +156,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         }();
         if (compile_dbs.length != 0)
             conf.compileDb.dbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
+        conf.workDir = AbsolutePath(Path(conf_file.dirName));
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -168,27 +188,26 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * check_name_standard = true
  * ---
  */
-void loadConfig(ref Config rval) @trusted {
+void loadConfig(ref Config rval, string configFile) @trusted {
     import std.algorithm;
     import std.array : array;
     import std.file : exists, readText;
     import toml;
 
-    immutable conf_file = ".code_checker.toml";
-    if (!exists(conf_file))
+    if (!exists(configFile))
         return;
 
-    static auto tryLoading(string conf_file) {
-        auto txt = readText(conf_file);
+    static auto tryLoading(string configFile) {
+        auto txt = readText(configFile);
         auto doc = parseTOML(txt);
         return doc;
     }
 
     TOMLDocument doc;
     try {
-        doc = tryLoading(conf_file);
+        doc = tryLoading(configFile);
     } catch (Exception e) {
-        logger.warning("Unable to read the configuration from ", conf_file);
+        logger.warning("Unable to read the configuration from ", configFile);
         logger.warning(e.msg);
         return;
     }

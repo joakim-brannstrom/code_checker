@@ -24,7 +24,7 @@ int modeNormal(ref Config conf) {
 
 private:
 
-/** FSM over the control flow when in normal mode.
+/** FSM for the control flow when in normal mode.
  */
 struct NormalFSM {
     enum State {
@@ -60,7 +60,7 @@ struct NormalFSM {
         d.hasCompileDbs = conf.compileDb.dbs.length != 0;
 
         while (st != State.done) {
-            debug logger.tracef("state: %s data: %s", st, conf);
+            debug logger.tracef("state: %s data: %s", st, d);
             d.exitStatus = exitStatus;
 
             st = next(st, d);
@@ -70,6 +70,10 @@ struct NormalFSM {
         return d.exitStatus;
     }
 
+    /** The next state is calculated. Only dependent on current state and state data.
+     *
+     * These clean depenencies should make it easier to reason about the flow.
+     */
     static State next(const State curr, const StateData d) {
         State next_ = curr;
 
@@ -150,6 +154,7 @@ struct NormalFSM {
             unifyCompileDb(db, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
+            logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
             exitStatus = 1;
         }
@@ -188,6 +193,7 @@ struct NormalFSM {
             remove(compileCommandsFile).collectException;
     }
 
+    /// Generate a callback for each state.
     void action(const State st) {
         string genCallAction() {
             import std.format : format;

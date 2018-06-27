@@ -15,15 +15,16 @@ import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 int main(string[] args) {
     import std.functional : toDelegate;
-    import code_checker.cli : AppMode, parseCLI, loadConfig, Config;
+    import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig,
+        Config;
     import code_checker.logger;
     import app_normal;
 
     auto conf = () {
-        auto conf = Config.make;
+        auto conf = Config.make();
         try {
             confLogger(VerboseMode.info);
-            loadConfig(conf);
+            loadConfig(conf, parseConfigCLI(args));
         } catch (Exception e) {
             logger.warning(e.msg);
             logger.warning("Unable to read configuration");
