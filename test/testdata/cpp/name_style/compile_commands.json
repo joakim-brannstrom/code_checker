@@ -1,0 +1,7 @@
+[
+    {
+        "directory": ".",
+        "arguments": "-c camel_case.cpp -o camel_case.o",
+        "file": "camel_case.cpp"
+    }
+]

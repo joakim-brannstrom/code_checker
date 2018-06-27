@@ -1,0 +1,7 @@
+[
+    {
+        "directory": ".",
+        "arguments": "-c empty.cpp -o empty.o",
+        "file": "../empty.cpp"
+    }
+]
