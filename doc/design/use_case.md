@@ -52,3 +52,11 @@ The user wants to filter what is quality checked.
 
 There may be source code that isn't under the users control. This may be [vendored libraries](definitions.md#D-vendor).
 The user may have source code that is more or less accidentally analyzed but isn't of interest to quality check.
+
+# REQ-uc_paths_relative_config
+partof: REQ-purpose
+###
+
+The user wnats to be able to specify paths in the configuration file for the program such that they can be used by other users than the one editing the configuration file.
+
+The user may namely invoke the program from some other location. It is then important that all paths are calculated relative to the config file. Not from what the users currently working directory is.
