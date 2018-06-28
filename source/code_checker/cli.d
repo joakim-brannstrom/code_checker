@@ -133,7 +133,7 @@ string parseConfigCLI(string[] args) @trusted nothrow {
 void parseCLI(string[] args, ref Config conf) @trusted {
     import std.algorithm : map, among;
     import std.array : array;
-    import std.path : dirName;
+    import std.path : dirName, buildPath;
     import code_checker.logger : VerboseMode;
     static import std.getopt;
 
@@ -150,9 +150,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
-            "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
+            "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
             "dump-config", "dump a default configuration to use", &dump_conf,
             "dump-full-config", "dump the full, detailed configuration used", &dump_full_config,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
@@ -175,10 +175,11 @@ void parseCLI(string[] args, ref Config conf) @trusted {
                 return VerboseMode.info;
             return VerboseMode.minimal;
         }();
-        if (compile_dbs.length != 0)
-            conf.compileDb.dbs = compile_dbs.map!(a => Path(a).AbsolutePath).array;
         if (conf.workDir.length == 0)
             conf.workDir = Path(".").AbsolutePath;
+        if (compile_dbs.length != 0)
+            conf.compileDb.dbs = compile_dbs.map!(a => Path(buildPath(conf.workDir,
+                    a)).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);

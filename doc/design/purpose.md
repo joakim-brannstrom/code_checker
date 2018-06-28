@@ -56,3 +56,14 @@ The program shall convert all relative paths to absolute paths when reading a co
 
 The program shall merge multiple compilation databases to one when given more than one compilation database as input.
 
+# SPC-deterministic_paths
+partof: REQ-uc_paths_relative_config
+###
+
+The program shall by default check the current working directory for the *config file*.
+
+The program shall use the value of the command line parameter as the path to the *config file* when the user specify `-c|--config`.
+
+The program shall change the working directory to the value of the attribute `defaults.workdir` from the *config file* when the program is started.
+
+**Rationale**: This makes it so that all tools that are executed have their working directory set to a value that the user can decide. There are users that may for example have a git archive somewhere on the filesystem and a cmake generate eclipse build environment somewhere else. Because the config file is part of the git repo and the user wants to be able to specify where to check for *compilation database* to make it easy to run the program the paths need to be relative to the *config file*.
