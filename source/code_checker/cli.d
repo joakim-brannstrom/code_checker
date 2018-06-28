@@ -85,8 +85,14 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
-        app.put("# working directory when executing commands");
-        app.put(format(`workdir = "%s"`, workDir));
+        app.put("# working directory, relative to this file, when executing commands");
+        if (full) {
+            // show what is actually used
+            app.put(format(`workdir = "%s"`, workDir));
+        } else {
+            // use a sane default
+            app.put(`workdir = "."`);
+        }
         app.put("# affects static code analysis to check against the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
 
@@ -208,6 +214,7 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     import std.algorithm;
     import std.array : array;
     import std.file : exists, readText;
+    import std.path : dirName, buildPath;
     import toml;
 
     if (!exists(configFile))
@@ -241,7 +248,7 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     }
 
     callbacks["defaults.workdir"] = (ref Config c, ref TOMLValue v) {
-        c.workDir = Path(v.str).AbsolutePath;
+        c.workDir = Path(buildPath(configFile.dirName, v.str)).AbsolutePath;
     };
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
