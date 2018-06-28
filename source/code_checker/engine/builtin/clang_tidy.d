@@ -96,21 +96,27 @@ class ClangTidy : BaseFixture {
             logger.infof("%s '%s'", "Analyzing".color(Color.yellow,
                     Background.black), cmd.absoluteFile);
 
-            auto st = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
-            // just chose some numbers. The intent is that warnings should be a high penalty
-            result_.score += st == 0 ? 1 : -10;
+            auto run_res = runClangTidy(tidyArgs, cmd.cflags, cmd.absoluteFile);
+            const errors = countErrors(run_res.stdout);
 
-            if (st != 0) {
+            // just chose some numbers. The intent is that warnings should be a high penalty
+            result_.score += run_res.status == 0 ? 1 : -(errors.readability + errors.other * 3);
+
+            if (run_res.status != 0) {
+                run_res.print;
+
                 if (!logged_failure) {
                     result_.msg ~= Msg(Severity.failReason, "clang-tidy warn about file(s)");
                     logged_failure = true;
                 }
 
                 result_.msg ~= Msg(Severity.improveSuggestion,
-                        format("clang-tidy: fix warnings in '%s'", cmd.absoluteFile.payload));
+                        format("clang-tidy: fix %s readability and %s warnings in '%s'",
+                            errors.readability, errors.other, cmd.absoluteFile.payload));
             }
 
-            result_.status = mergeStatus(result_.status, st == 0 ? Status.passed : Status.failed);
+            result_.status = mergeStatus(result_.status, run_res.status == 0
+                    ? Status.passed : Status.failed);
             logger.trace(result_);
         }
     }
@@ -132,7 +138,7 @@ struct ClangTidyConstants {
     static immutable confFile = ".clang-tidy";
 }
 
-int runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname) {
+auto runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname) {
     import std.algorithm : map, copy;
     import std.format : format;
     import std.array : appender;
@@ -146,4 +152,26 @@ int runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname)
     app.put(fname);
 
     return run(app.data);
+}
+
+/// Count the number of lines with a error: message in it.
+auto countErrors(string[] lines) @trusted {
+    import std.algorithm;
+    import std.regex : ctRegex, matchFirst;
+    import std.typecons : Tuple;
+    import std.string : startsWith;
+
+    Tuple!(int, "total", int, "readability", int, "other") r;
+
+    auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
+
+    foreach (a; lines.map!(a => matchFirst(a, re_error)).filter!(a => a.length > 1)) {
+        logger.trace(a);
+        if (a[1].startsWith("readability-"))
+            r.readability++;
+        else
+            r.other++;
+    }
+
+    return r;
 }

@@ -7,7 +7,22 @@ module code_checker.process;
 
 import logger = std.experimental.logger;
 
-int run(string[] cmd) @trusted {
+struct RunResult {
+    int status;
+    string[] stdout;
+    string[] stderr;
+
+    void print() @safe scope {
+        import std.ascii : newline;
+        import std.algorithm : joiner;
+        import std.stdio : writeln;
+
+        writeln(stdout.joiner(newline));
+        writeln(stderr.joiner(newline));
+    }
+}
+
+RunResult run(string[] cmd) @trusted {
     import std.array : appender;
     import std.algorithm : joiner, copy;
     import std.ascii : newline;
@@ -38,13 +53,5 @@ int run(string[] cmd) @trusted {
         Thread.sleep(25.dur!"msecs");
     }
 
-    if (exit_status != 0) {
-        writeln(app_out.data.joiner(newline));
-        writeln(app_err.data.joiner(newline));
-    } else {
-        logger.trace("stdout: ", app_out.data.joiner(newline));
-        logger.trace("stderr: ", app_err.data.joiner(newline));
-    }
-
-    return exit_status;
+    return RunResult(exit_status, app_out.data, app_err.data);
 }
