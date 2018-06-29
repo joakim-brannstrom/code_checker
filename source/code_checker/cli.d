@@ -177,6 +177,10 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         }();
         if (conf.workDir.length == 0)
             conf.workDir = Path(".").AbsolutePath;
+
+        // use a sane default which is to look in the current directory
+        if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0)
+            compile_dbs = ["./compile_commands.json"];
         if (compile_dbs.length != 0)
             conf.compileDb.dbs = compile_dbs.map!(a => Path(buildPath(conf.workDir,
                     a)).AbsolutePath).array;
