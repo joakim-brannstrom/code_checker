@@ -61,7 +61,7 @@ enum Status {
     passed
 }
 
-Status mergeStatus(Status old, Status new_) {
+Status mergeStatus(Status old, Status new_) @safe pure nothrow @nogc {
     if (old == Status.none)
         return new_;
     return old == Status.failed ? old : new_;

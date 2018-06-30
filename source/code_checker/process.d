@@ -5,6 +5,8 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.process;
 
+import std.exception : collectException;
+
 import logger = std.experimental.logger;
 
 struct RunResult {
@@ -12,13 +14,16 @@ struct RunResult {
     string[] stdout;
     string[] stderr;
 
-    void print() @safe scope {
+    void print() @safe nothrow const scope {
         import std.ascii : newline;
-        import std.algorithm : joiner;
         import std.stdio : writeln;
 
-        writeln(stdout.joiner(newline));
-        writeln(stderr.joiner(newline));
+        foreach (l; stdout) {
+            writeln(l).collectException;
+        }
+        foreach (l; stderr) {
+            writeln(l).collectException;
+        }
     }
 }
 
