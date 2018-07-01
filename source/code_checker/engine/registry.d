@@ -8,6 +8,8 @@ This module contains the registry of analaysers
 module code_checker.engine.registry;
 
 import logger = std.experimental.logger;
+import std.concurrency : Tid;
+import std.exception : collectException;
 
 import code_checker.engine.types;
 
@@ -52,31 +54,77 @@ struct Registry {
 }
 
 /// Returns: The total status of running the analyzers.
-Status execute(Environment env, ref Registry reg) {
+Status execute(Environment env, ref Registry reg) @trusted {
     import std.algorithm;
     import std.range;
+    import std.parallelism : task, TaskPool;
+    import std.concurrency : Tid, thisTid;
 
     TotalResult tres;
+    auto pool = new TaskPool;
+    scope (exit)
+        pool.finish;
+
     foreach (a; reg.range) {
         logger.infof("%s: %s", a.type, a.analyzer.explain);
-
         a.analyzer.putEnv(env);
-        a.analyzer.setup;
-        a.analyzer.execute;
-        a.analyzer.tearDown;
-        auto res = a.analyzer.result;
-        log(res.msg);
+        auto t = task!executeOneAnalyzer(thisTid, a.analyzer);
+        pool.put(t);
+    }
 
-        tres.status = mergeStatus(tres.status, res.status);
-        tres.score = Score(tres.score + res.score);
-        tres.sugg ~= res.msg.filter!(a => a.severity == Severity.improveSuggestion).array;
+    int replies;
 
-        logger.trace(res);
-        logger.trace(tres);
+    void handleResult(immutable Result res_) nothrow {
+        replies++;
+        // we know the thread finished and have the only copy.
+        // immutable is a bit cumbersome for now so throw away it to keep the
+        // code somewhat efficient.
+        auto res = cast() res_;
+
+        try {
+            log(res.msg);
+
+            tres.status = mergeStatus(tres.status, res.status);
+            tres.score = Score(tres.score + res.score);
+            tres.sugg ~= res.msg.array.filter!(a => a.severity == Severity.improveSuggestion).array;
+
+            logger.trace(res);
+            logger.trace(tres);
+        } catch (Exception e) {
+            logger.warning("Failed executing all tests").collectException;
+            logger.warning(e.msg).collectException;
+            tres.status = Status.failed;
+        }
+    }
+
+    while (replies < reg.analysers.length) {
+        import core.time : dur;
+        import std.concurrency : LinkTerminated, receiveTimeout;
+
+        try {
+            receiveTimeout(1.dur!"seconds", &handleResult);
+        } catch (Exception e) {
+            logger.error(e.msg);
+        }
     }
 
     log(tres);
     return tres.status;
+}
+
+void executeOneAnalyzer(Tid owner, BaseFixture a) nothrow @trusted {
+    import std.concurrency : send;
+    import std.exception : assumeUnique;
+
+    try {
+        a.setup;
+        a.execute;
+        a.tearDown;
+        auto res = a.result;
+        send(owner, cast(immutable) res);
+    } catch (Exception e) {
+        logger.error(e.msg).collectException;
+    }
 }
 
 private:
