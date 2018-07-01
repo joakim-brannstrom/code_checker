@@ -42,8 +42,8 @@ int main(string[] args) {
     cmds[AppMode.help] = toDelegate(&modeNone);
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
-    cmds[AppMode.dumpConfig] = toDelegate(&modeDumpConfig);
-    cmds[AppMode.dumpFullConfig] = toDelegate(&modeDumpFullConfig);
+    cmds[AppMode.initConfig] = toDelegate(&modeInitConfig);
+    cmds[AppMode.dumpConfig] = toDelegate(&modeDumpFullConfig);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);
@@ -61,16 +61,24 @@ int modeNone_Error(ref Config conf) {
     return 1;
 }
 
-int modeDumpConfig(ref Config conf) {
-    import std.stdio : writeln, stderr;
+int modeInitConfig(ref Config conf) {
+    import std.stdio : File;
+    import std.file : exists;
 
-    // make it easy for a user to pipe the output to the confi file
-    stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
-    stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
+    if (exists(conf.confFile)) {
+        logger.error("Configuration file already exists: ", conf.confFile);
+        return 1;
+    }
 
-    writeln(conf.toTOML(No.fullConfig));
+    try {
+        File(conf.confFile, "w").write(conf.toTOML(No.fullConfig));
+        logger.info("Wrote configuration to ", conf.confFile);
+        return 0;
+    } catch (Exception e) {
+        logger.error(e.msg);
+    }
 
-    return 0;
+    return 1;
 }
 
 int modeDumpFullConfig(ref Config conf) {

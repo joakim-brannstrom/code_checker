@@ -23,8 +23,8 @@ enum AppMode {
     help,
     helpUnknownCommand,
     normal,
+    initConfig,
     dumpConfig,
-    dumpFullConfig,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -63,6 +63,9 @@ struct Config {
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
 
+    /// The configuration file that has been loaded
+    AbsolutePath confFile;
+
     /// If set then only analyze these files.
     string[] analyzeFiles;
 
@@ -93,7 +96,7 @@ struct Config {
             // use a sane default
             app.put(`workdir = "."`);
         }
-        app.put("# affects static code analysis to check against the name standard");
+        app.put("# if the static code analysis should check compliance with the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
 
         app.put("[compile_commands]");
@@ -141,21 +144,21 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
+        string config_file = ".code_checker.toml";
         string[] compile_dbs;
         string[] src_filter;
         bool dump_conf;
-        bool dump_full_config;
-        bool junk_parameter;
+        bool init_conf;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             std.getopt.config.keepEndOfOptions,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "c|config", "load configuration (default: .code_checker.toml)", &junk_parameter,
-            "dump-config", "dump a default configuration to use", &dump_conf,
-            "dump-full-config", "dump the full, detailed configuration used", &dump_full_config,
+            "c|config", "load configuration (default: .code_checker.toml)", &config_file,
+            "dump-config", "dump the full, detailed configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
+            "init", "create an initial config to use", &init_conf,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
@@ -164,10 +167,10 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         conf.mode = AppMode.normal;
         if (help_info.helpWanted)
             conf.mode = AppMode.help;
+        else if (init_conf)
+            conf.mode = AppMode.initConfig;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
-        else if (dump_full_config)
-            conf.mode = AppMode.dumpFullConfig;
         conf.verbose = () {
             if (verbose_trace)
                 return VerboseMode.trace;
@@ -184,6 +187,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         if (compile_dbs.length != 0)
             conf.compileDb.dbs = compile_dbs.map!(a => Path(buildPath(conf.workDir,
                     a)).AbsolutePath).array;
+        conf.confFile = AbsolutePath(Path(config_file));
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
