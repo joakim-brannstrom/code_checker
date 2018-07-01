@@ -20,13 +20,10 @@ import code_checker.from;
 @safe:
 
 class ClangTidy : BaseFixture {
-    public {
+    private {
         Environment env;
         Result result_;
         string[] tidyArgs;
-    }
-
-    this() {
     }
 
     override string explain() {
