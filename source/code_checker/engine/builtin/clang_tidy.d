@@ -45,6 +45,9 @@ class ClangTidy : BaseFixture {
 
         auto app = appender!(string[])();
 
+        app.put("-warnings-as-errors=*");
+        app.put("-p=.");
+
         if (env.clangTidy.applyFixit) {
             app.put(["-fix"]);
         }
@@ -97,7 +100,7 @@ class ClangTidy : BaseFixture {
 
             auto res = nullableRef(cast() res_);
 
-            logger.infof("%s '%s'", "Analyzing".color(Color.yellow,
+            logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
                     Background.black), res.file).collectException;
 
             // just chose some numbers. The intent is that warnings should be a high penalty
@@ -233,8 +236,6 @@ auto runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname
 
     auto app = appender!(string[])();
     app.put(ClangTidyConstants.bin);
-    app.put("-warnings-as-errors=*");
-    app.put("-p=.");
     tidy_args.copy(app);
     app.put(fname);
 
