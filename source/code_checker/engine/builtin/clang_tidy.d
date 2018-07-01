@@ -52,6 +52,8 @@ class ClangTidy : BaseFixture {
             app.put(["-fix"]);
         }
 
+        env.compiler.extraFlags.map!(a => ["-extra-arg", a]).joiner.copy(app);
+
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
         if (!env.staticCode.checkNameStandard) {

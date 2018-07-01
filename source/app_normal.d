@@ -197,6 +197,7 @@ struct NormalFSM {
         env.genCompileDb = conf.compileDb.generateDb;
         env.staticCode = conf.staticCode;
         env.clangTidy = conf.clangTidy;
+        env.compiler = conf.compiler;
 
         Registry reg;
         reg.put(new ClangTidy, Type.staticCode);

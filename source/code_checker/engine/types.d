@@ -5,7 +5,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.types;
 
-public import code_checker.cli : ConfigStaticCode, ConfigClangTidy;
+public import code_checker.cli : ConfigStaticCode, ConfigClangTidy, Compiler;
 
 @safe:
 
@@ -38,6 +38,7 @@ struct Environment {
 
     ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
+    Compiler compiler;
 
     /// Command to generate the compile_commands.json
     string genCompileDb;

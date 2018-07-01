@@ -52,6 +52,11 @@ struct ConfigCompileDb {
     bool keep;
 }
 
+/// Settings for the compiler
+struct Compiler {
+    string[] extraFlags;
+}
+
 /// Configuration of how to use the program.
 struct Config {
     import code_checker.logger : VerboseMode;
@@ -62,6 +67,7 @@ struct Config {
     ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
+    Compiler compiler;
 
     /// The configuration file that has been loaded
     AbsolutePath confFile;
@@ -90,6 +96,11 @@ struct Config {
         app.put("[defaults]");
         app.put("# if the static code analysis should check compliance with the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
+        app.put(null);
+
+        app.put("[compiler]");
+        app.put("# extra flags to pass on to the compiler");
+        app.put(`# extra_flags = [ "-Wextra" ]`);
         app.put(null);
 
         app.put("[compile_commands]");
@@ -276,6 +287,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.options = v.array.map!(a => a.str).array;
     };
+    callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
+        c.compiler.extraFlags = v.array.map!(a => a.str).array;
+    };
 
     void iterSection(ref Config c, string sectionName) {
         if (auto section = sectionName in doc) {
@@ -292,6 +306,7 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     iterSection(rval, "defaults");
     iterSection(rval, "clang_tidy");
     iterSection(rval, "compile_commands");
+    iterSection(rval, "compiler");
 }
 
 /// Returns: default configuration as embedded in the binary
