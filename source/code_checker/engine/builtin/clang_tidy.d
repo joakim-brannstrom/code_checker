@@ -20,13 +20,10 @@ import code_checker.from;
 @safe:
 
 class ClangTidy : BaseFixture {
-    public {
+    private {
         Environment env;
         Result result_;
         string[] tidyArgs;
-    }
-
-    this() {
     }
 
     override string explain() {
@@ -47,6 +44,9 @@ class ClangTidy : BaseFixture {
         import std.range : put;
 
         auto app = appender!(string[])();
+
+        app.put("-warnings-as-errors=*");
+        app.put("-p=.");
 
         if (env.clangTidy.applyFixit) {
             app.put(["-fix"]);
@@ -100,12 +100,12 @@ class ClangTidy : BaseFixture {
 
             auto res = nullableRef(cast() res_);
 
-            logger.infof("%s '%s'", "Analyzing".color(Color.yellow,
+            logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
                     Background.black), res.file).collectException;
 
             // just chose some numbers. The intent is that warnings should be a high penalty
             result_.score += res.result.status == 0 ? 1
-                : -(res.errors.readability + res.errors.other * 3);
+                : -(res.errors.readability + res.errors.other * 3 + res.errors.diagnostic * 10);
 
             if (res.result.status != 0) {
                 res.result.print;
@@ -117,8 +117,9 @@ class ClangTidy : BaseFixture {
 
                 try {
                     result_.msg ~= Msg(Severity.improveSuggestion,
-                            format("clang-tidy: fix %s readability and %s warnings in '%s'",
-                                res.errors.readability, res.errors.other, res.file));
+                            format("clang-tidy: fix %s warnings, %s readability and %s miscellaneous problems in %s",
+                                res.errors.diagnostic, res.errors.readability,
+                                res.errors.other, res.file));
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
                     logger.warning("Unable to add user message to the result").collectException;
@@ -236,15 +237,14 @@ auto runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname
 
     auto app = appender!(string[])();
     app.put(ClangTidyConstants.bin);
-    app.put("-warnings-as-errors=*");
-    app.put("-p=.");
     tidy_args.copy(app);
     app.put(fname);
 
     return run(app.data);
 }
 
-alias CountErrorsResult = Tuple!(int, "total", int, "readability", int, "other");
+alias CountErrorsResult = Tuple!(int, "total", int, "readability", int,
+        "other", int, "diagnostic");
 
 /// Count the number of lines with a error: message in it.
 CountErrorsResult countErrors(string[] lines) @trusted {
@@ -259,6 +259,8 @@ CountErrorsResult countErrors(string[] lines) @trusted {
     foreach (a; lines.map!(a => matchFirst(a, re_error)).filter!(a => a.length > 1)) {
         if (a[1].startsWith("readability-"))
             r.readability++;
+        else if (a[1].startsWith("clang-analyzer-"))
+            r.diagnostic++;
         else
             r.other++;
     }

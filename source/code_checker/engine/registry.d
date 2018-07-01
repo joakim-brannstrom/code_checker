@@ -8,7 +8,6 @@ This module contains the registry of analaysers
 module code_checker.engine.registry;
 
 import logger = std.experimental.logger;
-import std.concurrency : Tid;
 import std.exception : collectException;
 
 import code_checker.engine.types;
@@ -57,25 +56,10 @@ struct Registry {
 Status execute(Environment env, ref Registry reg) @trusted {
     import std.algorithm;
     import std.range;
-    import std.parallelism : task, TaskPool;
-    import std.concurrency : Tid, thisTid;
 
     TotalResult tres;
-    auto pool = new TaskPool;
-    scope (exit)
-        pool.finish;
 
-    foreach (a; reg.range) {
-        logger.infof("%s: %s", a.type, a.analyzer.explain);
-        a.analyzer.putEnv(env);
-        auto t = task!executeOneAnalyzer(thisTid, a.analyzer);
-        pool.put(t);
-    }
-
-    int replies;
-
-    void handleResult(immutable Result res_) nothrow {
-        replies++;
+    void handleResult(Result res_) nothrow {
         // we know the thread finished and have the only copy.
         // immutable is a bit cumbersome for now so throw away it to keep the
         // code somewhat efficient.
@@ -97,34 +81,29 @@ Status execute(Environment env, ref Registry reg) @trusted {
         }
     }
 
-    while (replies < reg.analysers.length) {
-        import core.time : dur;
-        import std.concurrency : LinkTerminated, receiveTimeout;
-
-        try {
-            receiveTimeout(1.dur!"seconds", &handleResult);
-        } catch (Exception e) {
-            logger.error(e.msg);
-        }
+    foreach (a; reg.range) {
+        logger.infof("%s: %s", a.type, a.analyzer.explain);
+        a.analyzer.putEnv(env);
+        handleResult(executeOneAnalyzer(a.analyzer));
     }
 
     log(tres);
     return tres.status;
 }
 
-void executeOneAnalyzer(Tid owner, BaseFixture a) nothrow @trusted {
-    import std.concurrency : send;
-    import std.exception : assumeUnique;
-
+Result executeOneAnalyzer(BaseFixture a) nothrow @trusted {
+    Result r;
     try {
         a.setup;
         a.execute;
         a.tearDown;
-        auto res = a.result;
-        send(owner, cast(immutable) res);
+        r = a.result;
     } catch (Exception e) {
         logger.error(e.msg).collectException;
+        r.status = Status.failed;
     }
+
+    return r;
 }
 
 private:
