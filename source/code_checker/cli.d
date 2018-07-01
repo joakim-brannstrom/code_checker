@@ -96,7 +96,11 @@ struct Config {
         app.put("# command to execute to generate compile_commands.json");
         app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
         app.put("# search for compile_commands.json in this paths");
-        app.put(format("search_paths = %s", compileDb.dbs));
+        if (compileDb.dbs.length == 1
+                && compileDb.dbs[0] == Path("./compile_commands.json").AbsolutePath)
+            app.put(format("search_paths = %s", ["./compile_commands.json"]));
+        else
+            app.put(format("search_paths = %s", compileDb.dbs));
         app.put(null);
 
         app.put("[clang_tidy]");
