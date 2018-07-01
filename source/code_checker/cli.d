@@ -88,22 +88,16 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
-        app.put("# working directory, relative to this file, when executing commands");
-        if (full) {
-            // show what is actually used
-            app.put(format(`workdir = "%s"`, workDir));
-        } else {
-            // use a sane default
-            app.put(`workdir = "."`);
-        }
         app.put("# if the static code analysis should check compliance with the name standard");
         app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
+        app.put(null);
 
         app.put("[compile_commands]");
         app.put("# command to execute to generate compile_commands.json");
         app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
         app.put("# search for compile_commands.json in this paths");
         app.put(format("search_paths = %s", compileDb.dbs));
+        app.put(null);
 
         app.put("[clang_tidy]");
         app.put("# arguments to -header-filter");
@@ -114,6 +108,7 @@ struct Config {
             app.put("# options affecting the checks");
             app.put(format("options = [%(%s,\n%)]", clangTidy.options));
         }
+        app.put(null);
 
         return app.data.joiner(newline).toUTF8;
     }
@@ -147,6 +142,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string config_file = ".code_checker.toml";
         string[] compile_dbs;
         string[] src_filter;
+        string workdir;
         bool dump_conf;
         bool init_conf;
 
@@ -162,6 +158,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
+            "workdir", "use this path as the working directory when programs used by analyzers are executed (default: where .code_checker.toml is)", &workdir,
             );
         // dfmt on
         conf.mode = AppMode.normal;
@@ -188,6 +185,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.compileDb.dbs = compile_dbs.map!(a => Path(buildPath(conf.workDir,
                     a)).AbsolutePath).array;
         conf.confFile = AbsolutePath(Path(config_file));
+        if (workdir.length == 0)
+            conf.workDir = Path(conf.confFile.dirName).AbsolutePath;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -256,9 +255,6 @@ void loadConfig(ref Config rval, string configFile) @trusted {
             c.staticCode.checkNameStandard = v == true;
     }
 
-    callbacks["defaults.workdir"] = (ref Config c, ref TOMLValue v) {
-        c.workDir = Path(buildPath(configFile.dirName, v.str)).AbsolutePath;
-    };
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
