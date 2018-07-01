@@ -54,8 +54,11 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
-        if (!env.staticCode.checkNameStandard)
+        if (!env.staticCode.checkNameStandard) {
             env.clangTidy.checks ~= ["-readability-identifier-naming"];
+            // if names are ignored then the user is probably not interested in namespaces either
+            env.clangTidy.checks ~= ["llvm-namespace-comment"];
+        }
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
