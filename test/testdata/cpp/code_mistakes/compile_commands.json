@@ -1,0 +1,7 @@
+[
+    {
+        "directory": ".",
+        "arguments": ["-c", "div_by_zero.cpp", "-o", "empty.o"],
+        "file": "div_by_zero.cpp"
+    }
+]
