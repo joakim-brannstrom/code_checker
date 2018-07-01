@@ -117,7 +117,7 @@ class ClangTidy : BaseFixture {
 
                 try {
                     result_.msg ~= Msg(Severity.improveSuggestion,
-                            format("clang-tidy: fix %s warnings, %s readability and %s miscellaneous problems in '%s'",
+                            format("clang-tidy: fix %s warnings, %s readability and %s miscellaneous problems in %s",
                                 res.errors.diagnostic, res.errors.readability,
                                 res.errors.other, res.file));
                 } catch (Exception e) {
