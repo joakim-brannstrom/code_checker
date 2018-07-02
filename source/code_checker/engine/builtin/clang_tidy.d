@@ -119,9 +119,8 @@ class ClangTidy : BaseFixture {
 
                 try {
                     result_.msg ~= Msg(Severity.improveSuggestion,
-                            format("clang-tidy: fix %s warnings, %s readability and %s miscellaneous problems in %s",
-                                res.errors.diagnostic, res.errors.readability,
-                                res.errors.other, res.file));
+                            format("clang-tidy: fix %s critical, %s medium, %s low in %s",
+                                res.errors.diagnostic, res.errors.other, res.errors.readability, res.file));
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
                     logger.warning("Unable to add user message to the result").collectException;
@@ -133,7 +132,6 @@ class ClangTidy : BaseFixture {
             logger.trace(result_).collectException;
         }
 
-        int expected_replies;
         auto pool = () {
             import std.parallelism : taskPool;
 
@@ -148,6 +146,17 @@ class ClangTidy : BaseFixture {
                 pool.finish;
         }
 
+        static struct DoneCondition {
+            int expected;
+            int replies;
+
+            bool isWaitingForReplies() {
+                return replies < expected;
+            }
+        }
+
+        DoneCondition cond;
+
         foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
             if (cmd.isNull) {
                 result_.status = Status.failed;
@@ -157,7 +166,7 @@ class ClangTidy : BaseFixture {
                 break;
             }
 
-            ++expected_replies;
+            cond.expected++;
 
             immutable(TidyWork)* w = () @trusted{
                 return cast(immutable) new TidyWork(tidyArgs, cmd.cflags, cmd.absoluteFile);
@@ -166,12 +175,11 @@ class ClangTidy : BaseFixture {
             pool.put(t);
         }
 
-        int replies;
-        while (replies < expected_replies) {
+        while (cond.isWaitingForReplies) {
             () @trusted{
                 try {
                     if (receiveTimeout(1.dur!"seconds", &handleResult)) {
-                        ++replies;
+                        cond.replies++;
                     }
                 } catch (Exception e) {
                     logger.error(e.msg);
