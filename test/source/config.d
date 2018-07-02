@@ -70,6 +70,8 @@ RunResult run(string[] cmd, string workdir = null) {
     import core.time : dur;
 
     logger.trace("run: ", cmd.joiner(" "));
+    if (workdir !is null)
+        logger.trace("workdir is ", workdir);
 
     auto app_out = appender!(string[])();
     auto app_err = appender!(string[])();

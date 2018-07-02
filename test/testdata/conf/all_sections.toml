@@ -2,8 +2,7 @@
 check_name_standard = true
 
 [compile_commands]
-search_paths = [ "db" ]
-cmd_generate = "gen_db #a command that generates a database"
+search_paths = [ "db", "./compile_commands.json" ]
 
 [clang_tidy]
 header_filter = ".*"
