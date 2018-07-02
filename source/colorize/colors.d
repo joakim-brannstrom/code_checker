@@ -8,6 +8,24 @@ module colorize.colors;
 
 import std.string : format;
 
+shared bool _useColors;
+
+void forceColors() @trusted {
+    synchronized {
+        _useColors = true;
+    }
+}
+
+shared static this() {
+    import core.sys.posix.unistd : isatty;
+    import std.stdio : stdout;
+
+    version (unittest)
+        _useColors = true;
+    else
+        _useColors = isatty(stdout.fileno) == 1;
+}
+
 private template color_type(int offset) {
     static enum type : int {
         init = 39 + offset,
@@ -61,9 +79,12 @@ static enum mode : int {
  * );
  * ---
  */
+string color(const string str, const fg c = fg.init, const bg b = bg.init, const mode m = mode.init) @trusted {
+    if (_useColors) {
+        return format("\033[%d;%d;%dm%s\033[0m", m, c, b, str);
+    }
 
-string color(const string str, const fg c = fg.init, const bg b = bg.init, const mode m = mode.init) pure @safe {
-    return format("\033[%d;%d;%dm%s\033[0m", m, c, b, str);
+    return str;
 }
 
 unittest {
