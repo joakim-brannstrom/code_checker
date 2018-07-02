@@ -32,8 +32,8 @@ private template color_type(int offset) {
     }
 }
 
-alias color_type!0.type fg;
-alias color_type!10.type bg;
+alias fg = color_type!0.type;
+alias bg = color_type!10.type;
 
 // Text modes
 static enum mode : int {
@@ -223,19 +223,19 @@ string colorHelper(const string str, const string name) pure {
     return format("\033[%dm%s\033[0m", code, str);
 }
 
-string colorHelper(T)(const string str, const T t = T.init) pure 
+string colorHelper(T)(const string str, const T t = T.init) pure @safe 
         if (is(T : fg) || is(T : bg) || is(T : mode)) {
     return format("\033[%dm%s\033[0m", t, str);
 }
 
-alias colorHelper!bg background;
-alias colorHelper!fg foreground;
-alias colorHelper!mode style;
+alias background = colorHelper!bg;
+alias foreground = colorHelper!fg;
+alias style = colorHelper!mode;
 
-alias background color;
-alias foreground color;
-alias style color;
-alias colorHelper color;
+alias color = background;
+alias color = foreground;
+alias color = style;
+alias color = colorHelper;
 
 unittest {
     string ret;
