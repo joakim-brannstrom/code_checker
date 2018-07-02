@@ -59,7 +59,7 @@ class ClangTidy : BaseFixture {
         if (!env.staticCode.checkNameStandard) {
             env.clangTidy.checks ~= ["-readability-identifier-naming"];
             // if names are ignored then the user is probably not interested in namespaces either
-            env.clangTidy.checks ~= ["llvm-namespace-comment"];
+            env.clangTidy.checks ~= ["-llvm-namespace-comment"];
         }
 
         if (exists(ClangTidyConstants.confFile)) {
