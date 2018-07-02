@@ -97,6 +97,8 @@ struct NormalFSM {
             break;
         case State.genDb:
             next_ = State.checkGenDb;
+            if (d.exitStatus != 0)
+                next_ = State.cleanup;
             break;
         case State.checkGenDb:
             next_ = State.fixDb;
@@ -130,8 +132,8 @@ struct NormalFSM {
         import std.file : getcwd, chdir;
 
         root = Path(getcwd).AbsolutePath;
-        if (conf.workDir != root)
-            chdir(conf.workDir);
+        if (conf.miniConf.workDir != root)
+            chdir(conf.miniConf.workDir);
     }
 
     void act_checkForDb() {

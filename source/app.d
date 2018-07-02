@@ -25,7 +25,8 @@ int main(string[] args) {
         auto conf = Config.make();
         try {
             confLogger(VerboseMode.info);
-            loadConfig(conf, parseConfigCLI(args));
+            conf.miniConf = parseConfigCLI(args);
+            loadConfig(conf);
         } catch (Exception e) {
             logger.warning(e.msg);
             logger.warning("Unable to read configuration");
@@ -65,14 +66,14 @@ int modeInitConfig(ref Config conf) {
     import std.stdio : File;
     import std.file : exists;
 
-    if (exists(conf.confFile)) {
-        logger.error("Configuration file already exists: ", conf.confFile);
+    if (exists(conf.miniConf.confFile)) {
+        logger.error("Configuration file already exists: ", conf.miniConf.confFile);
         return 1;
     }
 
     try {
-        File(conf.confFile, "w").write(conf.toTOML(No.fullConfig));
-        logger.info("Wrote configuration to ", conf.confFile);
+        File(conf.miniConf.confFile, "w").write(conf.toTOML(No.fullConfig));
+        logger.info("Wrote configuration to ", conf.miniConf.confFile);
         return 0;
     } catch (Exception e) {
         logger.error(e.msg);

@@ -45,6 +45,9 @@ struct ConfigCompileDb {
     /// Command to generate the compile_commands.json
     string generateDb;
 
+    /// Raw user input via either config or cli
+    string[] rawDbs;
+
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] dbs;
 
@@ -68,15 +71,10 @@ struct Config {
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
     Compiler compiler;
-
-    /// The configuration file that has been loaded
-    AbsolutePath confFile;
+    MiniConfig miniConf;
 
     /// If set then only analyze these files.
     string[] analyzeFiles;
-
-    /// Directory to use as root when running the tests.
-    AbsolutePath workDir;
 
     /// Returns: a config object with default values.
     static Config make() @safe {
@@ -129,22 +127,47 @@ struct Config {
     }
 }
 
-/// Returns: path to the configuration file.
-string parseConfigCLI(string[] args) @trusted nothrow {
+/// Minimal config to setup path to config file and workdir.
+struct MiniConfig {
+    /// Value from the user via CLI, unmodified.
+    string rawWorkDir;
+
+    /// Converted to an absolute path.
+    AbsolutePath workDir;
+
+    /// Value from the user via CLI, unmodified.
+    string rawConfFile = ".code_checker.toml";
+
+    /// The configuration file that has been loaded
+    AbsolutePath confFile;
+}
+
+/// Returns: minimal config to load settings and setup working directory.
+MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
+    import std.path : dirName;
     static import std.getopt;
 
-    string conf_file = ".code_checker.toml";
+    MiniConfig conf;
+
     try {
         std.getopt.getopt(args, std.getopt.config.keepEndOfOptions, std.getopt.config.passThrough,
-                "c|config", "none not visible to the user", &conf_file,);
+                "workdir", "none not visible to the user", &conf.rawWorkDir,
+                "c|config", "none not visible to the user", &conf.rawConfFile);
+        conf.confFile = Path(conf.rawConfFile).AbsolutePath;
+        if (conf.rawWorkDir.length == 0) {
+            conf.rawWorkDir = conf.confFile.dirName;
+        }
+        conf.workDir = Path(conf.rawWorkDir).AbsolutePath;
     } catch (Exception e) {
+        logger.error("Invalid cli values: ", e.msg).collectException;
+        logger.trace(conf).collectException;
     }
 
-    return conf_file;
+    return conf;
 }
 
 void parseCLI(string[] args, ref Config conf) @trusted {
-    import std.algorithm : map, among;
+    import std.algorithm : map, among, filter;
     import std.array : array;
     import std.path : dirName, buildPath;
     import code_checker.logger : VerboseMode;
@@ -163,7 +186,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
-            std.getopt.config.keepEndOfOptions,
             "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
@@ -190,18 +212,21 @@ void parseCLI(string[] args, ref Config conf) @trusted {
                 return VerboseMode.info;
             return VerboseMode.minimal;
         }();
-        if (conf.workDir.length == 0)
-            conf.workDir = Path(".").AbsolutePath;
 
         // use a sane default which is to look in the current directory
-        if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0)
+        if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
             compile_dbs = ["./compile_commands.json"];
-        if (compile_dbs.length != 0)
-            conf.compileDb.dbs = compile_dbs.map!(a => Path(buildPath(conf.workDir,
-                    a)).AbsolutePath).array;
-        conf.confFile = AbsolutePath(Path(config_file));
-        if (workdir.length == 0)
-            conf.workDir = Path(conf.confFile.dirName).AbsolutePath;
+        } else if (compile_dbs.length != 0) {
+            conf.compileDb.rawDbs = compile_dbs;
+        }
+
+        // dfmt off
+        conf.compileDb.dbs = conf
+            .compileDb.rawDbs
+            .filter!(a => a.length != 0)
+            .map!(a => Path(buildPath(conf.miniConf.workDir, a)).AbsolutePath)
+            .array;
+        // dfmt on
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
@@ -233,14 +258,14 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * check_name_standard = true
  * ---
  */
-void loadConfig(ref Config rval, string configFile) @trusted {
+void loadConfig(ref Config rval) @trusted {
     import std.algorithm;
     import std.array : array;
     import std.file : exists, readText;
     import std.path : dirName, buildPath;
     import toml;
 
-    if (!exists(configFile))
+    if (!exists(rval.miniConf.confFile))
         return;
 
     static auto tryLoading(string configFile) {
@@ -251,9 +276,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
 
     TOMLDocument doc;
     try {
-        doc = tryLoading(configFile);
+        doc = tryLoading(rval.miniConf.confFile);
     } catch (Exception e) {
-        logger.warning("Unable to read the configuration from ", configFile);
+        logger.warning("Unable to read the configuration from ", rval.miniConf.confFile);
         logger.warning(e.msg);
         return;
     }
@@ -273,7 +298,7 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
-        c.compileDb.dbs = v.array.map!(a => Path(a.str).AbsolutePath).array;
+        c.compileDb.rawDbs = v.array.map!(a => a.str).array;
     };
     callbacks["compile_commands.generate_cmd"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.generateDb = v.str;
