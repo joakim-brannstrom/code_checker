@@ -64,18 +64,29 @@ struct Compiler {
     string[] extraFlags;
 }
 
-/// Configuration of how to use the program.
-struct Config {
+/// Settings for logging.
+struct Logging {
     import code_checker.logger : VerboseMode;
 
-    AppMode mode;
     VerboseMode verbose;
+
+    /// If logging to files should be done.
+    bool toFile;
+
+    /// Directory to log to.
+    AbsolutePath dir;
+}
+
+/// Configuration of how to use the program.
+struct Config {
+    AppMode mode;
 
     ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
     Compiler compiler;
     MiniConfig miniConf;
+    Logging logg;
 
     /// If set then only analyze these files.
     string[] analyzeFiles;
@@ -188,13 +199,13 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] compile_dbs;
         string[] src_filter;
         string workdir;
+        string logdir = ".";
         bool dump_conf;
         bool init_conf;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
-            "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
@@ -202,6 +213,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
             "init", "create an initial config to use", &init_conf,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
+            "log", "create a logfile for each analyzed file", &conf.logg.toFile,
+            "logdir", "path to create logfiles in (default: .)", &logdir,
+            "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
             "workdir", "use this path as the working directory when programs used by analyzers are executed (default: where .code_checker.toml is)", &workdir,
@@ -214,7 +228,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.initConfig;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
-        conf.verbose = () {
+        conf.logg.verbose = () {
             if (verbose_trace)
                 return VerboseMode.trace;
             if (verbose_info)
@@ -228,6 +242,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         } else if (compile_dbs.length != 0) {
             conf.compileDb.rawDbs = compile_dbs;
         }
+
+        if (conf.logg.toFile)
+            conf.logg.dir = Path(logdir).AbsolutePath;
 
         // dfmt off
         conf.compileDb.dbs = conf

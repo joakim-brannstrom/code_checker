@@ -120,13 +120,15 @@ class ClangTidy : BaseFixture {
 
 void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
     import core.time : dur;
+    import std.concurrency : Tid, thisTid, receiveTimeout;
     import std.format : format;
+    import std.parallelism : task, TaskPool;
     import code_checker.compile_db : UserFileRange, parseFlag,
         CompileCommandFilter, SearchResult;
-    import std.parallelism : task, TaskPool;
-    import std.concurrency : Tid, thisTid, receiveTimeout;
+    import code_checker.engine.logger : Logger;
 
     bool logged_failure;
+    auto logg = Logger(env.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
         import std.format : format;
@@ -142,6 +144,15 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 
         if (res.result.status != 0) {
             res.result.print;
+
+            if (env.logg.toFile) {
+                try {
+                    logg.put(res.file, [res.result.stdout, res.result.stdout]);
+                } catch (Exception e) {
+                    logger.warning(e.msg).collectException;
+                    logger.warning("Unable to log to file").collectException;
+                }
+            }
 
             if (!logged_failure) {
                 result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy warn about file(s)");
