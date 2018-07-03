@@ -34,7 +34,7 @@ int main(string[] args) {
         return conf;
     }();
     parseCLI(args, conf);
-    confLogger(conf.verbose);
+    confLogger(conf.logg.verbose);
     logger.trace(conf);
 
     alias Command = int delegate(ref Config conf);

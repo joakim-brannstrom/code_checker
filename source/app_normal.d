@@ -200,6 +200,7 @@ struct NormalFSM {
         env.staticCode = conf.staticCode;
         env.clangTidy = conf.clangTidy;
         env.compiler = conf.compiler;
+        env.logg = conf.logg;
 
         Registry reg;
         reg.put(new ClangTidy, Type.staticCode);
