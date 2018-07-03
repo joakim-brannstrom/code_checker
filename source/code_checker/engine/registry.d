@@ -70,7 +70,8 @@ Status execute(Environment env, ref Registry reg) @trusted {
 
             tres.status = mergeStatus(tres.status, res.status);
             tres.score = Score(tres.score + res.score);
-            tres.sugg ~= res.msg.array.filter!(a => a.severity == Severity.improveSuggestion).array;
+            tres.sugg ~= res.msg.array.filter!(a => a.severity == MsgSeverity.improveSuggestion)
+                .array;
 
             logger.trace(res);
             logger.trace(tres);
@@ -113,10 +114,10 @@ void log(Messages msgs) {
 
     foreach (m; msgs.value.sort) {
         final switch (m.severity) {
-        case Severity.improveSuggestion:
+        case MsgSeverity.improveSuggestion:
             break;
-        case Severity.unableToExecute:
-        case Severity.failReason:
+        case MsgSeverity.unableToExecute:
+        case MsgSeverity.failReason:
             logger.warning(m.value);
             break;
         }

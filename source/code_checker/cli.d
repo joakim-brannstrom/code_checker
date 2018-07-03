@@ -29,7 +29,10 @@ enum AppMode {
 
 /// Configuration options only relevant for static code checkers.
 struct ConfigStaticCode {
-    bool checkNameStandard = true;
+    import code_checker.engine.types : Severity;
+
+    /// Filter results from analyzers on this severity.
+    Severity severity;
 }
 
 /// Configuration options only relevant for clang-tidy.
@@ -93,20 +96,20 @@ struct Config {
 
         auto app = appender!(string[])();
         app.put("[defaults]");
-        app.put("# if the static code analysis should check compliance with the name standard");
-        app.put(format("check_name_standard = %s", staticCode.checkNameStandard));
+        app.put("# only report issues with a severity >= to this value");
+        app.put(format(`severity = "%s"`, staticCode.severity));
         app.put(null);
 
         app.put("[compiler]");
         app.put("# extra flags to pass on to the compiler");
-        app.put(`# extra_flags = [ "-Wextra" ]`);
+        app.put(`# extra_flags = [ "-std=c++11", "-Wextra", "-Werror" ]`);
         app.put(null);
 
         app.put("[compile_commands]");
         app.put("# command to execute to generate compile_commands.json");
         app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
         app.put("# search for compile_commands.json in this paths");
-        if (compileDb.dbs.length == 1
+        if (compileDb.dbs.length == 0 || compileDb.dbs.length == 1
                 && compileDb.dbs[0] == Path("./compile_commands.json").AbsolutePath)
             app.put(format("search_paths = %s", ["./compile_commands.json"]));
         else
@@ -170,7 +173,10 @@ MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
 void parseCLI(string[] args, ref Config conf) @trusted {
     import std.algorithm : map, among, filter;
     import std.array : array;
+    import std.format : format;
     import std.path : dirName, buildPath;
+    import std.traits : EnumMembers;
+    import code_checker.engine.types : Severity;
     import code_checker.logger : VerboseMode;
     static import std.getopt;
 
@@ -188,6 +194,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         // dfmt off
         help_info = std.getopt.getopt(args,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
+            "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
@@ -285,19 +292,24 @@ void loadConfig(ref Config rval) @trusted {
         return;
     }
 
-    static bool isTomlBool(TOML_TYPE t) {
-        return t.among(TOML_TYPE.TRUE, TOML_TYPE.FALSE) != -1;
-    }
-
     alias Fn = void delegate(ref Config c, ref TOMLValue v);
     Fn[string] callbacks;
 
     void defaults__check_name_standard(ref Config c, ref TOMLValue v) {
-        if (isTomlBool(v.type))
-            c.staticCode.checkNameStandard = v == true;
+        import std.traits : EnumMembers;
+        import code_checker.engine.types : toSeverity, Severity;
+
+        auto s = toSeverity(v.str);
+        if (s.isNull) {
+            logger.warningf("Unknown severity level %s. Using default: style", v.str);
+            logger.warningf("valid values are: %s", [EnumMembers!Severity]);
+            c.staticCode.severity = Severity.style;
+        } else {
+            c.staticCode.severity = s;
+        }
     }
 
-    callbacks["defaults.check_name_standard"] = &defaults__check_name_standard;
+    callbacks["defaults.severity"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.rawDbs = v.array.map!(a => a.str).array;
