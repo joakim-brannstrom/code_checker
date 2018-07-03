@@ -38,6 +38,7 @@ struct ConfigClangTidy {
     string[] options;
     string headerFilter;
     bool applyFixit;
+    bool applyFixitErrors;
 }
 
 /// Configuration data for the compile_commands.json
@@ -186,7 +187,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
-            "clang-tidy-fix", "apply clang-tidy fixit hints", &conf.clangTidy.applyFixit,
+            "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
+            "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
             "dump-config", "dump the full, detailed configuration used", &dump_conf,
