@@ -5,7 +5,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.builtin.clang_tidy_classification;
 
-import code_checker.engine.types : Severity;
+public import code_checker.engine.types : Severity;
 
 @safe:
 

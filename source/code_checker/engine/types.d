@@ -144,10 +144,26 @@ struct TotalResult {
 }
 
 /// Classification of warnings. Used by the user to filter on.
+/// This enum must be ordered such that style < low < medium < high < critical
 enum Severity {
     style,
     low,
     medium,
     high,
     critical
+}
+
+/// Returns: a nullable severity translation from a string.
+auto toSeverity(string s) @safe pure nothrow {
+    import std.typecons : Nullable;
+    import std.conv : to;
+
+    Nullable!Severity r;
+
+    try {
+        r = s.to!Severity;
+    } catch (Exception e) {
+    }
+
+    return r;
 }

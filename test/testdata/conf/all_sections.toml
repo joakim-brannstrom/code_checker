@@ -1,5 +1,5 @@
 [defaults]
-check_name_standard = true
+severity = "style"
 
 [compile_commands]
 search_paths = [ "db", "./compile_commands.json" ]

@@ -42,6 +42,9 @@ class ClangTidy : BaseFixture {
         import std.ascii;
         import std.file : exists;
         import std.range : put;
+        import std.format : format;
+        import code_checker.engine.builtin.clang_tidy_classification : severityMap,
+            Severity;
 
         auto app = appender!(string[])();
 
@@ -59,11 +62,20 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
-        if (!env.staticCode.checkNameStandard) {
-            env.clangTidy.checks ~= ["-readability-identifier-naming"];
-            // if names are ignored then the user is probably not interested in namespaces either
-            env.clangTidy.checks ~= ["-llvm-namespace-comment"];
-        }
+        // inactivate those that are of below the configured severity level.
+        // dfmt off
+        env.clangTidy.checks ~= severityMap
+            .byKeyValue
+            .filter!(a => a.value < env.staticCode.severity)
+            .map!(a => format("-%s", a.key))
+            .array;
+        // dfmt on
+
+        //if (!env.staticCode.checkNameStandard) {
+        //env.clangTidy.checks ~= ["-readability-identifier-naming"];
+        //// if names are ignored then the user is probably not interested in namespaces either
+        //env.clangTidy.checks ~= ["-llvm-namespace-comment"];
+        //}
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
@@ -126,10 +138,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
                 Background.black), res.file).collectException;
 
-        // just chose some numbers. The intent is that warnings should be a high penalty
-        result_.score += res.result.status == 0 ? 1
-            : -(res.errors.style + res.errors.low * 2 + res.errors.medium * 5
-                    + res.errors.high * 10 + res.errors.critical * 100);
+        result_.score += res.result.status == 0 ? 1 : res.errors.score;
 
         if (res.result.status != 0) {
             res.result.print;
@@ -281,33 +290,45 @@ auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
 struct CountErrorsResult {
     import code_checker.engine.types : Severity;
 
-    int total;
-    int style;
-    int low;
-    int medium;
-    int high;
-    int critical;
+    private {
+        int total;
+        int[Severity] score_;
+    }
 
-    void count(const Severity s) {
+    /// Returns: the score when summing up the found occurancies.
+    int score() @safe pure nothrow const @nogc scope {
+        int sum;
+        // just chose some numbers. The intent is that warnings should be a high penalty
+        foreach (kv; score_.byKeyValue) {
+            final switch (kv.key) {
+            case Severity.style:
+                sum -= kv.value;
+                break;
+            case Severity.low:
+                sum -= kv.value * 2;
+                break;
+            case Severity.medium:
+                sum -= kv.value * 5;
+                break;
+            case Severity.high:
+                sum -= kv.value * 10;
+                break;
+            case Severity.critical:
+                sum -= kv.value * 100;
+                break;
+            }
+        }
+
+        return sum;
+    }
+
+    void put(const Severity s) {
         total++;
 
-        final switch (s) {
-        case Severity.style:
-            style++;
-            break;
-        case Severity.low:
-            low++;
-            break;
-        case Severity.medium:
-            medium++;
-            break;
-        case Severity.high:
-            high++;
-            break;
-        case Severity.critical:
-            critical++;
-            break;
-        }
+        if (auto v = s in score_)
+            (*v)++;
+        else
+            score_[s] = 1;
     }
 
     auto toRange() const {
@@ -315,11 +336,7 @@ struct CountErrorsResult {
         import std.format : format;
         import std.range;
 
-        alias Pair = Tuple!(int, string);
-
-        return only(Pair(critical, "critical"), Pair(high, "high"),
-                Pair(medium, "medium"), Pair(low, "low"), Pair(style, "style"),).filter!(a => a[0] > 0)
-            .map!(a => format("%s %s", a[0], a[1]));
+        return score_.byKeyValue.map!(a => format("%s %s", a.key, a.value));
     }
 }
 
@@ -339,17 +356,17 @@ CountErrorsResult countErrors(string[] lines) @trusted {
         r.total++;
 
         if (auto v = a[1] in severityMap) {
-            r.count(*v);
+            r.put(*v);
         } else {
             // this is a fallback when new rules are added to clang-tidy but
             // they haven't been thoroughly analyzed in
             // `code_checker.engine.builtin.clang_tidy_classification`.
             if (a[1].startsWith("readability-"))
-                r.style++;
+                r.put(Severity.style);
             else if (a[1].startsWith("clang-analyzer-"))
-                r.high++;
+                r.put(Severity.high);
             else
-                r.medium++;
+                r.put(Severity.medium);
         }
     }
 
