@@ -45,11 +45,15 @@ class ClangTidy : BaseFixture {
 
         auto app = appender!(string[])();
 
-        app.put("-warnings-as-errors=*");
         app.put("-p=.");
 
         if (env.clangTidy.applyFixit) {
             app.put(["-fix"]);
+        } else if (env.clangTidy.applyFixitErrors) {
+            app.put(["-fix"]);
+            app.put(["-fix-errors"]);
+        } else {
+            app.put("-warnings-as-errors=*");
         }
 
         env.compiler.extraFlags.map!(a => ["-extra-arg", a]).joiner.copy(app);
@@ -86,106 +90,10 @@ class ClangTidy : BaseFixture {
 
     /// Execute the analyzer.
     override void execute() {
-        import core.time : dur;
-        import std.format : format;
-        import code_checker.compile_db : UserFileRange, parseFlag,
-            CompileCommandFilter, SearchResult;
-        import std.parallelism : task, TaskPool;
-        import std.concurrency : Tid, thisTid, receiveTimeout;
-
-        bool logged_failure;
-
-        void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
-            import std.format : format;
-            import std.typecons : nullableRef;
-            import colorize : Color, color, Background, Mode;
-
-            auto res = nullableRef(cast() res_);
-
-            logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
-                    Background.black), res.file).collectException;
-
-            // just chose some numbers. The intent is that warnings should be a high penalty
-            result_.score += res.result.status == 0 ? 1
-                : -(
-                        res.errors.style + res.errors.low * 2 + res.errors.medium
-                        * 5 + res.errors.high * 10 + res.errors.critical * 100);
-
-            if (res.result.status != 0) {
-                res.result.print;
-
-                if (!logged_failure) {
-                    result_.msg ~= Msg(Severity.failReason, "clang-tidy warn about file(s)");
-                    logged_failure = true;
-                }
-
-                try {
-                    result_.msg ~= Msg(Severity.improveSuggestion,
-                            format("clang-tidy: fix %-(%s, %) in %s", res.errors.toRange, res.file));
-                } catch (Exception e) {
-                    logger.warning(e.msg).collectException;
-                    logger.warning("Unable to add user message to the result").collectException;
-                }
-            }
-
-            result_.status = mergeStatus(result_.status, res.result.status == 0
-                    ? Status.passed : Status.failed);
-            logger.trace(result_).collectException;
-        }
-
-        auto pool = () {
-            import std.parallelism : taskPool;
-
-            // must run single threaded when writing fixits or the result is unpredictable
-            if (env.clangTidy.applyFixit)
-                return new TaskPool(0);
-            return taskPool;
-        }();
-
-        scope (exit) {
-            if (env.clangTidy.applyFixit)
-                pool.finish;
-        }
-
-        static struct DoneCondition {
-            int expected;
-            int replies;
-
-            bool isWaitingForReplies() {
-                return replies < expected;
-            }
-        }
-
-        DoneCondition cond;
-
-        foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
-            if (cmd.isNull) {
-                result_.status = Status.failed;
-                result_.score -= 100;
-                result_.msg ~= Msg(Severity.failReason,
-                        "clang-tidy where unable to find one of the specified files in compile_commands.json");
-                break;
-            }
-
-            cond.expected++;
-
-            immutable(TidyWork)* w = () @trusted{
-                return cast(immutable) new TidyWork(tidyArgs, cmd.cflags, cmd.absoluteFile);
-            }();
-            auto t = task!taskTidy(thisTid, w);
-            pool.put(t);
-        }
-
-        while (cond.isWaitingForReplies) {
-            () @trusted{
-                try {
-                    if (receiveTimeout(1.dur!"seconds", &handleResult)) {
-                        cond.replies++;
-                    }
-                } catch (Exception e) {
-                    logger.error(e.msg);
-                }
-            }();
+        if (env.clangTidy.applyFixit || env.clangTidy.applyFixitErrors) {
+            executeFixit(env, tidyArgs, result_);
+        } else {
+            executeParallel(env, tidyArgs, result_);
         }
     }
 
@@ -199,6 +107,124 @@ class ClangTidy : BaseFixture {
     }
 }
 
+void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
+    import core.time : dur;
+    import std.format : format;
+    import code_checker.compile_db : UserFileRange, parseFlag,
+        CompileCommandFilter, SearchResult;
+    import std.parallelism : task, TaskPool;
+    import std.concurrency : Tid, thisTid, receiveTimeout;
+
+    bool logged_failure;
+
+    void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
+        import std.format : format;
+        import std.typecons : nullableRef;
+        import colorize : Color, color, Background, Mode;
+
+        auto res = nullableRef(cast() res_);
+
+        logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
+                Background.black), res.file).collectException;
+
+        // just chose some numbers. The intent is that warnings should be a high penalty
+        result_.score += res.result.status == 0 ? 1
+            : -(res.errors.style + res.errors.low * 2 + res.errors.medium * 5
+                    + res.errors.high * 10 + res.errors.critical * 100);
+
+        if (res.result.status != 0) {
+            res.result.print;
+
+            if (!logged_failure) {
+                result_.msg ~= Msg(Severity.failReason, "clang-tidy warn about file(s)");
+                logged_failure = true;
+            }
+
+            try {
+                result_.msg ~= Msg(Severity.improveSuggestion,
+                        format("clang-tidy: fix %-(%s, %) in %s", res.errors.toRange, res.file));
+            } catch (Exception e) {
+                logger.warning(e.msg).collectException;
+                logger.warning("Unable to add user message to the result").collectException;
+            }
+        }
+
+        result_.status = mergeStatus(result_.status, res.result.status == 0
+                ? Status.passed : Status.failed);
+        logger.trace(result_).collectException;
+    }
+
+    auto pool = new TaskPool;
+    scope (exit)
+        pool.finish;
+
+    static struct DoneCondition {
+        int expected;
+        int replies;
+
+        bool isWaitingForReplies() {
+            return replies < expected;
+        }
+    }
+
+    DoneCondition cond;
+
+    foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
+        if (cmd.isNull) {
+            result_.status = Status.failed;
+            result_.score -= 100;
+            result_.msg ~= Msg(Severity.failReason,
+                    "clang-tidy where unable to find one of the specified files in compile_commands.json");
+            break;
+        }
+
+        cond.expected++;
+
+        immutable(TidyWork)* w = () @trusted{
+            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile);
+        }();
+        auto t = task!taskTidy(thisTid, w);
+        pool.put(t);
+    }
+
+    while (cond.isWaitingForReplies) {
+        () @trusted{
+            try {
+                if (receiveTimeout(1.dur!"seconds", &handleResult)) {
+                    cond.replies++;
+                }
+            } catch (Exception e) {
+                logger.error(e.msg);
+            }
+        }();
+    }
+}
+
+void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
+    import code_checker.compile_db : UserFileRange, CompileCommandFilter;
+
+    AbsolutePath[] files;
+
+    foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
+        if (cmd.isNull) {
+            result_.status = Status.failed;
+            result_.score -= 100;
+            result_.msg ~= Msg(Severity.failReason,
+                    "clang-tidy where unable to find one of the specified files in compile_commands.json");
+            break;
+        }
+        files ~= cmd.absoluteFile;
+    }
+
+    auto res = runClangTidy(tidyArgs, files);
+    if (res.status != 0) {
+        res.print;
+        result_.status = Status.failed;
+        result_.score -= 1000;
+        result_.msg ~= Msg(Severity.failReason, "clang-tidy failed to apply fixes");
+    }
+}
+
 struct TidyResult {
     AbsolutePath file;
     RunResult result;
@@ -207,7 +233,6 @@ struct TidyResult {
 
 struct TidyWork {
     string[] args;
-    string[] cflags;
     AbsolutePath p;
 }
 
@@ -219,7 +244,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
     try {
         tres.file = work.p;
-        tres.result = runClangTidy(work.args, work.cflags, work.p);
+        tres.result = runClangTidy(work.args, [work.p]);
         tres.errors = countErrors(tres.result.stdout);
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
@@ -240,7 +265,7 @@ struct ClangTidyConstants {
     static immutable confFile = ".clang-tidy";
 }
 
-auto runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname) {
+auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
     import std.algorithm : map, copy;
     import std.format : format;
     import std.array : appender;
@@ -249,7 +274,7 @@ auto runClangTidy(string[] tidy_args, string[] compiler_args, AbsolutePath fname
     auto app = appender!(string[])();
     app.put(ClangTidyConstants.bin);
     tidy_args.copy(app);
-    app.put(fname);
+    fname.copy(app);
 
     return run(app.data);
 }
