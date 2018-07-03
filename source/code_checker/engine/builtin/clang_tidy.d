@@ -150,7 +150,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 
             try {
                 result_.msg ~= Msg(MsgSeverity.improveSuggestion,
-                        format("clang-tidy: fix %-(%s, %) in %s", res.errors.toRange, res.file));
+                        format("clang-tidy: %-(%s, %) in %s", res.errors.toRange, res.file));
             } catch (Exception e) {
                 logger.warning(e.msg).collectException;
                 logger.warning("Unable to add user message to the result").collectException;
