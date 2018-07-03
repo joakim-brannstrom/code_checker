@@ -135,12 +135,12 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
             res.result.print;
 
             if (!logged_failure) {
-                result_.msg ~= Msg(Severity.failReason, "clang-tidy warn about file(s)");
+                result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy warn about file(s)");
                 logged_failure = true;
             }
 
             try {
-                result_.msg ~= Msg(Severity.improveSuggestion,
+                result_.msg ~= Msg(MsgSeverity.improveSuggestion,
                         format("clang-tidy: fix %-(%s, %) in %s", res.errors.toRange, res.file));
             } catch (Exception e) {
                 logger.warning(e.msg).collectException;
@@ -172,7 +172,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;
-            result_.msg ~= Msg(Severity.failReason,
+            result_.msg ~= Msg(MsgSeverity.failReason,
                     "clang-tidy where unable to find one of the specified files in compile_commands.json");
             break;
         }
@@ -208,7 +208,7 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;
-            result_.msg ~= Msg(Severity.failReason,
+            result_.msg ~= Msg(MsgSeverity.failReason,
                     "clang-tidy where unable to find one of the specified files in compile_commands.json");
             break;
         }
@@ -220,7 +220,7 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         res.print;
         result_.status = Status.failed;
         result_.score -= 1000;
-        result_.msg ~= Msg(Severity.failReason, "clang-tidy failed to apply fixes");
+        result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes");
     }
 }
 
@@ -279,7 +279,7 @@ auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
 }
 
 struct CountErrorsResult {
-    import code_checker.engine.builtin.clang_tidy_classification : Severity;
+    import code_checker.engine.types : Severity;
 
     int total;
     int style;

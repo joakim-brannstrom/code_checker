@@ -5,15 +5,9 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.builtin.clang_tidy_classification;
 
-@safe:
+import code_checker.engine.types : Severity;
 
-enum Severity {
-    style,
-    low,
-    medium,
-    high,
-    critical
-}
+@safe:
 
 immutable Severity[string] severityMap;
 

@@ -75,7 +75,7 @@ struct Score {
 }
 
 /// The severity of a user message.
-enum Severity {
+enum MsgSeverity {
     /// Why an analyzer failed to execute
     unableToExecute,
     /// Why an analyzer reports failed
@@ -86,7 +86,7 @@ enum Severity {
 
 /// A message from an analyzer.
 struct Msg {
-    Severity severity;
+    MsgSeverity severity;
     string value;
     alias value this;
 
@@ -141,4 +141,13 @@ struct TotalResult {
 
     /// Improvement suggestions for the user
     Suggestions sugg;
+}
+
+/// Classification of warnings. Used by the user to filter on.
+enum Severity {
+    style,
+    low,
+    medium,
+    high,
+    critical
 }
