@@ -182,8 +182,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 
     DoneCondition cond;
 
-    foreach (cmd; UserFileRange(env.compileDb, env.files,
-            env.compiler.extraFlags, CompileCommandFilter.init)) {
+    foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;

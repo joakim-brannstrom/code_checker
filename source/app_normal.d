@@ -197,6 +197,8 @@ struct NormalFSM {
                         return conf.analyzeFiles.dup;
         }();
         env.genCompileDb = conf.compileDb.generateDb;
+        env.flagFilter = conf.compileDb.flagFilter;
+
         env.staticCode = conf.staticCode;
         env.clangTidy = conf.clangTidy;
         env.compiler = conf.compiler;

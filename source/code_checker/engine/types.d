@@ -35,12 +35,15 @@ interface BaseFixture {
 /// Environment data useful for an anylser.
 struct Environment {
     import code_checker.types : AbsolutePath;
-    import code_checker.compile_db : CompileCommandDB;
+    import code_checker.compile_db : CompileCommandDB, CompileCommandFilter;
 
     ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
     Compiler compiler;
     Logging logg;
+
+    /// Flags the user wants to be automatically removed from the compile_commands.json.
+    CompileCommandFilter flagFilter;
 
     /// Command to generate the compile_commands.json
     string genCompileDb;
