@@ -26,15 +26,15 @@ struct Logger {
     void put(const AbsolutePath f, const string[][] content) @trusted {
         import std.algorithm : joiner;
         import std.file : mkdirRecurse, exists;
-        import std.path : pathSplitter;
+        import std.path : pathSplitter, buildPath;
         import std.range : dropOne;
         import std.stdio : File;
         import std.utf : toUTF8;
 
-        if (!exists(f))
-            mkdirRecurse(f);
+        if (!exists(logdir))
+            mkdirRecurse(logdir);
 
-        string lfile = f.dup.dropOne.pathSplitter.joiner("_").toUTF8 ~ ".txt";
+        string lfile = buildPath(logdir, f.dup.dropOne.pathSplitter.joiner("_").toUTF8 ~ ".txt");
         auto fout = File(lfile, "w");
 
         foreach (l; (cast(string[][]) content).joiner)
