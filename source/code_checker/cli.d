@@ -46,6 +46,8 @@ struct ConfigClangTidy {
 
 /// Configuration data for the compile_commands.json
 struct ConfigCompileDb {
+    import code_checker.compile_db : CompileCommandFilter;
+
     /// Command to generate the compile_commands.json
     string generateDb;
 
@@ -57,10 +59,14 @@ struct ConfigCompileDb {
 
     /// Do not remove the merged compile_commands.json
     bool keep;
+
+    /// Flags the user wants to be automatically removed from the compile_commands.json.
+    CompileCommandFilter flagFilter;
 }
 
 /// Settings for the compiler
 struct Compiler {
+    /// Additional flags the user wants to add besides those that are in the compile_commands.json.
     string[] extraFlags;
 }
 
@@ -93,8 +99,12 @@ struct Config {
 
     /// Returns: a config object with default values.
     static Config make() @safe {
+        import code_checker.compile_db : defaultCompilerFlagFilter,
+            CompileCommandFilter;
+
         Config c;
         setClangTidyFromDefault(c);
+        c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 1);
         return c;
     }
 
@@ -125,6 +135,12 @@ struct Config {
             app.put(format("search_paths = %s", ["./compile_commands.json"]));
         else
             app.put(format("search_paths = %s", compileDb.dbs));
+        if (full) {
+            app.put("# flags to remove when analyzing a file in the DB");
+            app.put(format("# filter = [%(%s,\n%)]", compileDb.flagFilter.filter));
+            app.put("# compiler arguments to skip from the beginning. Needed when the first argument is NOT a compiler but rather a wrapper");
+            app.put(format("# skip_compiler_args = %s", compileDb.flagFilter.skipCompilerArgs));
+        }
         app.put(null);
 
         app.put("[clang_tidy]");
@@ -333,6 +349,14 @@ void loadConfig(ref Config rval) @trusted {
     };
     callbacks["compile_commands.generate_cmd"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.generateDb = v.str;
+    };
+    callbacks["compile_commands.filter"] = (ref Config c, ref TOMLValue v) {
+        import code_checker.compile_db : FilterClangFlag;
+
+        c.compileDb.flagFilter.filter = v.array.map!(a => FilterClangFlag(a.str)).array;
+    };
+    callbacks["compile_commands.skip_compiler_args"] = (ref Config c, ref TOMLValue v) {
+        c.compileDb.flagFilter.skipCompilerArgs = cast(int) v.integer;
     };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.headerFilter = v.str;
