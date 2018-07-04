@@ -7,7 +7,7 @@
 code_checker depends on the following software packages:
 
  * [D compiler](https://dlang.org/download.html) (dmd 2.079+, ldc 1.8.0+)
- * clang-tidy
+ * clang-tidy (4.0+)
 
 For users running Ubuntu one of the dependencies can be installed with apt.
 ```sh
