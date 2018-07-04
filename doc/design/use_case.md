@@ -60,3 +60,10 @@ partof: REQ-purpose
 The user wnats to be able to specify paths in the configuration file for the program such that they can be used by other users than the one editing the configuration file.
 
 The user may namely invoke the program from some other location. It is then important that all paths are calculated relative to the config file. Not from what the users currently working directory is.
+
+# REQ-uc_logfiles
+partof: REQ-purpose
+###
+
+The user wants the warnings to be stored in a file per source code file that is analyzed.
+This is to make it easier to read and understand the errors in those cases the user do not run inside e.g. an IDE which visualizes the result.
