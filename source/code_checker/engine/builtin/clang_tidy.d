@@ -337,10 +337,9 @@ struct CountErrorsResult {
     }
 
     auto toRange() const {
-        import std.algorithm;
+        import std.algorithm : map, sort;
         import std.array : array;
         import std.format : format;
-        import std.range;
 
         return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
             .map!(a => format("%s %s", a.value, a.key));
