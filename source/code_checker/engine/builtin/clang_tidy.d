@@ -62,7 +62,7 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
-        // inactivate those that are of below the configured severity level.
+        // inactivate those that are below the configured severity level.
         // dfmt off
         env.clangTidy.checks ~= severityMap
             .byKeyValue
@@ -70,12 +70,6 @@ class ClangTidy : BaseFixture {
             .map!(a => format("-%s", a.key))
             .array;
         // dfmt on
-
-        //if (!env.staticCode.checkNameStandard) {
-        //env.clangTidy.checks ~= ["-readability-identifier-naming"];
-        //// if names are ignored then the user is probably not interested in namespaces either
-        //env.clangTidy.checks ~= ["-llvm-namespace-comment"];
-        //}
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
@@ -343,12 +337,26 @@ struct CountErrorsResult {
     }
 
     auto toRange() const {
-        import std.algorithm;
+        import std.algorithm : map, sort;
+        import std.array : array;
         import std.format : format;
-        import std.range;
 
-        return score_.byKeyValue.map!(a => format("%s %s", a.key, a.value));
+        return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
+            .map!(a => format("%s %s", a.value, a.key));
     }
+}
+
+@("shall sort the error counts")
+unittest {
+    import std.traits : EnumMembers;
+    import code_checker.engine.types : Severity;
+    import unit_threaded;
+
+    CountErrorsResult r;
+    foreach (s; [EnumMembers!Severity])
+        r.put(s);
+
+    r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
 }
 
 /// Count the number of lines with a error: message in it.
