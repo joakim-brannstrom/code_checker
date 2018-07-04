@@ -62,7 +62,7 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.clangTidy.headerFilter].copy(app);
 
-        // inactivate those that are of below the configured severity level.
+        // inactivate those that are below the configured severity level.
         // dfmt off
         env.clangTidy.checks ~= severityMap
             .byKeyValue
@@ -70,12 +70,6 @@ class ClangTidy : BaseFixture {
             .map!(a => format("-%s", a.key))
             .array;
         // dfmt on
-
-        //if (!env.staticCode.checkNameStandard) {
-        //env.clangTidy.checks ~= ["-readability-identifier-naming"];
-        //// if names are ignored then the user is probably not interested in namespaces either
-        //env.clangTidy.checks ~= ["-llvm-namespace-comment"];
-        //}
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
