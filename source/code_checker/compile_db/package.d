@@ -485,9 +485,6 @@ auto defaultCompilerFlagFilter() @safe {
 
     // dfmt off
     foreach (f; [
-             // removed because there are too many  difference between gcc and
-             // clang to be of use.
-             "-Werror",
              // remove basic compile flag irrelevant for AST generation
              "-c", "-o",
              // machine dependent flags
