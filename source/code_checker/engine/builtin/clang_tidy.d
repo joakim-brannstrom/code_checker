@@ -214,9 +214,17 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 }
 
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
+    import std.path : buildPath;
     import code_checker.compile_db : UserFileRange, CompileCommandFilter;
+    import code_checker.engine.logger : Logger;
 
     AbsolutePath[] files;
+    auto logg = Logger(env.logg.dir);
+
+    if (env.logg.toFile) {
+        logg.setup;
+        tidyArgs ~= ["-export-fixes", buildPath(env.logg.dir, "fixes.yaml")];
+    }
 
     foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
         if (cmd.isNull) {
@@ -232,6 +240,15 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     auto res = runClangTidy(tidyArgs, files);
     if (res.status != 0) {
         res.print;
+        if (env.logg.toFile) {
+            try {
+                logg.put(AbsolutePath(Path("fixit_log")), [res.stdout, res.stdout]);
+            } catch (Exception e) {
+                logger.warning(e.msg).collectException;
+                logger.warning("Unable to log to file").collectException;
+            }
+        }
+
         result_.status = Status.failed;
         result_.score -= 1000;
         result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes");

@@ -20,19 +20,24 @@ struct Logger {
         this.logdir = p;
     }
 
+    void setup() {
+        import std.file : mkdirRecurse, exists;
+
+        if (!exists(logdir))
+            mkdirRecurse(logdir);
+    }
+
     /** Log `content` to a file in logdir with a filename derived from f.
      *
      */
     void put(const AbsolutePath f, const string[][] content) @trusted {
         import std.algorithm : joiner;
-        import std.file : mkdirRecurse, exists;
         import std.path : pathSplitter, buildPath;
         import std.range : dropOne;
         import std.stdio : File;
         import std.utf : toUTF8;
 
-        if (!exists(logdir))
-            mkdirRecurse(logdir);
+        setup();
 
         string lfile = buildPath(logdir, f.dup.dropOne.pathSplitter.joiner("_").toUTF8 ~ ".txt");
         auto fout = File(lfile, "w");
