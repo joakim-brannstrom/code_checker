@@ -213,8 +213,12 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
     }
 }
 
+/// Run clang-tidy with to fix the code.
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
+    import std.algorithm : copy, map;
+    import std.array : array;
     import std.path : buildPath;
+    import std.process : spawnProcess, wait;
     import code_checker.compile_db : UserFileRange, CompileCommandFilter;
     import code_checker.engine.logger : Logger;
 
@@ -237,18 +241,11 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         files ~= cmd.absoluteFile;
     }
 
-    auto res = runClangTidy(tidyArgs, files);
-    if (res.status != 0) {
-        res.print;
-        if (env.logg.toFile) {
-            try {
-                logg.put(AbsolutePath(Path("fixit_log")), [res.stdout, res.stdout]);
-            } catch (Exception e) {
-                logger.warning(e.msg).collectException;
-                logger.warning("Unable to log to file").collectException;
-            }
-        }
+    auto args = [ClangTidyConstants.bin] ~ tidyArgs ~ files.map!(a => cast(string) a).array;
+    logger.tracef("run: %s", args);
 
+    auto status = spawnProcess(args).wait;
+    if (status != 0) {
         result_.status = Status.failed;
         result_.score -= 1000;
         result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes");
@@ -296,7 +293,7 @@ struct ClangTidyConstants {
 }
 
 auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
-    import std.algorithm : map, copy;
+    import std.algorithm : copy;
     import std.format : format;
     import std.array : appender;
     import code_checker.process;
