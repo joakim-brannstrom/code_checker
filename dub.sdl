@@ -7,9 +7,6 @@ license "BSL-1.0"
 dependency "code_checker:toml" version="*"
 subPackage "./vendor/toml"
 
-dependency "code_checker:state-machine" version="*"
-subPackage "./vendor/state-machine"
-
 subPackage "./vendor/unit-threaded"
 
 targetPath "build"
