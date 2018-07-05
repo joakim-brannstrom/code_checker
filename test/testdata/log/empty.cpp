@@ -1,1 +1,1 @@
-int fun(int x) { return x / 0; }
+int fun_wun(int x) { return x / 0; }
