@@ -317,3 +317,120 @@ shared static this() {
             ];
     // dfmt on
 }
+
+struct CountErrorsResult {
+    import code_checker.engine.types : Severity;
+
+    private {
+        int total;
+        int[Severity] score_;
+    }
+
+    /// Returns: the score when summing up the found occurancies.
+    int score() @safe pure nothrow const @nogc scope {
+        int sum;
+        // just chose some numbers. The intent is that warnings should be a high penalty
+        foreach (kv; score_.byKeyValue) {
+            final switch (kv.key) {
+            case Severity.style:
+                sum -= kv.value;
+                break;
+            case Severity.low:
+                sum -= kv.value * 2;
+                break;
+            case Severity.medium:
+                sum -= kv.value * 5;
+                break;
+            case Severity.high:
+                sum -= kv.value * 10;
+                break;
+            case Severity.critical:
+                sum -= kv.value * 100;
+                break;
+            }
+        }
+
+        return sum;
+    }
+
+    void put(const Severity s) {
+        total++;
+
+        if (auto v = s in score_)
+            (*v)++;
+        else
+            score_[s] = 1;
+    }
+
+    auto toRange() const {
+        import std.algorithm : map, sort;
+        import std.array : array;
+        import std.format : format;
+
+        return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
+            .map!(a => format("%s %s", a.value, a.key));
+    }
+}
+
+@("shall sort the error counts")
+unittest {
+    import std.traits : EnumMembers;
+    import code_checker.engine.types : Severity;
+    import unit_threaded;
+
+    CountErrorsResult r;
+    foreach (s; [EnumMembers!Severity])
+        r.put(s);
+
+    r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
+}
+
+/// Count the number of lines with a error: message in it.
+CountErrorsResult countErrors(string[] lines) @trusted {
+    import std.algorithm;
+    import std.regex : ctRegex, matchFirst;
+    import std.string : startsWith;
+
+    CountErrorsResult r;
+
+    auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
+
+    foreach (a; lines.map!(a => matchFirst(a, re_error)).filter!(a => a.length > 1)) {
+        r.total++;
+
+        if (auto v = a[1] in severityMap) {
+            r.put(*v);
+        } else {
+            // this is a fallback when new rules are added to clang-tidy but
+            // they haven't been thoroughly analyzed in
+            // `code_checker.engine.builtin.clang_tidy_classification`.
+            if (a[1].startsWith("readability-"))
+                r.put(Severity.style);
+            else if (a[1].startsWith("clang-analyzer-"))
+                r.put(Severity.high);
+            else
+                r.put(Severity.medium);
+        }
+    }
+
+    return r;
+}
+
+/// Returns: the classification of the diagnostic message.
+Severity classify(string diagnostic_msg) {
+    import std.string : startsWith;
+
+    if (auto v = diagnostic_msg in severityMap) {
+        return *v;
+    }
+
+    // this is a fallback when new rules are added to clang-tidy but
+    // they haven't been thoroughly analyzed in
+    // `code_checker.engine.builtin.clang_tidy_classification`.
+    if (diagnostic_msg.startsWith("readability-"))
+        return Severity.style;
+    else if (diagnostic_msg.startsWith("clang-analyzer-"))
+        return Severity.high;
+
+    return Severity.medium;
+}
