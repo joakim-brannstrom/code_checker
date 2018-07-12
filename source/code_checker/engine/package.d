@@ -7,6 +7,6 @@ For the design see $(LINK2 doc/design/analyze_engine.md, Analyze Engine).
 */
 module code_checker.engine;
 
-public import code_checker.engine.types : Environment, Status;
+public import code_checker.engine.types : Environment, Status, Severity;
 public import code_checker.engine.registry;
 public import code_checker.engine.builtin.clang_tidy;
