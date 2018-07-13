@@ -385,35 +385,48 @@ unittest {
     r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
 }
 
-/// Count the number of lines with a error: message in it.
-CountErrorsResult countErrors(string[] lines) @trusted {
-    import std.algorithm;
+/** Apply `fn` on the diagnostic messages.
+ *
+ * The return value from fn replaces the message. This makes it possible to
+ * rewrite a message if needed.
+ *
+ * Params:
+ *  diagFn = mapped onto a diagnostic message
+ *  lines = an input range of lines to analyze for diagnostic messages
+ *  w = output range that the resulting log is written to.
+ */
+void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
+    import std.algorithm : startsWith;
     import std.regex : ctRegex, matchFirst;
     import std.string : startsWith;
-
-    CountErrorsResult r;
+    import std.range : put;
 
     auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
 
-    foreach (a; lines.map!(a => matchFirst(a, re_error)).filter!(a => a.length > 1)) {
-        r.total++;
+    foreach (a; lines) {
+        auto m = matchFirst(a, re_error);
 
-        if (auto v = a[1] in severityMap) {
-            r.put(*v);
+        if (m.length > 1) {
+            Severity s;
+            if (auto v = a in severityMap) {
+                s = *v;
+            } else {
+                // this is a fallback when new rules are added to clang-tidy but
+                // they haven't been thoroughly analyzed in
+                // `code_checker.engine.builtin.clang_tidy_classification`.
+                if (a.startsWith("readability-"))
+                    s = Severity.style;
+                else if (a.startsWith("clang-analyzer-"))
+                    s = Severity.high;
+                else
+                    s = Severity.medium;
+            }
+
+            put(w, diagFn(s, a));
         } else {
-            // this is a fallback when new rules are added to clang-tidy but
-            // they haven't been thoroughly analyzed in
-            // `code_checker.engine.builtin.clang_tidy_classification`.
-            if (a[1].startsWith("readability-"))
-                r.put(Severity.style);
-            else if (a[1].startsWith("clang-analyzer-"))
-                r.put(Severity.high);
-            else
-                r.put(Severity.medium);
+            put(w, a);
         }
     }
-
-    return r;
 }
 
 /// Returns: the classification of the diagnostic message.
@@ -437,16 +450,16 @@ Severity classify(string diagnostic_msg) {
 
 /**
  * Params:
- *  predicate = first param is `s` and the second is the classification. True means that it is kept, false thrown away.
+ *  predicate = param is the classification of the diagnostic message. True means that it is kept, false thrown away
  * Returns: a range of rules to inactivate that are below `s`
  */
-auto filterSeverity(alias predicate)(Severity s) {
+auto filterSeverity(alias predicate)() {
     import std.algorithm : filter, map;
 
     // dfmt off
     return severityMap
         .byKeyValue
-        .filter!(a => predicate(s, a.value))
+        .filter!(a => predicate(a.value))
         .map!(a => a.key);
     // dfmt on
 }

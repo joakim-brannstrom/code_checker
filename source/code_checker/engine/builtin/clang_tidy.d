@@ -12,8 +12,7 @@ import std.exception : collectException;
 import std.concurrency : Tid, thisTid;
 import logger = std.experimental.logger;
 
-import code_checker.engine.builtin.clang_tidy_classification : countErrors,
-    CountErrorsResult;
+import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
 import code_checker.types;
@@ -65,7 +64,7 @@ class ClangTidy : BaseFixture {
         // inactivate those that are below the configured severity level.
         // dfmt off
         env.clangTidy.checks ~=
-            filterSeverity!((a,b) => a >= b)(env.staticCode.severity)
+            filterSeverity!(a => a < env.staticCode.severity)
             .map!(a => format("-%s", a))
             .array;
         // dfmt on
@@ -124,23 +123,25 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
     auto logg = Logger(env.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
+        import std.array : appender;
         import std.format : format;
         import std.typecons : nullableRef;
         import colorize : Color, color, Background, Mode;
+        import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
 
         auto res = nullableRef(cast() res_);
 
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
                 Background.black), res.file).collectException;
 
-        result_.score += res.result.status == 0 ? 1 : res.errors.score;
+        result_.score += res.clangTidyStatus == 0 ? 1 : res.errors.score;
 
-        if (res.result.status != 0) {
-            res.result.print;
+        if (res.clangTidyStatus != 0) {
+            res.print;
 
             if (env.logg.toFile) {
                 try {
-                    logg.put(res.file, [res.result.stdout, res.result.stdout]);
+                    logg.put(res.file, [res.output]);
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
                     logger.warning("Unable to log to file").collectException;
@@ -161,7 +162,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
             }
         }
 
-        result_.status = mergeStatus(result_.status, res.result.status == 0
+        result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
                 ? Status.passed : Status.failed);
         logger.trace(result_).collectException;
     }
@@ -253,8 +254,21 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
 
 struct TidyResult {
     AbsolutePath file;
-    RunResult result;
     CountErrorsResult errors;
+
+    /// Exit status from running clang tidy
+    int clangTidyStatus;
+
+    /// Output to the user
+    string[] output;
+
+    void print() @safe nothrow const scope {
+        import std.ascii : newline;
+        import std.stdio : writeln;
+
+        foreach (l; output)
+            writeln(l).collectException;
+    }
 }
 
 struct TidyWork {
@@ -263,15 +277,33 @@ struct TidyWork {
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
+    import std.algorithm : copy;
+    import std.array : appender;
     import std.concurrency : send;
+    import std.format : format;
+    import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
+        Severity;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
 
     try {
+        string diagMsg(Severity s, string diag) {
+            tres.errors.put(s);
+            return format("%s[%s]", diag, s);
+        }
+
         tres.file = work.p;
-        tres.result = runClangTidy(work.args, [work.p]);
-        tres.errors = countErrors(tres.result.stdout);
+
+        auto res = runClangTidy(work.args, [work.p]);
+        tres.clangTidyStatus = res.status;
+
+        auto app = appender!(string[])();
+        mapClangTidy!diagMsg(res.stdout, app);
+
+        res.stderr.copy(app);
+
+        tres.output = app.data;
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
     }
