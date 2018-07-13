@@ -9,7 +9,16 @@ public import code_checker.engine.types : Severity;
 
 @safe:
 
-immutable Severity[string] severityMap;
+struct SeverityColor {
+    import colorize : Color, Background, Mode;
+
+    Color c = Color.white;
+    Background bg = Background.black;
+    Mode m;
+}
+
+immutable Severity[string] diagnosticSeverity;
+immutable SeverityColor[Severity] severityColor;
 
 shared static this() {
     // copied from https://github.com/Ericsson/codechecker/blob/master/config/checker_severity_map.json
@@ -17,7 +26,7 @@ shared static this() {
     // sorted alphabetically
 
     // dfmt off
-    severityMap = [
+    diagnosticSeverity = [
         // these do not seem to exist. keeping if they are impl. in clang-tidy
     "alpha.clone.CloneChecker":                                   Severity.low,
     "alpha.core.BoolAssignment":                                  Severity.low,
@@ -315,6 +324,16 @@ shared static this() {
     "clang-analyzer-valist.Uninitialized":                        Severity.medium,
     "clang-analyzer-valist.Unterminated":                         Severity.medium,
             ];
+
+    import colorize : Color, Background, Mode;
+
+    severityColor = [
+        Severity.style: SeverityColor(Color.light_cyan, Background.black, Mode.init_),
+        Severity.low: SeverityColor(Color.light_blue, Background.black, Mode.bold),
+        Severity.medium: SeverityColor(Color.light_yellow, Background.black, Mode.init_),
+        Severity.high: SeverityColor(Color.red, Background.black, Mode.bold),
+        Severity.critical: SeverityColor(Color.magenta, Background.black, Mode.bold),
+    ];
     // dfmt on
 }
 
@@ -403,28 +422,14 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
 
     auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
 
-    foreach (a; lines) {
-        auto m = matchFirst(a, re_error);
+    foreach (l; lines) {
+        auto m = matchFirst(l, re_error);
 
         if (m.length > 1) {
-            Severity s;
-            if (auto v = a in severityMap) {
-                s = *v;
-            } else {
-                // this is a fallback when new rules are added to clang-tidy but
-                // they haven't been thoroughly analyzed in
-                // `code_checker.engine.builtin.clang_tidy_classification`.
-                if (a.startsWith("readability-"))
-                    s = Severity.style;
-                else if (a.startsWith("clang-analyzer-"))
-                    s = Severity.high;
-                else
-                    s = Severity.medium;
-            }
-
-            put(w, diagFn(s, a));
+            const s = classify(m[1]);
+            put(w, diagFn(s, l));
         } else {
-            put(w, a);
+            put(w, l);
         }
     }
 }
@@ -433,7 +438,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
 Severity classify(string diagnostic_msg) {
     import std.string : startsWith;
 
-    if (auto v = diagnostic_msg in severityMap) {
+    if (auto v = diagnostic_msg in diagnosticSeverity) {
         return *v;
     }
 
@@ -457,9 +462,23 @@ auto filterSeverity(alias predicate)() {
     import std.algorithm : filter, map;
 
     // dfmt off
-    return severityMap
+    return diagnosticSeverity
         .byKeyValue
         .filter!(a => predicate(a.value))
         .map!(a => a.key);
     // dfmt on
+}
+
+/// Returns: severity as a string with colors.
+string color(Severity s) {
+    import std.conv : to;
+    static import colorize;
+
+    SeverityColor sc;
+
+    if (auto v = s in severityColor) {
+        sc = *v;
+    }
+
+    return colorize.color(s.to!string, sc.c, sc.bg, sc.m);
 }

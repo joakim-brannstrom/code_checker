@@ -194,7 +194,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
         cond.expected++;
 
         immutable(TidyWork)* w = () @trusted{
-            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile);
+            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile, !env.logg.toFile);
         }();
         auto t = task!taskTidy(thisTid, w);
         pool.put(t);
@@ -274,6 +274,7 @@ struct TidyResult {
 struct TidyWork {
     string[] args;
     AbsolutePath p;
+    bool useColors;
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
@@ -282,7 +283,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     import std.concurrency : send;
     import std.format : format;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
-        Severity;
+        Severity, color;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
@@ -290,6 +291,8 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     try {
         string diagMsg(Severity s, string diag) {
             tres.errors.put(s);
+            if (work.useColors)
+                return format("%s[%s]", diag, color(s));
             return format("%s[%s]", diag, s);
         }
 
