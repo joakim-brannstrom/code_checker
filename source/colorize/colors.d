@@ -28,7 +28,7 @@ shared static this() {
 
 private template color_type(int offset) {
     static enum type : int {
-        init = 39 + offset,
+        init_ = 39 + offset,
 
         black = 30 + offset,
         red = 31 + offset,
@@ -55,7 +55,7 @@ alias bg = color_type!10.type;
 
 // Text modes
 static enum mode : int {
-    init = 0,
+    init_ = 0,
     bold = 1,
     underline = 4,
     blink = 5,
@@ -79,7 +79,8 @@ static enum mode : int {
  * );
  * ---
  */
-string color(const string str, const fg c = fg.init, const bg b = bg.init, const mode m = mode.init) @trusted {
+string color(const string str, const fg c = fg.init_, const bg b = bg.init_, const mode m = mode
+        .init_) @trusted {
     if (_useColors) {
         return format("\033[%d;%d;%dm%s\033[0m", m, c, b, str);
     }
@@ -110,7 +111,7 @@ string colorHelper(const string str, const string name) pure {
     int code;
 
     switch (name) {
-    case "init":
+    case "init_":
         code = 39;
         break;
 
@@ -244,7 +245,7 @@ string colorHelper(const string str, const string name) pure {
     return format("\033[%dm%s\033[0m", code, str);
 }
 
-string colorHelper(T)(const string str, const T t = T.init) pure @safe 
+string colorHelper(T)(const string str, const T t = T.init_) pure @safe 
         if (is(T : fg) || is(T : bg) || is(T : mode)) {
     return format("\033[%dm%s\033[0m", t, str);
 }
