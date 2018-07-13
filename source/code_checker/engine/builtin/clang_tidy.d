@@ -12,10 +12,10 @@ import std.exception : collectException;
 import std.concurrency : Tid, thisTid;
 import logger = std.experimental.logger;
 
+import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.types;
-import code_checker.types;
 import code_checker.process : RunResult;
-import code_checker.from;
+import code_checker.types;
 
 @safe:
 
@@ -43,8 +43,7 @@ class ClangTidy : BaseFixture {
         import std.file : exists;
         import std.range : put;
         import std.format : format;
-        import code_checker.engine.builtin.clang_tidy_classification : severityMap,
-            Severity;
+        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
         auto app = appender!(string[])();
 
@@ -64,10 +63,9 @@ class ClangTidy : BaseFixture {
 
         // inactivate those that are below the configured severity level.
         // dfmt off
-        env.clangTidy.checks ~= severityMap
-            .byKeyValue
-            .filter!(a => a.value < env.staticCode.severity)
-            .map!(a => format("-%s", a.key))
+        env.clangTidy.checks ~=
+            filterSeverity!(a => a < env.staticCode.severity)
+            .map!(a => format("-%s", a))
             .array;
         // dfmt on
 
@@ -125,23 +123,25 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
     auto logg = Logger(env.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
+        import std.array : appender;
         import std.format : format;
         import std.typecons : nullableRef;
         import colorize : Color, color, Background, Mode;
+        import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
 
         auto res = nullableRef(cast() res_);
 
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
                 Background.black), res.file).collectException;
 
-        result_.score += res.result.status == 0 ? 1 : res.errors.score;
+        result_.score += res.clangTidyStatus == 0 ? 1 : res.errors.score;
 
-        if (res.result.status != 0) {
-            res.result.print;
+        if (res.clangTidyStatus != 0) {
+            res.print;
 
             if (env.logg.toFile) {
                 try {
-                    logg.put(res.file, [res.result.stdout, res.result.stdout]);
+                    logg.put(res.file, [res.output]);
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
                     logger.warning("Unable to log to file").collectException;
@@ -162,7 +162,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
             }
         }
 
-        result_.status = mergeStatus(result_.status, res.result.status == 0
+        result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
                 ? Status.passed : Status.failed);
         logger.trace(result_).collectException;
     }
@@ -194,7 +194,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
         cond.expected++;
 
         immutable(TidyWork)* w = () @trusted{
-            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile);
+            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile, !env.logg.toFile);
         }();
         auto t = task!taskTidy(thisTid, w);
         pool.put(t);
@@ -254,25 +254,59 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
 
 struct TidyResult {
     AbsolutePath file;
-    RunResult result;
     CountErrorsResult errors;
+
+    /// Exit status from running clang tidy
+    int clangTidyStatus;
+
+    /// Output to the user
+    string[] output;
+
+    void print() @safe nothrow const scope {
+        import std.ascii : newline;
+        import std.stdio : writeln;
+
+        foreach (l; output)
+            writeln(l).collectException;
+    }
 }
 
 struct TidyWork {
     string[] args;
     AbsolutePath p;
+    bool useColors;
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
+    import std.algorithm : copy;
+    import std.array : appender;
     import std.concurrency : send;
+    import std.format : format;
+    import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
+        Severity, color;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
 
     try {
+        string diagMsg(Severity s, string diag) {
+            tres.errors.put(s);
+            if (work.useColors)
+                return format("%s[%s]", diag, color(s));
+            return format("%s[%s]", diag, s);
+        }
+
         tres.file = work.p;
-        tres.result = runClangTidy(work.args, [work.p]);
-        tres.errors = countErrors(tres.result.stdout);
+
+        auto res = runClangTidy(work.args, [work.p]);
+        tres.clangTidyStatus = res.status;
+
+        auto app = appender!(string[])();
+        mapClangTidy!diagMsg(res.stdout, app);
+
+        res.stderr.copy(app);
+
+        tres.output = app.data;
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
     }
@@ -304,104 +338,4 @@ auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
     fname.copy(app);
 
     return run(app.data);
-}
-
-struct CountErrorsResult {
-    import code_checker.engine.types : Severity;
-
-    private {
-        int total;
-        int[Severity] score_;
-    }
-
-    /// Returns: the score when summing up the found occurancies.
-    int score() @safe pure nothrow const @nogc scope {
-        int sum;
-        // just chose some numbers. The intent is that warnings should be a high penalty
-        foreach (kv; score_.byKeyValue) {
-            final switch (kv.key) {
-            case Severity.style:
-                sum -= kv.value;
-                break;
-            case Severity.low:
-                sum -= kv.value * 2;
-                break;
-            case Severity.medium:
-                sum -= kv.value * 5;
-                break;
-            case Severity.high:
-                sum -= kv.value * 10;
-                break;
-            case Severity.critical:
-                sum -= kv.value * 100;
-                break;
-            }
-        }
-
-        return sum;
-    }
-
-    void put(const Severity s) {
-        total++;
-
-        if (auto v = s in score_)
-            (*v)++;
-        else
-            score_[s] = 1;
-    }
-
-    auto toRange() const {
-        import std.algorithm : map, sort;
-        import std.array : array;
-        import std.format : format;
-
-        return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
-            .map!(a => format("%s %s", a.value, a.key));
-    }
-}
-
-@("shall sort the error counts")
-unittest {
-    import std.traits : EnumMembers;
-    import code_checker.engine.types : Severity;
-    import unit_threaded;
-
-    CountErrorsResult r;
-    foreach (s; [EnumMembers!Severity])
-        r.put(s);
-
-    r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
-}
-
-/// Count the number of lines with a error: message in it.
-CountErrorsResult countErrors(string[] lines) @trusted {
-    import std.algorithm;
-    import std.regex : ctRegex, matchFirst;
-    import std.string : startsWith;
-
-    import code_checker.engine.builtin.clang_tidy_classification;
-
-    CountErrorsResult r;
-
-    auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
-
-    foreach (a; lines.map!(a => matchFirst(a, re_error)).filter!(a => a.length > 1)) {
-        r.total++;
-
-        if (auto v = a[1] in severityMap) {
-            r.put(*v);
-        } else {
-            // this is a fallback when new rules are added to clang-tidy but
-            // they haven't been thoroughly analyzed in
-            // `code_checker.engine.builtin.clang_tidy_classification`.
-            if (a[1].startsWith("readability-"))
-                r.put(Severity.style);
-            else if (a[1].startsWith("clang-analyzer-"))
-                r.put(Severity.high);
-            else
-                r.put(Severity.medium);
-        }
-    }
-
-    return r;
 }

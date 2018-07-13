@@ -114,16 +114,19 @@ struct Config {
         import std.array : appender, array;
         import std.format : format;
         import std.utf : toUTF8;
+        import std.traits : EnumMembers;
+        import code_checker.engine : Severity;
 
         auto app = appender!(string[])();
         app.put("[defaults]");
-        app.put("# only report issues with a severity >= to this value");
+        app.put(format("# only report issues with a severity >= to this value (%(%s, %))",
+                [EnumMembers!Severity]));
         app.put(format(`severity = "%s"`, staticCode.severity));
         app.put(null);
 
         app.put("[compiler]");
         app.put("# extra flags to pass on to the compiler");
-        app.put(`# extra_flags = [ "-std=c++11", "-Wextra", "-Werror" ]`);
+        app.put(`# extra_flags = [ "-std=c++11", "-Wextra", "-Wdocumentation" ]`);
         app.put(null);
 
         app.put("[compile_commands]");

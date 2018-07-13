@@ -9,7 +9,16 @@ public import code_checker.engine.types : Severity;
 
 @safe:
 
-immutable Severity[string] severityMap;
+struct SeverityColor {
+    import colorize : Color, Background, Mode;
+
+    Color c = Color.white;
+    Background bg = Background.black;
+    Mode m;
+}
+
+immutable Severity[string] diagnosticSeverity;
+immutable SeverityColor[Severity] severityColor;
 
 shared static this() {
     // copied from https://github.com/Ericsson/codechecker/blob/master/config/checker_severity_map.json
@@ -17,7 +26,7 @@ shared static this() {
     // sorted alphabetically
 
     // dfmt off
-    severityMap = [
+    diagnosticSeverity = [
         // these do not seem to exist. keeping if they are impl. in clang-tidy
     "alpha.clone.CloneChecker":                                   Severity.low,
     "alpha.core.BoolAssignment":                                  Severity.low,
@@ -315,5 +324,161 @@ shared static this() {
     "clang-analyzer-valist.Uninitialized":                        Severity.medium,
     "clang-analyzer-valist.Unterminated":                         Severity.medium,
             ];
+
+    import colorize : Color, Background, Mode;
+
+    severityColor = [
+        Severity.style: SeverityColor(Color.light_cyan, Background.black, Mode.init_),
+        Severity.low: SeverityColor(Color.light_blue, Background.black, Mode.bold),
+        Severity.medium: SeverityColor(Color.light_yellow, Background.black, Mode.init_),
+        Severity.high: SeverityColor(Color.red, Background.black, Mode.bold),
+        Severity.critical: SeverityColor(Color.magenta, Background.black, Mode.bold),
+    ];
     // dfmt on
+}
+
+struct CountErrorsResult {
+    import code_checker.engine.types : Severity;
+
+    private {
+        int total;
+        int[Severity] score_;
+    }
+
+    /// Returns: the score when summing up the found occurancies.
+    int score() @safe pure nothrow const @nogc scope {
+        int sum;
+        // just chose some numbers. The intent is that warnings should be a high penalty
+        foreach (kv; score_.byKeyValue) {
+            final switch (kv.key) {
+            case Severity.style:
+                sum -= kv.value;
+                break;
+            case Severity.low:
+                sum -= kv.value * 2;
+                break;
+            case Severity.medium:
+                sum -= kv.value * 5;
+                break;
+            case Severity.high:
+                sum -= kv.value * 10;
+                break;
+            case Severity.critical:
+                sum -= kv.value * 100;
+                break;
+            }
+        }
+
+        return sum;
+    }
+
+    void put(const Severity s) {
+        total++;
+
+        if (auto v = s in score_)
+            (*v)++;
+        else
+            score_[s] = 1;
+    }
+
+    auto toRange() const {
+        import std.algorithm : map, sort;
+        import std.array : array;
+        import std.format : format;
+
+        return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
+            .map!(a => format("%s %s", a.value, a.key));
+    }
+}
+
+@("shall sort the error counts")
+unittest {
+    import std.traits : EnumMembers;
+    import code_checker.engine.types : Severity;
+    import unit_threaded;
+
+    CountErrorsResult r;
+    foreach (s; [EnumMembers!Severity])
+        r.put(s);
+
+    r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
+}
+
+/** Apply `fn` on the diagnostic messages.
+ *
+ * The return value from fn replaces the message. This makes it possible to
+ * rewrite a message if needed.
+ *
+ * Params:
+ *  diagFn = mapped onto a diagnostic message
+ *  lines = an input range of lines to analyze for diagnostic messages
+ *  w = output range that the resulting log is written to.
+ */
+void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
+    import std.algorithm : startsWith;
+    import std.regex : ctRegex, matchFirst;
+    import std.string : startsWith;
+    import std.range : put;
+
+    auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
+
+    foreach (l; lines) {
+        auto m = matchFirst(l, re_error);
+
+        if (m.length > 1) {
+            const s = classify(m[1]);
+            put(w, diagFn(s, l));
+        } else {
+            put(w, l);
+        }
+    }
+}
+
+/// Returns: the classification of the diagnostic message.
+Severity classify(string diagnostic_msg) {
+    import std.string : startsWith;
+
+    if (auto v = diagnostic_msg in diagnosticSeverity) {
+        return *v;
+    }
+
+    // this is a fallback when new rules are added to clang-tidy but
+    // they haven't been thoroughly analyzed in
+    // `code_checker.engine.builtin.clang_tidy_classification`.
+    if (diagnostic_msg.startsWith("readability-"))
+        return Severity.style;
+    else if (diagnostic_msg.startsWith("clang-analyzer-"))
+        return Severity.high;
+
+    return Severity.medium;
+}
+
+/**
+ * Params:
+ *  predicate = param is the classification of the diagnostic message. True means that it is kept, false thrown away
+ * Returns: a range of rules to inactivate that are below `s`
+ */
+auto filterSeverity(alias predicate)() {
+    import std.algorithm : filter, map;
+
+    // dfmt off
+    return diagnosticSeverity
+        .byKeyValue
+        .filter!(a => predicate(a.value))
+        .map!(a => a.key);
+    // dfmt on
+}
+
+/// Returns: severity as a string with colors.
+string color(Severity s) {
+    import std.conv : to;
+    static import colorize;
+
+    SeverityColor sc;
+
+    if (auto v = s in severityColor) {
+        sc = *v;
+    }
+
+    return colorize.color(s.to!string, sc.c, sc.bg, sc.m);
 }
