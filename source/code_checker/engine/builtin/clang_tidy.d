@@ -44,8 +44,7 @@ class ClangTidy : BaseFixture {
         import std.file : exists;
         import std.range : put;
         import std.format : format;
-        import code_checker.engine.builtin.clang_tidy_classification : severityMap,
-            Severity;
+        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
         auto app = appender!(string[])();
 
@@ -65,10 +64,9 @@ class ClangTidy : BaseFixture {
 
         // inactivate those that are below the configured severity level.
         // dfmt off
-        env.clangTidy.checks ~= severityMap
-            .byKeyValue
-            .filter!(a => a.value < env.staticCode.severity)
-            .map!(a => format("-%s", a.key))
+        env.clangTidy.checks ~=
+            filterSeverity!((a,b) => a >= b)(env.staticCode.severity)
+            .map!(a => format("-%s", a))
             .array;
         // dfmt on
 

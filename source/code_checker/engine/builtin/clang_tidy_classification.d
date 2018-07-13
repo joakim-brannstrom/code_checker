@@ -434,3 +434,19 @@ Severity classify(string diagnostic_msg) {
 
     return Severity.medium;
 }
+
+/**
+ * Params:
+ *  predicate = first param is `s` and the second is the classification. True means that it is kept, false thrown away.
+ * Returns: a range of rules to inactivate that are below `s`
+ */
+auto filterSeverity(alias predicate)(Severity s) {
+    import std.algorithm : filter, map;
+
+    // dfmt off
+    return severityMap
+        .byKeyValue
+        .filter!(a => predicate(s, a.value))
+        .map!(a => a.key);
+    // dfmt on
+}
