@@ -538,19 +538,31 @@ struct ParseFlags {
 ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_filter) @safe {
     import std.algorithm : among;
 
-    static bool excludeStartWith(string flag, const FilterClangFlag[] flag_filter) @safe {
+    static bool excludeStartWith(const string raw_flag, const FilterClangFlag[] flag_filter) @safe {
         import std.algorithm : startsWith, filter, count;
+        import std.array : split, empty;
 
         // the purpuse is to find if any of the flags in flag_filter matches
         // the start of flag.
+
+        bool delegate(const FilterClangFlag) @safe cmp;
+
+        const parts = raw_flag.split('=');
+        if (parts.length == 2) {
+            // is a -foo=bar flag thus exact match is the only sensible
+            cmp = (const FilterClangFlag a) => parts[0] == a.payload;
+        } else {
+            // the flag has the argument merged thus have to check if the start match
+            cmp = (const FilterClangFlag a) => raw_flag.startsWith(a.payload);
+        }
 
         // dfmt off
         return 0 != flag_filter
             .filter!(a => a.kind == FilterClangFlag.Kind.exclude)
             // keep flags that are at least the length of values
-            .filter!(a => flag.length >= a.length)
-            // if the flag starst with the exclude-flag it is a match
-            .filter!(a => flag.startsWith(a.payload))
+            .filter!(a => raw_flag.length >= a.length)
+            // if the flag is any of those in filter
+            .filter!cmp
             .count();
         // dfmt on
     }
@@ -734,6 +746,15 @@ unittest {
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
+}
+
+@("shall NOT remove -std=xyz flags")
+unittest {
+    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-std=c++11",
+            "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
+
+    auto s = cmd.parseFlag(defaultCompilerFilter);
+    s.shouldEqual(["-std=c++11"]);
 }
 
 @("Shall keep all compiler flags as they are")
