@@ -46,6 +46,7 @@ class ClangTidy : BaseFixture {
         import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
         auto app = appender!(string[])();
+        app.put(env.clangTidy.binary);
 
         app.put("-p=.");
 
@@ -88,7 +89,7 @@ class ClangTidy : BaseFixture {
             app.put(c.data);
         }
 
-        tidyArgs ~= app.data;
+        tidyArgs = app.data;
     }
 
     /// Execute the analyzer.
@@ -241,7 +242,7 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         files ~= cmd.absoluteFile;
     }
 
-    auto args = [ClangTidyConstants.bin] ~ tidyArgs ~ files.map!(a => cast(string) a).array;
+    auto args = tidyArgs ~ files.map!(a => cast(string) a).array;
     logger.tracef("run: %s", args);
 
     auto status = spawnProcess(args).wait;
@@ -322,18 +323,15 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 }
 
 struct ClangTidyConstants {
-    static immutable bin = "clang-tidy";
     static immutable confFile = ".clang-tidy";
 }
 
 auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
     import std.algorithm : copy;
-    import std.format : format;
     import std.array : appender;
     import code_checker.process;
 
     auto app = appender!(string[])();
-    app.put(ClangTidyConstants.bin);
     tidy_args.copy(app);
     fname.copy(app);
 
