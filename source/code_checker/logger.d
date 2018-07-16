@@ -67,9 +67,6 @@ private:
 shared bool _printColors = true;
 shared bool _isColorsInitialized = false;
 
-// isatty() is used in initLogging() to detect whether or not we are on a TTY
-extern (C) int isatty(int);
-
 // The width of the prefix.
 immutable _prefixWidth = 8;
 
@@ -81,8 +78,6 @@ immutable _prefixWidth = 8;
  * piped output, probably an undesiderable thing.
  */
 void initLogging() @trusted {
-    import core.stdc.stdio;
-
     if (_isColorsInitialized)
         return;
     scope (exit)
@@ -92,10 +87,15 @@ void initLogging() @trusted {
     // find any reason to
     _printColors = true;
 
-    import core.sys.posix.unistd;
-
-    if (!isatty(STDERR_FILENO) || !isatty(STDOUT_FILENO))
+    version (Windows) {
         _printColors = false;
+    } else {
+        import core.stdc.stdio;
+        import core.sys.posix.unistd;
+
+        if (!isatty(STDERR_FILENO) || !isatty(STDOUT_FILENO))
+            _printColors = false;
+    }
 }
 
 class SimpleLogger : logger.Logger {
