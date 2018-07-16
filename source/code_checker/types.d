@@ -68,7 +68,7 @@ struct AbsolutePath {
         auto p_expand = () @trusted{ return p.expandTilde; }();
         // the second buildNormalizedPath is needed to correctly resolve "."
         // otherwise it is resolved to /foo/bar/.
-        payload = buildNormalizedPath(p_expand).asAbsNormPath.Path;
+        payload = buildNormalizedPath(p_expand).toRealPath;
     }
 
     /// Build the normalised path from workdir.
@@ -77,7 +77,7 @@ struct AbsolutePath {
         auto workdir_expand = () @trusted{ return workdir.expandTilde; }();
         // the second buildNormalizedPath is needed to correctly resolve "."
         // otherwise it is resolved to /foo/bar/.
-        payload = buildNormalizedPath(workdir_expand, p_expand).asAbsNormPath.Path;
+        payload = buildNormalizedPath(workdir_expand, p_expand).toRealPath;
     }
 
     void opAssign(Path p) {
@@ -181,9 +181,36 @@ nothrow unittest {
 
 private:
 
-string asAbsNormPath(string path) @trusted {
-    import std.path;
-    import std.conv : to;
+/** Convert a string to the "real path" by resolving all symlinks resulting in an absolute path.
 
-    return to!string(path.asAbsolutePath.asNormalizedPath);
+TODO: optimize
+This function is very inefficient. It creates a lot of GC garbage.
+
+trusted: orig_p is a string. A string is assured by the language to be memory
+safe. Thus this function that operates on strings as input are memory safe for
+all possible input.
+  */
+Path toRealPath(const string orig_p) @trusted {
+    import std.conv : to;
+    import std.path : asAbsolutePath, asNormalizedPath;
+
+    version (Windows) {
+        return path.asAbsolutePath.asNormalizedPath.to!string.Path;
+    } else {
+        import core.sys.posix.stdlib : realpath;
+        import core.stdc.stdlib : free;
+        import std.string : toStringz, fromStringz;
+
+        auto p = orig_p.toStringz;
+        auto absp = realpath(p, null);
+        scope (exit) {
+            if (absp)
+                free(absp);
+        }
+
+        if (absp is null)
+            return orig_p.asAbsolutePath.asNormalizedPath.to!string.Path;
+        else
+            return absp.fromStringz.idup.Path;
+    }
 }
