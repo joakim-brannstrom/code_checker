@@ -37,11 +37,23 @@ struct ConfigStaticCode {
 
 /// Configuration options only relevant for clang-tidy.
 struct ConfigClangTidy {
+    /// Checks to toggle on/off
     string[] checks;
+
+    /// Arguments to be baked into the checks parameter
     string[] options;
+
+    /// Argument to the filter parameter
     string headerFilter;
+
+    /// Apply fix hints.
     bool applyFixit;
+
+    /// Apply fix hints even though they result in errors.
     bool applyFixitErrors;
+
+    /// The clang-tidy binary to use.
+    string binary = "clang-tidy";
 }
 
 /// Configuration data for the compile_commands.json
@@ -147,6 +159,8 @@ struct Config {
         app.put(null);
 
         app.put("[clang_tidy]");
+        app.put("# clang-tidy binary to use");
+        app.put(format(`# binary = "%s"`, clangTidy.binary));
         app.put("# arguments to -header-filter");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
         if (full) {
@@ -224,6 +238,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
+            "clang-tidy-bin", "clang-tidy binary to use", &conf.clangTidy.binary,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
