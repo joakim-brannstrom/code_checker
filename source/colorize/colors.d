@@ -17,13 +17,19 @@ void forceColors() @trusted {
 }
 
 shared static this() {
-    import core.sys.posix.unistd : isatty;
     import std.stdio : stdout;
 
     version (unittest)
         _useColors = true;
-    else
-        _useColors = isatty(stdout.fileno) == 1;
+    else {
+        version (Windows) {
+            _useColors = false;
+        } else {
+            import core.sys.posix.unistd : isatty;
+
+            _useColors = isatty(stdout.fileno) == 1;
+        }
+    }
 }
 
 private template color_type(int offset) {
