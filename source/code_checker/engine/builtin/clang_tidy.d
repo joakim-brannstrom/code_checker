@@ -219,6 +219,7 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     import std.algorithm : copy, map;
     import std.array : array;
     import std.path : buildPath;
+    import std.range : enumerate;
     import std.process : spawnProcess, wait;
     import code_checker.compile_db : UserFileRange, CompileCommandFilter;
     import code_checker.engine.logger : Logger;
@@ -231,25 +232,32 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         tidyArgs ~= ["-export-fixes", buildPath(env.logg.dir, "fixes.yaml")];
     }
 
-    foreach (cmd; UserFileRange(env.compileDb, env.files, null, CompileCommandFilter.init)) {
-        if (cmd.isNull) {
+    void executeTidy(string file) {
+        auto args = tidyArgs ~ file;
+        logger.tracef("run: %s", args);
+
+        auto status = spawnProcess(args).wait;
+        if (status != 0) {
             result_.status = Status.failed;
             result_.score -= 100;
-            result_.msg ~= Msg(MsgSeverity.failReason,
-                    "clang-tidy where unable to find one of the specified files in compile_commands.json");
-            break;
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes for "
+                    ~ file ~ ". Use --clang-tidy-fix-errors to forcefully apply the fixes");
         }
-        files ~= cmd.absoluteFile;
     }
 
-    auto args = tidyArgs ~ files.map!(a => cast(string) a).array;
-    logger.tracef("run: %s", args);
+    auto cmds = UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)
+        .array;
+    const max_nr = cmds.length;
+    foreach (idx, cmd; cmds.enumerate) {
+        if (cmd.isNull) {
+            result_.status = Status.failed;
+            result_.score -= 1000;
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
+            continue;
+        }
 
-    auto status = spawnProcess(args).wait;
-    if (status != 0) {
-        result_.status = Status.failed;
-        result_.score -= 1000;
-        result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes");
+        logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.absoluteFile);
+        executeTidy(cmd.absoluteFile);
     }
 }
 
