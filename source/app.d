@@ -18,7 +18,7 @@ int main(string[] args) {
     import std.functional : toDelegate;
     import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig,
         Config;
-    import code_checker.logger;
+    import colorlog;
     import app_normal;
 
     auto conf = () {

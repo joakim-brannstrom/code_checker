@@ -48,7 +48,10 @@ struct Registry {
             return null;
         }
 
-        return order.map!(a => getAnalysers(a)).filter!(a => a !is null).joiner.array;
+        return order.map!(a => getAnalysers(a))
+            .filter!(a => a !is null)
+            .joiner
+            .array;
     }
 }
 
@@ -126,7 +129,7 @@ void log(Messages msgs) {
 
 void log(TotalResult tres) {
     import std.conv : to;
-    import colorize;
+    import colorlog;
 
     logger.infof("Executing analysers %s", tres.status == Status.failed
             ? "Failed".color(Color.red) : "Passed".color(Color.green));
@@ -144,7 +147,7 @@ void log(TotalResult tres) {
 
     const string score = () {
         if (tres.score < 0)
-            return tres.score.to!string.color(Color.red, Background.init, Mode.bold);
+            return tres.score.to!string.color(Color.red).mode(Mode.bold).toString;
         return tres.score.to!string;
     }();
     logger.infof("You scored %s points", score);

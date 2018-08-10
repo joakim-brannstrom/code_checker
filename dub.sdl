@@ -7,6 +7,9 @@ license "BSL-1.0"
 dependency "code_checker:toml" version="*"
 subPackage "./vendor/toml"
 
+dependency "code_checker:colorlog" version="*"
+subPackage "./vendor/colorlog"
+
 subPackage "./vendor/unit-threaded"
 
 targetPath "build"
@@ -18,7 +21,7 @@ configuration "application" {
 configuration "unittest" {
     targetType "executable"
 
-    dependency "code_checker:unit-threaded" version="*"
+    dependency "code_checker:unit-threaded" version="*" optional=true
 
     mainSourceFile "build/ut.d"
     preBuildCommands "./update_ut.d build/ut.d"

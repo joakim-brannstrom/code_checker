@@ -10,7 +10,7 @@ public import code_checker.engine.types : Severity;
 @safe:
 
 struct SeverityColor {
-    import colorize : Color, Background, Mode;
+    import colorlog : Color, Background, Mode;
 
     Color c = Color.white;
     Background bg = Background.black;
@@ -325,12 +325,12 @@ shared static this() {
     "clang-analyzer-valist.Unterminated":                         Severity.medium,
             ];
 
-    import colorize : Color, Background, Mode;
+    import colorlog : Color, Background, Mode;
 
     severityColor = [
-        Severity.style: SeverityColor(Color.light_cyan, Background.black, Mode.init_),
-        Severity.low: SeverityColor(Color.light_blue, Background.black, Mode.bold),
-        Severity.medium: SeverityColor(Color.light_yellow, Background.black, Mode.init_),
+        Severity.style: SeverityColor(Color.lightCyan, Background.black, Mode.none),
+        Severity.low: SeverityColor(Color.lightBlue, Background.black, Mode.bold),
+        Severity.medium: SeverityColor(Color.lightYellow, Background.black, Mode.none),
         Severity.high: SeverityColor(Color.red, Background.black, Mode.bold),
         Severity.critical: SeverityColor(Color.magenta, Background.black, Mode.bold),
     ];
@@ -386,7 +386,9 @@ struct CountErrorsResult {
         import std.array : array;
         import std.format : format;
 
-        return score_.byKeyValue.array.sort!((a, b) => a.key > b.key)
+        return score_.byKeyValue
+            .array
+            .sort!((a, b) => a.key > b.key)
             .map!(a => format("%s %s", a.value, a.key));
     }
 }
@@ -472,7 +474,7 @@ auto filterSeverity(alias predicate)() {
 /// Returns: severity as a string with colors.
 string color(Severity s) {
     import std.conv : to;
-    static import colorize;
+    static import colorlog;
 
     SeverityColor sc;
 
@@ -480,5 +482,5 @@ string color(Severity s) {
         sc = *v;
     }
 
-    return colorize.color(s.to!string, sc.c, sc.bg, sc.m);
+    return colorlog.color(s.to!string, sc.c).bg(sc.bg).mode(sc.m).toString;
 }
