@@ -106,26 +106,26 @@ struct ColorImpl {
         Mode mode_;
     }
 
-    this(string txt) {
+    this(string txt) @safe pure nothrow @nogc {
         text = txt;
     }
 
-    this(string txt, Color c) {
+    this(string txt, Color c) @safe pure nothrow @nogc {
         text = txt;
         fg_ = c;
     }
 
-    auto fg(Color c_) {
+    auto fg(Color c_) @safe pure nothrow @nogc {
         this.fg_ = c_;
         return this;
     }
 
-    auto bg(Background c_) {
+    auto bg(Background c_) @safe pure nothrow @nogc {
         this.bg_ = c_;
         return this;
     }
 
-    auto mode(Mode c_) {
+    auto mode(Mode c_) @safe pure nothrow @nogc {
         this.mode_ = c_;
         return this;
     }
