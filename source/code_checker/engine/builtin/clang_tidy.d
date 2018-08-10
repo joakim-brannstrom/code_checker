@@ -127,13 +127,13 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
         import std.array : appender;
         import std.format : format;
         import std.typecons : nullableRef;
-        import colorize : Color, color, Background, Mode;
+        import colorlog : Color, color, Background, Mode;
         import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
 
         auto res = nullableRef(cast() res_);
 
-        logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow,
-                Background.black), res.file).collectException;
+        logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
+                .bg(Background.black), res.file).collectException;
 
         result_.score += res.clangTidyStatus == 0 ? 1 : res.errors.score;
 

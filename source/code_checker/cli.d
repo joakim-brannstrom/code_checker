@@ -84,7 +84,7 @@ struct Compiler {
 
 /// Settings for logging.
 struct Logging {
-    import code_checker.logger : VerboseMode;
+    import colorlog : VerboseMode;
 
     VerboseMode verbose;
 
@@ -221,7 +221,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     import std.path : dirName, buildPath;
     import std.traits : EnumMembers;
     import code_checker.engine.types : Severity;
-    import code_checker.logger : VerboseMode;
+    import colorlog : VerboseMode;
     static import std.getopt;
 
     bool verbose_info;
