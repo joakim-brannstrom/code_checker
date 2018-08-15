@@ -13,6 +13,7 @@ import std.concurrency : Tid, thisTid;
 import logger = std.experimental.logger;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
+import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
 import code_checker.types;
@@ -111,7 +112,7 @@ class ClangTidy : BaseFixture {
     }
 }
 
-void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
+void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @safe {
     import core.time : dur;
     import std.concurrency : Tid, thisTid, receiveTimeout;
     import std.format : format;
@@ -183,13 +184,19 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 
     DoneCondition cond;
 
+    auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
     foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;
-            result_.msg ~= Msg(MsgSeverity.failReason,
-                    "clang-tidy where unable to find one of the specified files in compile_commands.json");
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             break;
+        } else if (!file_filter.match(cmd.absoluteFile)) {
+            if (logger.globalLogLevel == logger.LogLevel.all)
+                result_.msg ~= Msg(MsgSeverity.trace,
+                        format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
+                            cmd.absoluteFile));
+            continue;
         }
 
         cond.expected++;
@@ -218,9 +225,10 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) {
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     import std.algorithm : copy, map;
     import std.array : array;
+    import std.format : format;
     import std.path : buildPath;
-    import std.range : enumerate;
     import std.process : spawnProcess, wait;
+    import std.range : enumerate;
     import code_checker.compile_db : UserFileRange, CompileCommandFilter;
     import code_checker.engine.logger : Logger;
 
@@ -245,6 +253,7 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         }
     }
 
+    auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
     auto cmds = UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)
         .array;
     const max_nr = cmds.length;
@@ -253,6 +262,12 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
             result_.status = Status.failed;
             result_.score -= 1000;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
+            continue;
+        } else if (!file_filter.match(cmd.absoluteFile)) {
+            if (logger.globalLogLevel == logger.LogLevel.all)
+                result_.msg ~= Msg(MsgSeverity.trace,
+                        format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
+                            cmd.absoluteFile));
             continue;
         }
 
