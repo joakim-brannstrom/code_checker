@@ -1,0 +1,9 @@
+[defaults]
+severity = "style"
+
+[compile_commands]
+search_paths = [ "./compile_commands.json" ]
+exclude = [ ".*/error_in_file.cpp.*" ]
+
+[clang_tidy]
+header_filter = ".*"
