@@ -1,0 +1,12 @@
+[
+    {
+        "directory": ".",
+        "arguments": "-c empty.cpp -o empty.o",
+        "file": "empty.cpp"
+    },
+    {
+        "directory": ".",
+        "arguments": "-c empty.cpp -o empty.o",
+        "file": "error_in_file.cpp"
+    }
+]

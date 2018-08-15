@@ -87,6 +87,8 @@ enum MsgSeverity {
     failReason,
     /// Improvement suggestions for how to fix the score intended for the user
     improveSuggestion,
+    /// Trace data that should only be printed when the loglevel is trace
+    trace,
 }
 
 /// A message from an analyzer.

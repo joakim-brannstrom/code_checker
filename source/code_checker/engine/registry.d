@@ -123,6 +123,9 @@ void log(Messages msgs) {
         case MsgSeverity.failReason:
             logger.warning(m.value);
             break;
+        case MsgSeverity.trace:
+            logger.trace(m.value);
+            break;
         }
     }
 }

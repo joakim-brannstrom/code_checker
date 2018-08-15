@@ -33,6 +33,9 @@ struct ConfigStaticCode {
 
     /// Filter results from analyzers on this severity.
     Severity severity;
+
+    /// Files matching this pattern should not be analyzed.
+    string[] fileExcludeFilter;
 }
 
 /// Configuration options only relevant for clang-tidy.
@@ -43,7 +46,7 @@ struct ConfigClangTidy {
     /// Arguments to be baked into the checks parameter
     string[] options;
 
-    /// Argument to the filter parameter
+    /// Argument to the be passed on to clang-tidy's --header-filter paramter as-is
     string headerFilter;
 
     /// Apply fix hints.
@@ -150,6 +153,9 @@ struct Config {
             app.put(format("search_paths = %s", ["./compile_commands.json"]));
         else
             app.put(format("search_paths = %s", compileDb.dbs));
+        app.put("# files matching any of the regex will not be analyzed");
+        app.put(`# exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]`);
+
         if (full) {
             app.put("# flags to remove when analyzing a file in the DB");
             app.put(format("# filter = [%(%s,\n%)]", compileDb.flagFilter.filter));
@@ -363,10 +369,13 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["defaults.severity"] = &defaults__check_name_standard;
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
-        c.compileDb.rawDbs = v.array.map!(a => a.str).array;
+        c.compileDb.rawDbs = v.array.map!"a.str".array;
     };
     callbacks["compile_commands.generate_cmd"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.generateDb = v.str;
+    };
+    callbacks["compile_commands.exclude"] = (ref Config c, ref TOMLValue v) {
+        c.staticCode.fileExcludeFilter = v.array.map!"a.str".array;
     };
     callbacks["compile_commands.filter"] = (ref Config c, ref TOMLValue v) {
         import code_checker.compile_db : FilterClangFlag;

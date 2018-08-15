@@ -3,6 +3,7 @@ severity = "style"
 
 [compile_commands]
 search_paths = [ "db", "./compile_commands.json" ]
+exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
 
 [clang_tidy]
 header_filter = ".*"
