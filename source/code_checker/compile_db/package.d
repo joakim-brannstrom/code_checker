@@ -206,8 +206,11 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
             import std.range;
 
             // TODO unnecessary to join it
-            arguments = v[j_arg].arrayNoRef.filter!(a => a.type == JSON_TYPE.STRING)
-                .map!(a => a.str).filter!(a => a.length != 0).array;
+            arguments = v[j_arg].arrayNoRef
+                .filter!(a => a.type == JSON_TYPE.STRING)
+                .map!(a => a.str)
+                .filter!(a => a.length != 0)
+                .array;
         }
     } catch (Exception ex) {
     }
@@ -228,8 +231,8 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
         const directory = v["directory"];
         const file = v["file"];
 
-        foreach (a; only(directory, file).map!(a => !a.isNull
-                && a.type == JSON_TYPE.STRING).filter!(a => !a)) {
+        foreach (a; only(directory, file).map!(a => !a.isNull && a.type == JSON_TYPE.STRING)
+                .filter!(a => !a)) {
             // sanity check.
             // if any element is false then break early.
             return typeof(return)();
