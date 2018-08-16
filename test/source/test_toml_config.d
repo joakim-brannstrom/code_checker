@@ -33,6 +33,10 @@ unittest {
     copy(buildPath(testData, "conf", "file_filter", "empty.cpp"), buildPath(ta, "empty.cpp"));
     copy(buildPath(testData, "conf", "file_filter", "error_in_file.cpp"),
             buildPath(ta, "error_in_file.cpp"));
+    copy(buildPath(testData, "conf", "file_filter", "error_in_header.cpp"),
+            buildPath(ta, "error_in_header.cpp"));
+    copy(buildPath(testData, "conf", "file_filter", "error_in_header.hpp"),
+            buildPath(ta, "error_in_header.hpp"));
 
     auto res = run([codeCherckerBin, "--vverbose"], ta);
 

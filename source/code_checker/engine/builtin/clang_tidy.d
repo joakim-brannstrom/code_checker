@@ -112,6 +112,15 @@ class ClangTidy : BaseFixture {
     }
 }
 
+struct ExpectedReplyCounter {
+    int expected;
+    int replies;
+
+    bool isWaitingForReplies() {
+        return replies < expected;
+    }
+}
+
 void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @safe {
     import core.time : dur;
     import std.concurrency : Tid, thisTid, receiveTimeout;
@@ -173,16 +182,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     scope (exit)
         pool.finish;
 
-    static struct DoneCondition {
-        int expected;
-        int replies;
-
-        bool isWaitingForReplies() {
-            return replies < expected;
-        }
-    }
-
-    DoneCondition cond;
+    ExpectedReplyCounter cond;
 
     auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
     foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)) {
@@ -202,7 +202,8 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         cond.expected++;
 
         immutable(TidyWork)* w = () @trusted{
-            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile, !env.logg.toFile);
+            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile,
+                    !env.logg.toFile, env.staticCode.fileExcludeFilter);
         }();
         auto t = task!taskTidy(thisTid, w);
         pool.put(t);
@@ -299,6 +300,7 @@ struct TidyWork {
     string[] args;
     AbsolutePath p;
     bool useColors;
+    string[] fileExcludeFilter;
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
@@ -312,8 +314,39 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
 
+    void sendToOwner() {
+        while (true) {
+            try {
+                owner.send(cast(immutable) tres);
+                break;
+            } catch (Exception e) {
+                logger.tracef("failed sending to: %s", owner).collectException;
+            }
+        }
+    }
+
+    FileFilter file_filter;
     try {
-        string diagMsg(Severity s, string diag) {
+        file_filter = FileFilter(work.fileExcludeFilter);
+    } catch (Exception e) {
+        logger.error(e.msg).collectException;
+        tres.clangTidyStatus = -1;
+        sendToOwner;
+        return;
+    }
+
+    try {
+        // there may be warnings that are skipped. If all warnings are skipped
+        // and thus the counter is zero the result should be an automatic
+        // passed. This is because it means that all warnings where from a file
+        // that where excluded.
+        int count_errors;
+
+        string diagMsg(Severity s, string diag, string file) {
+            if (!file_filter.match(file))
+                return null;
+
+            count_errors++;
             tres.errors.put(s);
             if (work.useColors)
                 return format("%s[%s]", diag, color(s));
@@ -323,26 +356,19 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         tres.file = work.p;
 
         auto res = runClangTidy(work.args, [work.p]);
-        tres.clangTidyStatus = res.status;
-
         auto app = appender!(string[])();
         mapClangTidy!diagMsg(res.stdout, app);
 
-        res.stderr.copy(app);
-
-        tres.output = app.data;
+        if (count_errors > 0) {
+            tres.clangTidyStatus = res.status;
+            res.stderr.copy(app);
+            tres.output = app.data;
+        }
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
     }
 
-    while (true) {
-        try {
-            owner.send(cast(immutable) tres);
-            break;
-        } catch (Exception e) {
-            logger.tracef("failed sending to: %s", owner).collectException;
-        }
-    }
+    sendToOwner;
 }
 
 struct ClangTidyConstants {
