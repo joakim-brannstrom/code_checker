@@ -206,8 +206,11 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
             import std.range;
 
             // TODO unnecessary to join it
-            arguments = v[j_arg].arrayNoRef.filter!(a => a.type == JSON_TYPE.STRING)
-                .map!(a => a.str).filter!(a => a.length != 0).array;
+            arguments = v[j_arg].arrayNoRef
+                .filter!(a => a.type == JSON_TYPE.STRING)
+                .map!(a => a.str)
+                .filter!(a => a.length != 0)
+                .array;
         }
     } catch (Exception ex) {
     }
@@ -228,8 +231,8 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
         const directory = v["directory"];
         const file = v["file"];
 
-        foreach (a; only(directory, file).map!(a => !a.isNull
-                && a.type == JSON_TYPE.STRING).filter!(a => !a)) {
+        foreach (a; only(directory, file).map!(a => !a.isNull && a.type == JSON_TYPE.STRING)
+                .filter!(a => !a)) {
             // sanity check.
             // if any element is false then break early.
             return typeof(return)();
@@ -670,7 +673,7 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
         // If `arguments` is used then it is already _perfect_.
         if (cmd.arguments.hasValue)
             return cmd.arguments.payload;
-        if (flag_filter.skipCompilerArgs != 0)
+        if (flag_filter.skipCompilerArgs == 0)
             return cmd.command.payload;
         // skip parameters matching the filter IF `command` where used.
         return cmd.command[min(flag_filter.skipCompilerArgs, cmd.command.length) .. $];
