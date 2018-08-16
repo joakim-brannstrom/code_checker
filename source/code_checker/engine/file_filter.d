@@ -24,7 +24,13 @@ struct FileFilter {
     Regex!char[] exclude;
 
     this(string[] raw_regex) {
-        this.exclude = raw_regex.map!(a => regex(a)).array();
+        foreach (a; raw_regex) {
+            try {
+                this.exclude ~= regex(a);
+            } catch (Exception e) {
+                throw new Exception("Bad regex:" ~ a ~ ":" ~ e.msg);
+            }
+        }
     }
 
     /// Returns: true if the file matches the permissions in the file filter and thus should be used.
@@ -56,7 +62,6 @@ bool matchAny(const string value, Regex!char[] re) @safe nothrow {
                 passed = true;
                 break;
             }
-        } catch (RegexException ex) {
         } catch (Exception ex) {
         }
     }

@@ -422,14 +422,14 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     import std.string : startsWith;
     import std.range : put;
 
-    auto re_error = ctRegex!(`.*:\d*:.*error:.*\[(.*)\]`);
+    auto re_error = ctRegex!(`(?P<filename>.*):\d*:\d*:.*error:.*\[(?P<severity>.*)\]`);
 
     foreach (l; lines) {
         auto m = matchFirst(l, re_error);
 
         if (m.length > 1) {
-            const s = classify(m[1]);
-            put(w, diagFn(s, l));
+            const s = classify(m["severity"]);
+            put(w, diagFn(s, l, m["filename"]));
         } else {
             put(w, l);
         }
