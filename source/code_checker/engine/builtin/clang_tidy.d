@@ -55,8 +55,6 @@ class ClangTidy : BaseFixture {
             app.put(["-fix"]);
         } else if (env.clangTidy.applyFixitErrors) {
             app.put(["-fix-errors"]);
-        } else {
-            app.put("-warnings-as-errors=*");
         }
 
         env.compiler.extraFlags.map!(a => ["-extra-arg", a]).joiner.copy(app);
@@ -359,8 +357,13 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         auto app = appender!(string[])();
         mapClangTidy!diagMsg(res.stdout, app);
 
-        if (count_errors > 0) {
-            tres.clangTidyStatus = res.status;
+        tres.clangTidyStatus = () {
+            if (res.status)
+                return res.status;
+            return count_errors;
+        }();
+
+        if (tres.clangTidyStatus != 0) {
             res.stderr.copy(app);
             tres.output = app.data;
         }
