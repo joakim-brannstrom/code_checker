@@ -7,6 +7,10 @@ module code_checker.engine.builtin.clang_tidy_classification;
 
 public import code_checker.engine.types : Severity;
 
+version (unittest) {
+    import unit_threaded : shouldEqual, shouldBeTrue;
+}
+
 @safe:
 
 struct SeverityColor {
@@ -406,6 +410,17 @@ unittest {
     r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
 }
 
+struct DiagMessage {
+    Severity severity;
+
+    /// Filename that clang-tidy reported for the warning.
+    string file;
+    /// The diagnostic message such as file.cpp:2:3 error: some text [foo-check]
+    string diagnostic;
+    /// The trailing info such as fixits
+    string[] trailing;
+}
+
 /** Apply `fn` on the diagnostic messages.
  *
  * The return value from fn replaces the message. This makes it possible to
@@ -418,22 +433,119 @@ unittest {
  */
 void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     import std.algorithm : startsWith;
+    import std.array : appender;
+    import std.range : put;
     import std.regex : ctRegex, matchFirst;
     import std.string : startsWith;
-    import std.range : put;
 
-    auto re_error = ctRegex!(`(?P<filename>.*):\d*:\d*:.*error:.*\[(?P<severity>.*)\]`);
+    auto re_error = ctRegex!(`(?P<file>.*):\d*:\d*:.*(error|warning):.*\[(?P<severity>.*)\]`);
 
+    enum State {
+        none,
+        match,
+        partOfMatch,
+        newMatch,
+    }
+
+    State st;
+    auto app = appender!(string[])();
+    DiagMessage msg;
     foreach (l; lines) {
         auto m = matchFirst(l, re_error);
 
-        if (m.length > 1) {
-            const s = classify(m["severity"]);
-            put(w, diagFn(s, l, m["filename"]));
-        } else {
-            put(w, l);
+        final switch (st) {
+        case State.none:
+            if (m.length > 1)
+                st = State.match;
+            break;
+        case State.match:
+            if (m.length > 1)
+                st = State.newMatch;
+            else
+                st = State.partOfMatch;
+            break;
+        case State.partOfMatch:
+            if (m.length > 1)
+                st = State.newMatch;
+            break;
+        case State.newMatch:
+            if (m.length <= 1)
+                st = State.partOfMatch;
+            break;
+        }
+
+        final switch (st) {
+        case State.none:
+            break;
+        case State.match:
+            msg.severity = classify(m["severity"]);
+            msg.diagnostic = l;
+            msg.file = m["file"];
+            break;
+        case State.partOfMatch:
+            app.put(l);
+            break;
+        case State.newMatch:
+            msg.trailing = app.data;
+            app.clear;
+            if (diagFn(msg)) {
+                put(w, msg.diagnostic);
+                foreach (t; msg.trailing)
+                    put(w, t);
+            }
+
+            msg = DiagMessage.init;
+            msg.severity = classify(m["severity"]);
+            msg.diagnostic = l;
+            msg.file = m["file"];
+            break;
         }
     }
+
+    msg.trailing = app.data;
+    if (st != State.none && diagFn(msg)) {
+        put(w, msg.diagnostic);
+        foreach (t; msg.trailing)
+            put(w, t);
+    }
+}
+
+@("shall filter warnings")
+unittest {
+    import std.algorithm : startsWith;
+    import std.array : appender;
+
+    string[] lines = ["gmock-matchers.h:3410:15: error: invalid case style for private method 'AnalyzeElements' [readability-identifier-naming,-warnings-as-errors]",
+        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,", "              ^~~~~~~~~~~~~~~~", "              analyzeElements",
+        "gmock-matchers.h:3410:43: error: invalid case style for parameter 'elem_first' [readability-identifier-naming,-warnings-as-errors]",
+        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,", "                                          ^~~~~~~~~~~",
+        "                                          elemFirst", "gmock-matchers2.h:3410:67: error: invalid case style for parameter 'elem_last' [readability-identifier-naming,-warnings-as-errors]",
+        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,",
+        "                                                                  ^~~~~~~~~~",
+        "                                                                  elemLast",];
+
+    DiagMessage[] msgs;
+    bool diagMsg(DiagMessage msg) {
+        msgs ~= msg;
+        if (msgs.length == 1)
+            return false;
+        return true;
+    }
+
+    auto app = appender!(string[])();
+    mapClangTidy!diagMsg(lines, app);
+
+    msgs.length.shouldEqual(3);
+
+    msgs[0].file.shouldEqual("gmock-matchers.h");
+    msgs[0].diagnostic.startsWith("gmock-matchers.h:3410:15:").shouldBeTrue;
+    msgs[0].trailing.length.shouldEqual(3);
+
+    msgs[2].file.shouldEqual("gmock-matchers2.h");
+    msgs[2].diagnostic.startsWith("gmock-matchers2.h:3410:67").shouldBeTrue;
+    msgs[2].trailing.length.shouldEqual(3);
+
+    app.data.length.shouldEqual(8);
 }
 
 /// Returns: the classification of the diagnostic message.
