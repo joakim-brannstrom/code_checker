@@ -307,7 +307,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     import std.concurrency : send;
     import std.format : format;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
-        Severity, color;
+        DiagMessage, color;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
@@ -340,15 +340,17 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         // that where excluded.
         int count_errors;
 
-        string diagMsg(Severity s, string diag, string file) {
-            if (!file_filter.match(file))
-                return null;
+        bool diagMsg(ref DiagMessage msg) {
+            if (!file_filter.match(msg.file))
+                return false;
 
             count_errors++;
-            tres.errors.put(s);
+            tres.errors.put(msg.severity);
             if (work.useColors)
-                return format("%s[%s]", diag, color(s));
-            return format("%s[%s]", diag, s);
+                msg.diagnostic = format("%s[%s]", msg.diagnostic, color(msg.severity));
+            else
+                msg.diagnostic = format("%s[%s]", msg.diagnostic, msg.severity);
+            return true;
         }
 
         tres.file = work.p;
