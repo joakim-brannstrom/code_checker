@@ -20,6 +20,7 @@ configuration "application" {
 
 configuration "unittest" {
     targetType "executable"
+    targetName "code_checker_ut"
 
     dependency "code_checker:unit-threaded" version="*" optional=true
 
