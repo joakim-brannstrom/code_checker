@@ -46,7 +46,7 @@ The user may want to add additional warning flags when using the compiler via th
 partof: REQ-purpose
 ###
 
-The user wants to filter what is quality checked.
+The user wants to filter what files are quality checked.
 
 ## Rationale
 
