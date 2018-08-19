@@ -347,6 +347,7 @@ struct CountErrorsResult {
     private {
         int total;
         int[Severity] score_;
+        int suppressedWarnings;
     }
 
     /// Returns: the score when summing up the found occurancies.
@@ -373,6 +374,9 @@ struct CountErrorsResult {
             }
         }
 
+        // suppressing warnings should not be encouraged
+        sum -= suppressedWarnings;
+
         return sum;
     }
 
@@ -383,6 +387,10 @@ struct CountErrorsResult {
             (*v)++;
         else
             score_[s] = 1;
+    }
+
+    void setSuppressed(const int v) {
+        suppressedWarnings = v;
     }
 
     auto toRange() const {
@@ -421,6 +429,11 @@ struct DiagMessage {
     string[] trailing;
 }
 
+struct StatMessage {
+    // Number of NOLINTs
+    int nolint;
+}
+
 /** Apply `fn` on the diagnostic messages.
  *
  * The return value from fn replaces the message. This makes it possible to
@@ -428,17 +441,32 @@ struct DiagMessage {
  *
  * Params:
  *  diagFn = mapped onto a diagnostic message
+ *  statFn = statistics gathered from clang-tidy
  *  lines = an input range of lines to analyze for diagnostic messages
  *  w = output range that the resulting log is written to.
  */
 void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     import std.algorithm : startsWith;
-    import std.array : appender;
+    import std.array : appender, Appender;
+    import std.conv : to;
+    import std.exception : ifThrown;
     import std.range : put;
     import std.regex : ctRegex, matchFirst;
     import std.string : startsWith;
 
-    auto re_error = ctRegex!(`(?P<file>.*):\d*:\d*:.*(error|warning):.*\[(?P<severity>.*)\]`);
+    void callDiagFnAndReset(ref DiagMessage msg, ref Appender!(string[]) app) {
+        msg.trailing = app.data;
+        app.clear;
+        if (diagFn(msg)) {
+            put(w, msg.diagnostic);
+            foreach (t; msg.trailing)
+                put(w, t);
+        }
+
+        msg = DiagMessage.init;
+    }
+
+    const re_error = ctRegex!(`(?P<file>.*):\d*:\d*:.*(error|warning):.*\[(?P<severity>.*)\]`);
 
     enum State {
         none,
@@ -451,25 +479,25 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     auto app = appender!(string[])();
     DiagMessage msg;
     foreach (l; lines) {
-        auto m = matchFirst(l, re_error);
+        auto m_error = matchFirst(l, re_error);
 
         final switch (st) {
         case State.none:
-            if (m.length > 1)
+            if (m_error.length > 1)
                 st = State.match;
             break;
         case State.match:
-            if (m.length > 1)
+            if (m_error.length > 1)
                 st = State.newMatch;
             else
                 st = State.partOfMatch;
             break;
         case State.partOfMatch:
-            if (m.length > 1)
+            if (m_error.length > 1)
                 st = State.newMatch;
             break;
         case State.newMatch:
-            if (m.length <= 1)
+            if (m_error.length <= 1)
                 st = State.partOfMatch;
             break;
         }
@@ -478,26 +506,19 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.none:
             break;
         case State.match:
-            msg.severity = classify(m["severity"]);
+            msg.severity = classify(m_error["severity"]);
             msg.diagnostic = l;
-            msg.file = m["file"];
+            msg.file = m_error["file"];
             break;
         case State.partOfMatch:
             app.put(l);
             break;
         case State.newMatch:
-            msg.trailing = app.data;
-            app.clear;
-            if (diagFn(msg)) {
-                put(w, msg.diagnostic);
-                foreach (t; msg.trailing)
-                    put(w, t);
-            }
+            callDiagFnAndReset(msg, app);
 
-            msg = DiagMessage.init;
-            msg.severity = classify(m["severity"]);
+            msg.severity = classify(m_error["severity"]);
             msg.diagnostic = l;
-            msg.file = m["file"];
+            msg.file = m_error["file"];
             break;
         }
     }
@@ -510,23 +531,49 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     }
 }
 
+void mapClangTidyStats(alias statFn)(string[] lines) {
+    import std.conv : to;
+    import std.exception : ifThrown;
+    import std.regex : ctRegex, matchFirst;
+
+    const re_nolint = ctRegex!(`Supp.*\D(?P<nolint>\d+)\s*NOLINT.*`);
+
+    foreach (l; lines) {
+        auto m_nolint = matchFirst(l, re_nolint);
+
+        if (m_nolint.length > 1) {
+            auto nolint_cnt = m_nolint["nolint"].to!int.ifThrown(0);
+            statFn(StatMessage(nolint_cnt));
+        }
+    }
+}
+
 @("shall filter warnings")
 unittest {
     import std.algorithm : startsWith;
     import std.array : appender;
 
-    string[] lines = ["gmock-matchers.h:3410:15: error: invalid case style for private method 'AnalyzeElements' [readability-identifier-naming,-warnings-as-errors]",
-        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,", "              ^~~~~~~~~~~~~~~~", "              analyzeElements",
+    // dfmt off
+    string[] lines = [
+        "gmock-matchers.h:3410:15: error: invalid case style for private method 'AnalyzeElements' [readability-identifier-naming,-warnings-as-errors]",
+        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,",
+        "              ^~~~~~~~~~~~~~~~",
+        "              analyzeElements",
         "gmock-matchers.h:3410:43: error: invalid case style for parameter 'elem_first' [readability-identifier-naming,-warnings-as-errors]",
-        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,", "                                          ^~~~~~~~~~~",
-        "                                          elemFirst", "gmock-matchers2.h:3410:67: error: invalid case style for parameter 'elem_last' [readability-identifier-naming,-warnings-as-errors]",
+        "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,",
+        "                                          ^~~~~~~~~~~",
+        "                                          elemFirst",
+        "gmock-matchers2.h:3410:67: error: invalid case style for parameter 'elem_last' [readability-identifier-naming,-warnings-as-errors]",
         "  MatchMatrix AnalyzeElements(ElementIter elem_first, ElementIter elem_last,",
         "                                                                  ^~~~~~~~~~",
-        "                                                                  elemLast",];
+        "                                                                  elemLast",
+        ];
+    // dfmt on
 
     DiagMessage[] msgs;
     bool diagMsg(DiagMessage msg) {
         msgs ~= msg;
+        // skipping a message to see that it works
         if (msgs.length == 1)
             return false;
         return true;
@@ -546,6 +593,28 @@ unittest {
     msgs[2].trailing.length.shouldEqual(3);
 
     app.data.length.shouldEqual(8);
+}
+
+@("shall report the number of suppressed warnings")
+unittest {
+    // dfmt off
+    string[] lines = [
+        "42598 warnings generated.",
+        "Suppressed 27578 warnings (27523 in non-user code, 55 NOLINT).",
+        "Use -header-filter=.* to display errors from all non-system headers. Use -system-headers to display errors from system headers as well.",
+        ];
+    // dfmt on
+
+    StatMessage stat;
+    void statFn(StatMessage msg) {
+        stat = msg;
+    }
+
+    // act
+    mapClangTidyStats!statFn(lines);
+
+    // assert
+    stat.nolint.shouldEqual(55);
 }
 
 /// Returns: the classification of the diagnostic message.

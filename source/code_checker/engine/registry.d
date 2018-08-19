@@ -73,6 +73,7 @@ Status execute(Environment env, ref Registry reg) @trusted {
 
             tres.status = mergeStatus(tres.status, res.status);
             tres.score = Score(tres.score + res.score);
+            tres.supp = Suppressed(tres.supp + res.supp);
             tres.sugg ~= res.msg.array.filter!(a => a.severity == MsgSeverity.improveSuggestion)
                 .array;
 
@@ -141,6 +142,10 @@ void log(TotalResult tres) {
         logger.info("Suggestions for how to improve the score");
         foreach (m; tres.sugg)
             logger.info("    ", m.value);
+    }
+
+    if (tres.supp != 0) {
+        logger.infof("You suppressed %s warnings", tres.supp);
     }
 
     if (tres.status == Status.passed) {
