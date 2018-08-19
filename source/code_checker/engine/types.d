@@ -79,6 +79,12 @@ struct Score {
     alias value this;
 }
 
+/// The number of suppressed warnings from a static code analyzer.
+struct Suppressed {
+    int value;
+    alias value this;
+}
+
 /// The severity of a user message.
 enum MsgSeverity {
     /// Why an analyzer failed to execute
@@ -133,9 +139,13 @@ struct Suggestions {
 struct Result {
     /// The summary state of an analyzer after it has executed.
     Status status;
+
     Score score;
-    /// Messages from the analyzer to the user.
+
     Messages msg;
+
+    /// Warnings suppressed by the user.
+    Suppressed supp;
 }
 
 /// The result of all analyzers.
@@ -148,6 +158,9 @@ struct TotalResult {
 
     /// Improvement suggestions for the user
     Suggestions sugg;
+
+    /// Warnings suppressed by the user.
+    Suppressed supp;
 }
 
 /// Classification of warnings. Used by the user to filter on.

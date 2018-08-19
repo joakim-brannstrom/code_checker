@@ -68,7 +68,6 @@ The program shall change the working directory to the value of the attribute `de
 
 **Rationale**: This makes it so that all tools that are executed have their working directory set to a value that the user can decide. There are users that may for example have a git archive somewhere on the filesystem and a cmake generate eclipse build environment somewhere else. Because the config file is part of the git repo and the user wants to be able to specify where to check for *compilation database* to make it easy to run the program the paths need to be relative to the *config file*.
 
-
 # SPC-severity_mapping
 partof: REQ-static_code_analysis
 ###
@@ -81,3 +80,11 @@ The following severity levels are defined:
  * Critical: Currently unused. This severity level is reserved for later use.
 
 **Note**: This is copied from [Ericssons CodeChecker tool](https://github.com/Ericsson/codechecker/blob/master/config/config.md).
+
+# SPC-suppressed_warnings
+partof: REQ-static_code_analysis
+###
+
+The program shall report the number of suppressed warnings.
+
+The program shall penalize the calculated score for each suppressed warning.

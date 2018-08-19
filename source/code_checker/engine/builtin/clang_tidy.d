@@ -143,7 +143,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        result_.score += res.clangTidyStatus == 0 ? 1 : res.errors.score;
+        // one point for each good file. This is to try and encourage good behaviour.
+        result_.score += res.errors.score == 0 ? 1 : res.errors.score;
+        result_.supp += res.suppressedWarnings;
 
         if (res.clangTidyStatus != 0) {
             res.print;
@@ -279,6 +281,8 @@ struct TidyResult {
     AbsolutePath file;
     CountErrorsResult errors;
 
+    int suppressedWarnings;
+
     /// Exit status from running clang tidy
     int clangTidyStatus;
 
@@ -307,7 +311,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     import std.concurrency : send;
     import std.format : format;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
-        DiagMessage, color;
+        mapClangTidyStats, DiagMessage, StatMessage, color;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
@@ -353,17 +357,21 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
             return true;
         }
 
+        void statMsg(StatMessage msg) {
+            tres.suppressedWarnings = msg.nolint;
+            tres.errors.setSuppressed(msg.nolint);
+        }
+
         tres.file = work.p;
 
         auto res = runClangTidy(work.args, [work.p]);
+
         auto app = appender!(string[])();
         mapClangTidy!diagMsg(res.stdout, app);
 
-        tres.clangTidyStatus = () {
-            if (res.status)
-                return res.status;
-            return count_errors;
-        }();
+        mapClangTidyStats!statMsg(res.stderr);
+
+        tres.clangTidyStatus = res.status != 0 ? res.status : count_errors;
 
         if (tres.clangTidyStatus != 0) {
             res.stderr.copy(app);
