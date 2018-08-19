@@ -57,9 +57,13 @@ The user may have source code that is more or less accidentally analyzed but isn
 partof: REQ-purpose
 ###
 
-The user wnats to be able to specify paths in the configuration file for the program such that they can be used by other users than the one editing the configuration file.
+The user wants to be able to use relative paths in the configuration file. This makes it possible to have a central configuration file for an application.
 
-The user may namely invoke the program from some other location. It is then important that all paths are calculated relative to the config file. Not from what the users currently working directory is.
+This lead to a concept of a *working directory*. All relative paths that are derived from the configuration file should be normalized with the *working directory*.
+
+By default the working directory is assumed to be where the configuration file is.
+
+The user should be able to specify what the *working directory* is. This is for those cases where the configuration file is at one place but the program should be executed at another place.
 
 # REQ-uc_logfiles
 partof: REQ-purpose
