@@ -95,3 +95,21 @@ RunResult run(string[] cmd, string workdir = null) {
 
     return RunResult(exit_status, app_out.data, app_err.data);
 }
+
+void dirContentCopy(string src, string dst) {
+    import std.algorithm;
+    import std.file;
+    import std.path;
+    import core.sys.posix.sys.stat;
+
+    assert(src.isDir);
+    assert(dst.isDir);
+
+    foreach (f; dirEntries(src, SpanMode.shallow).filter!"a.isFile") {
+        auto dst_f = buildPath(dst, f.name.baseName);
+        copy(f.name, dst_f);
+        auto attrs = getAttributes(f.name);
+        if (attrs & S_IXUSR)
+            setAttributes(dst_f, attrs | S_IXUSR);
+    }
+}

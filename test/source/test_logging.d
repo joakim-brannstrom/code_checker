@@ -12,7 +12,8 @@ unittest {
     auto ta = TestArea(__FILE__, __LINE__);
 
     run([codeCherckerBin, "--init"], ta).status.shouldEqual(0);
-    run([codeCherckerBin, "--log", "--compile-db", buildPath(testData, "log").absolutePath], ta)
+    run([codeCherckerBin, "--vverbose", "--log", "--compile-db",
+            buildPath(testData, "log", "compile_commands.json").absolutePath], ta)
         .status.shouldEqual(1);
 
     // 2 because it should be one configuration file and one logfile
@@ -25,7 +26,8 @@ unittest {
 
     run([codeCherckerBin, "--init"], ta).status.shouldEqual(0);
     run([codeCherckerBin, "--log", "--logdir", "log", "--compile-db",
-            buildPath(testData, "log").absolutePath], ta).status.shouldEqual(1);
+            buildPath(testData, "log", "compile_commands.json").absolutePath], ta)
+        .status.shouldEqual(1);
 
     // 1 because it is separated from the config file
     dirEntries(buildPath(ta, "log"), SpanMode.shallow).count.shouldEqual(1);
