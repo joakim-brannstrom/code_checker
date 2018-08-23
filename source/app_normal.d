@@ -29,11 +29,17 @@ private:
 struct NormalFSM {
     enum State {
         init_,
+        /// change the working directory of the whole program
         changeWorkDir,
+        /// check if a DB exists at the workdir location. Affects cleanup.
         checkForDb,
+        /// if a command is registered to generate a DB run it
         genDb,
+        /// check if the generation of a DB went OK
         checkGenDb,
+        /// cleanup the database
         fixDb,
+        /// check that it went OK to perform the cleanup
         checkFixDb,
         runRegistry,
         cleanup,
@@ -97,15 +103,11 @@ struct NormalFSM {
             break;
         case State.genDb:
             next_ = State.checkGenDb;
-            if (d.exitStatus != 0)
-                next_ = State.cleanup;
             break;
         case State.checkGenDb:
             next_ = State.fixDb;
             if (d.exitStatus != 0)
                 next_ = State.cleanup;
-            else if (d.hasCompileDbs)
-                next_ = State.fixDb;
             break;
         case State.fixDb:
             next_ = State.checkFixDb;
@@ -162,14 +164,7 @@ struct NormalFSM {
 
         auto compile_db = appender!string();
         try {
-            auto dbs = findCompileDbs(conf.compileDb.dbs);
-            if (dbs.length == 0) {
-                logger.errorf("No %s found in %s", compileCommandsFile, conf.compileDb.dbs);
-                exitStatus = 1;
-                return;
-            }
-
-            auto db = fromArgCompileDb(dbs.map!(a => cast(string) a.dup).array);
+            auto db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
             unifyCompileDb(db, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
@@ -243,42 +238,6 @@ struct NormalFSM {
 
         mixin(genCallAction);
     }
-}
-
-auto findCompileDbs(const(AbsolutePath)[] paths) nothrow {
-    import std.algorithm : filter, map;
-    import std.file : exists, isDir, isFile, dirEntries, SpanMode;
-
-    AbsolutePath[] rval;
-
-    static AbsolutePath[] findRecursive(const AbsolutePath p) {
-        import std.path : baseName;
-
-        AbsolutePath[] rval;
-        foreach (a; dirEntries(p, SpanMode.depth).filter!(a => a.isFile)
-                .filter!(a => a.name.baseName == compileCommandsFile).map!(a => a.name)) {
-            try {
-                rval ~= AbsolutePath(Path(a));
-            } catch (Exception e) {
-                logger.warning(e.msg);
-            }
-        }
-        return rval;
-    }
-
-    foreach (a; paths.filter!(a => exists(a))) {
-        try {
-            if (a.isDir) {
-                logger.tracef("Looking for compilation database in '%s'", a).collectException;
-                rval ~= findRecursive(a);
-            } else if (a.isFile)
-                rval ~= a;
-        } catch (Exception e) {
-            logger.warning(e.msg).collectException;
-        }
-    }
-
-    return rval;
 }
 
 /// Unify multiple compilation databases to one json file.

@@ -43,3 +43,13 @@ unittest {
     res.print;
     res.status.shouldEqual(0);
 }
+
+@("shall run the generate command before reading the DB")
+unittest {
+    auto ta = TestArea(__FILE__, __LINE__);
+    dirContentCopy(buildPath(testData, "conf", "gen_db_cmd"), ta);
+
+    auto res = run([codeCherckerBin, "--vverbose", "-c", "gen_cmd.toml"], ta);
+    res.print;
+    res.status.shouldEqual(0);
+}
