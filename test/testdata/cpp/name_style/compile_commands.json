@@ -3,5 +3,10 @@
         "directory": ".",
         "arguments": "-c camel_case.cpp -o camel_case.o",
         "file": "camel_case.cpp"
+    },
+    {
+        "directory": ".",
+        "arguments": "-c template_camel_case.cpp -o template_camel_case.o",
+        "file": "template_camel_case.cpp"
     }
 ]
