@@ -21,6 +21,9 @@ unittest {
 
     res.print;
     res.status.shouldEqual(0);
+    foreach (l; res.stdout) {
+        l.canFind("Unknown key").shouldBeFalse;
+    }
 }
 
 @("shall exclude files based on the regex from the config file")

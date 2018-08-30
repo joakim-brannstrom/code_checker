@@ -6,6 +6,9 @@ search_paths = [ "db/compile_commands.json" ]
 exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
 
 [clang_tidy]
+# clang-tidy binary to use
+binary = "clang-tidy"
+# arguments to -header-filter
 header_filter = ".*"
 checks = [ "*", "-readability-*" ]
 options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
