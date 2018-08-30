@@ -385,6 +385,9 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["compile_commands.skip_compiler_args"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.flagFilter.skipCompilerArgs = cast(int) v.integer;
     };
+    callbacks["clang_tidy.binary"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.binary = v.str;
+    };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.headerFilter = v.str;
     };
