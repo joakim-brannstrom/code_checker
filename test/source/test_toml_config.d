@@ -56,3 +56,15 @@ unittest {
     res.print;
     res.status.shouldEqual(0);
 }
+
+@("shall log the output from a failed command to generate a compile commands DB to the user")
+unittest {
+    auto ta = TestArea(__FILE__, __LINE__);
+    dirContentCopy(buildPath(testData, "conf", "fail_gen_db_cmd"), ta);
+
+    auto res = run([codeCherckerBin, "--vverbose", "-c", "gen_cmd.toml"], ta);
+    res.print;
+    res.status.shouldEqual(1);
+
+    res.stderr.any!(a => a.canFind("error: exit 1")).shouldBeTrue;
+}

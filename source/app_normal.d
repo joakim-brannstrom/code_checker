@@ -149,7 +149,11 @@ struct NormalFSM {
 
         auto res = spawnShell(conf.compileDb.generateDb).wait;
         if (res != 0) {
-            logger.error("Failed running command to generate the compile_commands.json");
+            // the user need some helpful feedback for what failed
+            logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
+            logger.error("Executed the following commands:");
+            logger.error("cd ", root);
+            logger.error(conf.compileDb.generateDb);
             exitStatus = 1;
         }
     }

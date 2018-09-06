@@ -1,0 +1,12 @@
+[defaults]
+severity = "style"
+
+[compile_commands]
+# command to execute to generate compile_commands.json
+generate_cmd = "exit 1"
+search_paths = [ "./compile_commands.json", "./my.json" ]
+
+[clang_tidy]
+header_filter = ".*"
+checks = [ "*", "-readability-*" ]
+options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
