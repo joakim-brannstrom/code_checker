@@ -152,7 +152,8 @@ struct NormalFSM {
             // the user need some helpful feedback for what failed
             logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
             logger.error("Executed the following commands:");
-            logger.error("cd ", root);
+            logger.error("# if this directory is wrong use --workdir", root);
+            logger.error("cd", root);
             logger.error(conf.compileDb.generateDb);
             exitStatus = 1;
         }

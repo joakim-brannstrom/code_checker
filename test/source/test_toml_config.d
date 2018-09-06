@@ -66,5 +66,6 @@ unittest {
     res.print;
     res.status.shouldEqual(1);
 
+    res.stderr.any!(a => a.canFind("--workdir")).shouldBeTrue;
     res.stderr.any!(a => a.canFind("error: exit 1")).shouldBeTrue;
 }
