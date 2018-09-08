@@ -198,6 +198,7 @@ struct MiniConfig {
 
 /// Returns: minimal config to load settings and setup working directory.
 MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
+    import std.file : getcwd;
     import std.path : dirName;
     static import std.getopt;
 
@@ -209,7 +210,7 @@ MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
                 "c|config", "none not visible to the user", &conf.rawConfFile);
         conf.confFile = Path(conf.rawConfFile).AbsolutePath;
         if (conf.rawWorkDir.length == 0) {
-            conf.rawWorkDir = conf.confFile.dirName;
+            conf.rawWorkDir = getcwd;
         }
         conf.workDir = Path(conf.rawWorkDir).AbsolutePath;
     } catch (Exception e) {
