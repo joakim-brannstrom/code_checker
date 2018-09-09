@@ -259,7 +259,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "vverbose", "verbose mode is set to trace", &verbose_trace,
             "v|verbose", "verbose mode is set to information", &verbose_info,
-            "workdir", "use this path as the working directory when programs used by analyzers are executed (default: where .code_checker.toml is)", &workdir,
+            "workdir", "use this path as the working directory when programs used by analyzers are executed (default: .)", &workdir,
             );
         // dfmt on
         conf.mode = AppMode.normal;
