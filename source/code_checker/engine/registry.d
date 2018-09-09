@@ -135,7 +135,7 @@ void log(TotalResult tres) {
     import std.conv : to;
     import colorlog;
 
-    logger.infof("Executing analysers %s", tres.status == Status.failed
+    logger.infof("Analyzers reported %s", tres.status == Status.failed
             ? "Failed".color(Color.red) : "Passed".color(Color.green));
 
     if (tres.sugg.length > 0) {
