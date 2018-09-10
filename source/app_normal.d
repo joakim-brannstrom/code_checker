@@ -191,10 +191,9 @@ struct NormalFSM {
         env.compileDb = fromArgCompileDb([env.compileDbFile]);
         env.files = () {
             if (conf.analyzeFiles.length == 0)
-                return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile.payload)
-                    .array;
+                return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile).array;
             else
-                        return conf.analyzeFiles.dup;
+                return conf.analyzeFiles.map!(a => cast(string) a).array;
         }();
         env.genCompileDb = conf.compileDb.generateDb;
         env.flagFilter = conf.compileDb.flagFilter;

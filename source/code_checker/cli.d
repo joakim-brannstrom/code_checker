@@ -110,7 +110,7 @@ struct Config {
     Logging logg;
 
     /// If set then only analyze these files.
-    string[] analyzeFiles;
+    AbsolutePath[] analyzeFiles;
 
     /// Returns: a config object with default values.
     static Config make() @safe {
@@ -235,11 +235,12 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
-        string config_file = ".code_checker.toml";
+        string[] analyze_files;
         string[] compile_dbs;
         string[] src_filter;
-        string workdir;
+        string config_file = ".code_checker.toml";
         string logdir = ".";
+        string workdir;
         bool dump_conf;
         bool init_conf;
 
@@ -251,7 +252,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
             "dump-config", "dump the full, detailed configuration used", &dump_conf,
-            "f|file", "if set then analyze only these files (default: all)", &conf.analyzeFiles,
+            "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
@@ -294,6 +295,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             .map!(a => Path(buildPath(conf.miniConf.workDir, a)).AbsolutePath)
             .array;
         // dfmt on
+
+        conf.analyzeFiles = analyze_files.map!(a => Path(buildPath(conf.miniConf.workDir,
+                a)).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
         logger.error(e.msg);
