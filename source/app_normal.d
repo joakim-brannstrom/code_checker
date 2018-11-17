@@ -257,13 +257,13 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     auto flag_filter = CompileCommandFilter(defaultCompilerFilter.filter.dup, 0);
     logger.trace(flag_filter);
 
-    void writeEntry(T)(ref const T e) {
+    void writeEntry(T)(ref T e) {
         import std.exception : assumeUnique;
         import std.utf : byChar;
 
         auto raw_flags = () @safe {
             auto app = appender!(string[]);
-            e.parseFlag(flag_filter).flags.copy(app);
+            e.parseFlag(flag_filter).completeFlags.copy(app);
             // add back dummy -c otherwise clang-tidy do not work
             ["-c", cast(string) e.absoluteFile].copy(app);
             return app.data;
@@ -283,7 +283,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
 
     formattedWrite(app, "[");
 
-    foreach (ref const e; db[0 .. $ - 1]) {
+    foreach (ref e; db[0 .. $ - 1]) {
         formattedWrite(app, "{");
         writeEntry(e);
         formattedWrite(app, "},");

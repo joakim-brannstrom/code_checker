@@ -8,21 +8,33 @@ v.2.0. If a copy of the MPL was not distributed with this file, You can obtain
 one at http://mozilla.org/MPL/2.0/.
 
 Utility functions for Clang Compilation Databases.
+
+# Usage
+Call the function `fromArgCompileDb` to create one, merged database.
+
+Extract flags the flags for a file by calling `appendOrError`.
+
+Example:
+---
+auto dbs = fromArgCompileDb(["foo.json]);
+auto flags = dbs.appendOrError(dbs, null, "foo.cpp", defaultCompilerFlagFilter);
+---
 */
 module code_checker.compile_db;
 
-import std.json : JSONValue;
-import std.typecons : Nullable;
 import logger = std.experimental.logger;
 import std.exception : collectException;
+import std.json : JSONValue;
+import std.typecons : Nullable;
 
 import code_checker.types : AbsolutePath;
 
 public import code_checker.compile_db.user_filerange;
+public import code_checker.compile_db.system_compiler : deduceSystemIncludes, SystemIncludePath;
 
 version (unittest) {
     import std.path : buildPath;
-    import unit_threaded : Name, shouldEqual;
+    import unit_threaded : shouldEqual;
 }
 
 @safe:
@@ -249,7 +261,7 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
  * The API is badly designed for common use because it relies on the position
  * order of the strings for their meaning.
  */
-private Nullable!CompileCommand toCompileCommand(string directory, string file,
+Nullable!CompileCommand toCompileCommand(string directory, string file,
         string[] command, AbsoluteCompileDbDirectory db_dir, string output) nothrow {
     // expects that v is a tuple of 3 json values with the keys directory,
     // command, file
@@ -406,7 +418,7 @@ struct SearchResult {
 
 /** Append the compiler flags if a match is found in the DB or error out.
  */
-Nullable!(SearchResult) appendOrError(CompileCommandDB compile_db,
+Nullable!(SearchResult) appendOrError(ref CompileCommandDB compile_db,
         const string[] cflags, const string input_file) @safe {
 
     return appendOrError(compile_db, cflags, input_file, defaultCompilerFilter);
@@ -416,8 +428,9 @@ Nullable!(SearchResult) appendOrError(CompileCommandDB compile_db,
  *
  * TODO: consider using exceptions instead of Nullable.
  */
-Nullable!(SearchResult) appendOrError(CompileCommandDB compile_db,
+Nullable!(SearchResult) appendOrError(ref CompileCommandDB compile_db,
         const string[] cflags, const string input_file, const CompileCommandFilter flag_filter) @safe {
+
     auto compile_commands = compile_db.find(input_file.idup);
     debug {
         logger.trace(compile_commands.length > 0,
@@ -515,16 +528,49 @@ struct CompileCommandFilter {
 /// Parsed compiler flags.
 struct ParseFlags {
     /// The includes used in the compile command
-    static struct Includes {
-        string[] payload;
+    static struct Include {
+        string payload;
         alias payload this;
     }
 
     ///
-    Includes includes;
+    Include[] includes;
 
-    string[] flags;
-    alias flags this;
+    /// System include paths extracted from the compiler used for the file.
+    SystemIncludePath[] systemIncludes;
+
+    /// Specific flags for the file as parsed from the DB.
+    string[] cflags;
+
+    bool hasSystemIncludes() @safe pure nothrow const @nogc {
+        return systemIncludes.length != 0;
+    }
+
+    /** Easy to use method that has the complete flags ready to use with a GCC
+     * complient compiler.
+     *
+     * This method assumes that -isystem is how to add system flags.
+     *
+     * Returns: flags with the system flags appended.
+     */
+    string[] completeFlags() @safe pure nothrow const {
+        import std.algorithm : map, joiner;
+        import std.array : array;
+
+        return cflags.idup ~ systemIncludes.map!(a => ["-isystem", a.value]).joiner.array;
+    }
+
+    alias completeFlags this;
+
+    this(Include[] incls, string[] flags) {
+        this(incls, null, flags);
+    }
+
+    this(Include[] incls, SystemIncludePath[] sysincls, string[] flags) {
+        this.includes = incls;
+        this.systemIncludes = sysincls;
+        this.cflags = flags;
+    }
 }
 
 /** Filter and normalize the compiler flags.
@@ -533,8 +579,8 @@ struct ParseFlags {
  *  - Remove excess white space.
  *  - Convert all filenames to absolute path.
  */
-ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_filter) @safe {
-    import std.algorithm : among;
+ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter) @safe {
+    import std.algorithm : among, map;
 
     static bool excludeStartWith(const string raw_flag, const FilterClangFlag[] flag_filter) @safe {
         import std.algorithm : startsWith, filter, count;
@@ -607,7 +653,7 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
         }
 
         import std.path : buildNormalizedPath, absolutePath;
-        import std.array : appender;
+        import std.array : appender, array;
         import std.range : ElementType;
 
         auto st = keepFirstArg ? State.firstArg : State.keep;
@@ -659,7 +705,7 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
             }
         }
 
-        return ParseFlags(ParseFlags.Includes(includes.data), rval.data);
+        return ParseFlags(includes.data.map!(a => ParseFlags.Include(a)).array, rval.data);
     }
 
     import std.algorithm : filter, splitter, min;
@@ -674,7 +720,23 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
     }();
 
     const bool keep_first_arg = flag_filter.skipCompilerArgs == 0;
-    return filterPair(skipArgs, cmd.directory, flag_filter.filter, keep_first_arg);
+    auto pargs = filterPair(skipArgs, cmd.directory, flag_filter.filter, keep_first_arg);
+
+    auto sysincls = () {
+        try {
+            import code_checker.compile_db.system_compiler : deduceSystemIncludes;
+
+            return deduceSystemIncludes(cmd);
+        } catch (Exception e) {
+            logger.info(e.msg);
+        }
+        return SystemIncludePath[].init;
+    }();
+
+    logger.tracef("Compiler: %s flags: %-(%s %)", cmd.command.length != 0
+            ? cmd.command[0] : null, pargs.completeFlags);
+
+    return ParseFlags(pargs.includes, sysincls, pargs.cflags);
 }
 
 /// Import and merge many compilation databases into one DB.
@@ -704,7 +766,7 @@ unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I",
             "bar", "-Igun", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
@@ -714,7 +776,7 @@ unittest {
             "bar.a", "-I", "bar", "-Igun"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
@@ -725,7 +787,7 @@ unittest {
             AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
@@ -735,7 +797,7 @@ unittest {
             "-flolol", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
+    s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
 }
 
@@ -745,7 +807,7 @@ unittest {
             "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-std=c++11"]);
+    s.cflags.shouldEqual(["-std=c++11"]);
 }
 
 @("Shall keep all compiler flags as they are")
@@ -754,7 +816,7 @@ unittest {
             "b"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
-    s.shouldEqual(["-Da", "-D", "b"]);
+    s.cflags.shouldEqual(["-Da", "-D", "b"]);
 }
 
 version (unittest) {
@@ -983,7 +1045,7 @@ unittest {
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
 
-    found[0].parseFlag(defaultCompilerFilter).flags.shouldEqual(["-I",
+    found[0].parseFlag(defaultCompilerFilter).shouldEqual(["-I",
             buildPath(abs_path, "dir2", "dir1")]);
 }
 

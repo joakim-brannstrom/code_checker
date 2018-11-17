@@ -14,8 +14,7 @@ module code_checker.compile_db.user_filerange;
 
 import logger = std.experimental.logger;
 
-import code_checker.compile_db : CompileCommandFilter, CompileCommandDB,
-    parseFlag, SearchResult;
+import code_checker.compile_db : CompileCommandFilter, CompileCommandDB, parseFlag, SearchResult;
 import code_checker.types : FileName, AbsolutePath;
 
 @safe:
@@ -68,7 +67,7 @@ struct UserFileRange {
             auto tmp = db.payload[0];
             auto flags = appender!(string[])();
             flags.put(cflags);
-            flags.put(tmp.parseFlag(ccFilter));
+            flags.put(tmp.parseFlag(ccFilter).completeFlags);
             curr = SearchResult(flags.data, tmp.absoluteFile);
             break;
         }
@@ -126,7 +125,6 @@ Nullable!SearchResult findFlags(ref CompileCommandDB compdb, FileName fname,
     auto db_search_result = compdb.appendOrError(flags, fname, flag_filter);
     if (!db_search_result.isNull) {
         rval = SearchResult(db_search_result.cflags, db_search_result.absoluteFile);
-        logger.trace("Compiler flags: ", rval.cflags.join(" "));
         return rval;
     }
 
