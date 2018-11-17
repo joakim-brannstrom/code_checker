@@ -313,13 +313,13 @@ private void parseCommands(T)(string raw_input, CompileDbFile in_file, ref T out
     try {
         // trusted: is@safe in DMD-2.077.0
         // remove the trusted attribute when the minimal requirement is upgraded.
-        auto json = () @trusted{ return parseJSON(raw_input); }();
+        auto json = () @trusted { return parseJSON(raw_input); }();
         auto as_dir = AbsoluteCompileDbDirectory(in_file);
 
         // trusted: this function is private so the only user of it is this module.
         // the only problem would be in the out_range. It is assumed that the
         // out_range takes care of the validation and other security aspects.
-        () @trusted{ put(json, as_dir, out_range); }();
+        () @trusted { put(json, as_dir, out_range); }();
     } catch (Exception ex) {
         logger.error("Error while parsing compilation database: " ~ ex.msg).collectException;
     }
@@ -332,7 +332,7 @@ void fromFile(T)(CompileDbFile filename, ref T app) {
 
     // trusted: using the GC for memory management.
     // assuming any UTF-8 errors in the input is validated by phobos byLineCopy.
-    auto raw = () @trusted{
+    auto raw = () @trusted {
         return File(cast(string) filename).byLineCopy.joiner.text;
     }();
 
@@ -947,7 +947,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
 
     // trusted: constructing a path in memory which is never used for writing.
-    auto abs_path = () @trusted{ return getcwd() ~ "/path"; }();
+    auto abs_path = () @trusted { return getcwd() ~ "/path"; }();
 
     auto found = cmds.find(abs_path ~ "/dir2/file3.cpp");
     assert(found.length == 1);
@@ -966,7 +966,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
 
     // trusted: constructing a path in memory which is never used for writing.
-    auto abs_path = () @trusted{ return getcwd() ~ "/path"; }();
+    auto abs_path = () @trusted { return getcwd() ~ "/path"; }();
 
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
@@ -987,7 +987,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
 
     // trusted: constructing a path in memory which is never used for writing.
-    auto abs_path = () @trusted{ return getcwd() ~ "/path"; }();
+    auto abs_path = () @trusted { return getcwd() ~ "/path"; }();
 
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
@@ -1003,7 +1003,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
 
     // trusted: constructing a path in memory which is never used for writing.
-    auto abs_path = () @trusted{ return getcwd() ~ "/path"; }();
+    auto abs_path = () @trusted { return getcwd() ~ "/path"; }();
 
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.o"));
     assert(found.length == 1);
@@ -1018,7 +1018,7 @@ unittest {
     auto cmds = CompileCommandDB(app.data);
 
     // trusted: constructing a path in memory which is never used for writing.
-    auto abs_path = () @trusted{ return getcwd() ~ "/path"; }();
+    auto abs_path = () @trusted { return getcwd() ~ "/path"; }();
 
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.o"));
     assert(found.length == 1);
