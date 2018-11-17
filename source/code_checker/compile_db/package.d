@@ -669,24 +669,21 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
 
     import std.algorithm : filter, splitter, min;
 
-    string[] pass1 = () @safe{
-        // If `arguments` is used then it is already _perfect_.
-        if (cmd.arguments.hasValue)
-            return cmd.arguments.payload;
-        if (flag_filter.skipCompilerArgs == 0)
-            return cmd.command.payload;
-        // skip parameters matching the filter IF `command` where used.
-        return cmd.command[min(flag_filter.skipCompilerArgs, cmd.command.length) .. $];
-    }().dup;
+    string[] skipArgs = () @safe {
+        // prefer command over arguments if both are present because of bugs in
+        // tools that produce compile_commands.json.
+        string[] args;
+        if (cmd.command.hasValue)
+            args = cmd.command.payload.dup;
+        else if (cmd.arguments.hasValue)
+            args = cmd.arguments.payload.dup;
+        if (args.length < flag_filter.skipCompilerArgs && flag_filter.skipCompilerArgs != 0)
+            args = args[min(flag_filter.skipCompilerArgs, args.length) .. $];
+        return args;
+    }();
 
-    // `arguments` in a compilation database do not have the compiler binary in
-    // the string thus skipCompilerArgs isn't needed.
-    // This is different from the case where skipCompilerArgs is zero, which is
-    // intended to force filterPair that the first value in the range is the
-    // compiler, not a filename, and shall be kept.
-    bool keep_first_arg = !cmd.arguments.hasValue && flag_filter.skipCompilerArgs == 0;
-
-    return filterPair(pass1, cmd.directory, flag_filter.filter, keep_first_arg);
+    const bool keep_first_arg = flag_filter.skipCompilerArgs == 0;
+    return filterPair(skipArgs, cmd.directory, flag_filter.filter, keep_first_arg);
 }
 
 /// Import and merge many compilation databases into one DB.
