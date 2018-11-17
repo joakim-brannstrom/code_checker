@@ -417,6 +417,8 @@ Nullable!(SearchResult) appendOrError(CompileCommandDB compile_db,
 }
 
 /** Append the compiler flags if a match is found in the DB or error out.
+ *
+ * TODO: consider using exceptions instead of Nullable.
  */
 Nullable!(SearchResult) appendOrError(CompileCommandDB compile_db,
         const string[] cflags, const string input_file, const CompileCommandFilter flag_filter) @safe {
