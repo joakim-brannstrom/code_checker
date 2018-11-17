@@ -183,7 +183,7 @@ struct CompileCommandSearch {
  * remove the trusted attribute when the minimal requirement is upgraded.
  */
 private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbDirectory db_dir) nothrow @trusted {
-    import std.algorithm : map, filter, joiner, splitter;
+    import std.algorithm : map, filter, splitter;
     import std.array : array;
     import std.exception : assumeUnique;
     import std.json : JSON_TYPE;
@@ -205,7 +205,6 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
         else if (j_type == JSON_TYPE.ARRAY) {
             import std.range;
 
-            // TODO unnecessary to join it
             arguments = v[j_arg].arrayNoRef
                 .filter!(a => a.type == JSON_TYPE.STRING)
                 .map!(a => a.str)
