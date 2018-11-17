@@ -87,17 +87,8 @@ version (unittest) {
         }
     }
 
-    /// The raw command from the tuples "command" value.
+    /// The raw command from the tuples "command" or "arguments value.
     static struct Command {
-        string[] payload;
-        alias payload this;
-        bool hasValue() @safe pure nothrow const @nogc {
-            return payload.length != 0;
-        }
-    }
-
-    /// The raw arguments from the tuples "arguments" value.
-    static struct Arguments {
         string[] payload;
         alias payload this;
         bool hasValue() @safe pure nothrow const @nogc {
@@ -114,19 +105,17 @@ version (unittest) {
         }
     }
 
-    ///
+    /// File that where compiled.
     FileName file;
-    ///
+    /// ditto.
     AbsoluteFileName absoluteFile;
-    ///
+    /// Working directory of the command that compiled the input.
     AbsoluteDirectory directory;
-    ///
+    /// The executing command when compiling.
     Command command;
-    ///
-    Arguments arguments;
-    ///
+    /// The resulting object file.
     Output output;
-    ///
+    /// ditto.
     AbsoluteFileName absoluteOutput;
 }
 
@@ -190,32 +179,40 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
     import std.range : only;
     import std.utf : byUTF;
 
-    string[] command;
-    try {
-        command = v["command"].str.splitter.filter!(a => a.length != 0).array;
-    } catch (Exception ex) {
-    }
-
-    string[] arguments;
-    try {
-        enum j_arg = "arguments";
-        const auto j_type = v[j_arg].type;
-        if (j_type == JSON_TYPE.STRING)
-            arguments = v[j_arg].str.splitter.filter!(a => a.length != 0).array;
-        else if (j_type == JSON_TYPE.ARRAY) {
-            import std.range;
-
-            arguments = v[j_arg].arrayNoRef
-                .filter!(a => a.type == JSON_TYPE.STRING)
-                .map!(a => a.str)
-                .filter!(a => a.length != 0)
-                .array;
+    string[] command = () {
+        string[] cmd;
+        try {
+            cmd = v["command"].str.splitter.filter!(a => a.length != 0).array;
+        } catch (Exception ex) {
         }
-    } catch (Exception ex) {
-    }
 
-    if (command.length == 0 && arguments.length == 0) {
-        logger.error("Unable to parse json tuple, both command and arguments are empty")
+        // prefer command over arguments if both are present because of bugs in
+        // tools that produce compile_commands.json.
+        if (cmd.length != 0)
+            return cmd;
+
+        try {
+            enum j_arg = "arguments";
+            const auto j_type = v[j_arg].type;
+            if (j_type == JSON_TYPE.STRING)
+                cmd = v[j_arg].str.splitter.filter!(a => a.length != 0).array;
+            else if (j_type == JSON_TYPE.ARRAY) {
+                import std.range;
+
+                cmd = v[j_arg].arrayNoRef
+                    .filter!(a => a.type == JSON_TYPE.STRING)
+                    .map!(a => a.str)
+                    .filter!(a => a.length != 0)
+                    .array;
+            }
+        } catch (Exception ex) {
+        }
+
+        return cmd;
+    }();
+
+    if (command.length == 0) {
+        logger.error("Unable to parse the JSON tuple. Both command and arguments are empty")
             .collectException;
         return typeof(return)();
     }
@@ -237,7 +234,7 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
             return typeof(return)();
         }
 
-        return toCompileCommand(directory.str, file.str, command, db_dir, arguments, output);
+        return toCompileCommand(directory.str, file.str, command, db_dir, output);
     } catch (Exception e) {
         logger.info("Input JSON: ", v.toPrettyString).collectException;
         logger.errorf("Unable to parse json: %s", e.msg).collectException;
@@ -253,7 +250,7 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
  * order of the strings for their meaning.
  */
 private Nullable!CompileCommand toCompileCommand(string directory, string file,
-        string[] command, AbsoluteCompileDbDirectory db_dir, string[] arguments, string output) nothrow {
+        string[] command, AbsoluteCompileDbDirectory db_dir, string output) nothrow {
     // expects that v is a tuple of 3 json values with the keys directory,
     // command, file
 
@@ -269,7 +266,6 @@ private Nullable!CompileCommand toCompileCommand(string directory, string file,
             abs_file,
             abs_workdir,
             CompileCommand.Command(command),
-            CompileCommand.Arguments(arguments),
             CompileCommand.Output(output),
             abs_output);
         // dfmt on
@@ -464,9 +460,6 @@ string toString(CompileCommand[] db) @safe pure {
 
         if (a.command.hasValue)
             formattedWrite(app, "  %-(%s %)\n", a.command);
-
-        if (a.arguments.hasValue)
-            formattedWrite(app, "  %-(%s %)\n", a.arguments);
     }
 
     return app.data;
@@ -672,13 +665,9 @@ ParseFlags parseFlag(const CompileCommand cmd, const CompileCommandFilter flag_f
     import std.algorithm : filter, splitter, min;
 
     string[] skipArgs = () @safe {
-        // prefer command over arguments if both are present because of bugs in
-        // tools that produce compile_commands.json.
         string[] args;
         if (cmd.command.hasValue)
             args = cmd.command.payload.dup;
-        else if (cmd.arguments.hasValue)
-            args = cmd.arguments.payload.dup;
         if (args.length < flag_filter.skipCompilerArgs && flag_filter.skipCompilerArgs != 0)
             args = args[min(flag_filter.skipCompilerArgs, args.length) .. $];
         return args;
@@ -713,7 +702,7 @@ struct FilterClangFlag {
 @("Should be cflags with all unnecessary flags removed")
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I",
-            "bar", "-Igun", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
+            "bar", "-Igun", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
@@ -722,7 +711,7 @@ unittest {
 @("Should be cflags with some excess spacing")
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l",
-            "bar.a", "-I", "bar", "-Igun"], AbsoluteCompileDbDirectory("/home"), null, null);
+            "bar.a", "-I", "bar", "-Igun"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -733,7 +722,7 @@ unittest {
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-mfoo", "-m", "bar",
             "-MD", "-lfoo.a", "-l", "bar.a", "-I", "bar", "-Igun", "-c", "a_filename.c"],
-            AbsoluteCompileDbDirectory("/home"), null, null);
+            AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -743,7 +732,7 @@ unittest {
 @("Should be cflags with all -f removed")
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-fmany-fooo", "-I", "bar", "-fno-fooo", "-Igun",
-            "-flolol", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
+            "-flolol", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -753,7 +742,7 @@ unittest {
 @("shall NOT remove -std=xyz flags")
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-std=c++11",
-            "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null, null);
+            "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-std=c++11"]);
@@ -762,7 +751,7 @@ unittest {
 @("Shall keep all compiler flags as they are")
 unittest {
     auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-Da", "-D",
-            "b"], AbsoluteCompileDbDirectory("/home"), null, null);
+            "b"], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter);
     s.shouldEqual(["-Da", "-D", "b"]);
