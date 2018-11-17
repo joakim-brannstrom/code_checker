@@ -18,8 +18,7 @@ import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 int main(string[] args) {
     import std.functional : toDelegate;
-    import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig,
-        Config;
+    import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig, Config;
     import colorlog;
     import app_normal;
 
@@ -87,7 +86,7 @@ int modeInitConfig(ref Config conf) {
 int modeDumpFullConfig(ref Config conf) {
     import std.stdio : writeln, stderr;
 
-    // make it easy for a user to pipe the output to the confi file
+    // make it easy for a user to pipe the output to the config file
     stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
     stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
 
