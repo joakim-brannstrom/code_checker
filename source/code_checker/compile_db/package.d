@@ -238,8 +238,9 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
         }
 
         return toCompileCommand(directory.str, file.str, command, db_dir, arguments, output);
-    } catch (Exception ex) {
-        logger.error("Unable to parse json: " ~ ex.msg).collectException;
+    } catch (Exception e) {
+        logger.info("Input JSON: ", v.toPrettyString).collectException;
+        logger.errorf("Unable to parse json: %s", e.msg).collectException;
     }
 
     return typeof(return)();
