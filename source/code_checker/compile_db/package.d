@@ -714,7 +714,7 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter)
         string[] args;
         if (cmd.command.hasValue)
             args = cmd.command.payload.dup;
-        if (args.length < flag_filter.skipCompilerArgs && flag_filter.skipCompilerArgs != 0)
+        if (args.length > flag_filter.skipCompilerArgs && flag_filter.skipCompilerArgs != 0)
             args = args[min(flag_filter.skipCompilerArgs, args.length) .. $];
         return args;
     }();
@@ -865,13 +865,13 @@ version (unittest) {
     enum raw_dummy4 = `[
     {
         "directory": "dir1",
-        "arguments": "-Idir1 -c -o binary file3.cpp",
+        "arguments": "g++ -Idir1 -c -o binary file3.cpp",
         "file": "file3.cpp",
         "output": "file3.o"
     },
     {
         "directory": "dir2",
-        "arguments": "-Idir1 -c -o binary file3.cpp",
+        "arguments": "g++ -Idir1 -c -o binary file3.cpp",
         "file": "file3.cpp",
         "output": "file3.o"
     }
@@ -880,13 +880,13 @@ version (unittest) {
     enum raw_dummy5 = `[
     {
         "directory": "dir1",
-        "arguments": ["-Idir1", "-c", "-o", "binary", "file3.cpp"],
+        "arguments": ["g++", "-Idir1", "-c", "-o", "binary", "file3.cpp"],
         "file": "file3.cpp",
         "output": "file3.o"
     },
     {
         "directory": "dir2",
-        "arguments": ["-Idir1", "-c", "-o", "binary", "file3.cpp"],
+        "arguments": ["g++", "-Idir1", "-c", "-o", "binary", "file3.cpp"],
         "file": "file3.cpp",
         "output": "file3.o"
     }
@@ -1029,7 +1029,7 @@ unittest {
   %s/dir2/file3.cpp
   file3.o
   %s/dir2/file3.o
-  -Idir1 -c -o binary file3.cpp
+  g++ -Idir1 -c -o binary file3.cpp
 ", abs_path, abs_path, abs_path));
 }
 
@@ -1045,7 +1045,7 @@ unittest {
     auto found = cmds.find(buildPath(abs_path, "dir2", "file3.cpp"));
     assert(found.length == 1);
 
-    found[0].parseFlag(defaultCompilerFilter).shouldEqual(["-I",
+    found[0].parseFlag(defaultCompilerFilter).cflags.shouldEqual(["-I",
             buildPath(abs_path, "dir2", "dir1")]);
 }
 
