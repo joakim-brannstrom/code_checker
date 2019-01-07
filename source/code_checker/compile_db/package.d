@@ -27,7 +27,7 @@ import std.exception : collectException;
 import std.json : JSONValue;
 import std.typecons : Nullable;
 
-import code_checker.types : AbsolutePath;
+import code_checker.types : AbsolutePath, Path;
 
 public import code_checker.compile_db.user_filerange;
 public import code_checker.compile_db.system_compiler : deduceSystemIncludes, SystemIncludePath;
@@ -737,6 +737,20 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter)
             ? cmd.command[0] : null, pargs.completeFlags);
 
     return ParseFlags(pargs.includes, sysincls, pargs.cflags);
+}
+
+/** Convert the string to a CompileCommandDB.
+ *
+ * Params:
+ * path = changes relative paths to be relative this parameter
+ * data = input to convert
+ */
+CompileCommandDB toCompileCommandDB(string data, Path path) @safe {
+    import std.array : appender;
+
+    auto app = appender!(CompileCommand[])();
+    data.parseCommands(CompileDbFile(cast(string) path), app);
+    return CompileCommandDB(app.data);
 }
 
 /// Import and merge many compilation databases into one DB.
