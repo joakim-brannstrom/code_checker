@@ -12,8 +12,12 @@ import std.exception : collectException;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB;
+import code_checker.compile_db : CompileCommandDB, toCompileCommandDB;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
+
+version (unittest) {
+    import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
+}
 
 immutable compileCommandsFile = "compile_commands.json";
 
@@ -249,7 +253,6 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     import std.array : array, appender;
     import std.ascii : newline;
     import std.format : formattedWrite;
-    import std.json : JSONValue;
     import std.path : stripExtension;
     import std.range : put;
     import code_checker.compile_db;
@@ -260,17 +263,19 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     void writeEntry(T)(ref T e) {
         import std.exception : assumeUnique;
         import std.utf : byChar;
+        import std.json : JSONValue;
 
         auto raw_flags = () @safe {
-            auto app = appender!(string[]);
-            e.parseFlag(flag_filter).completeFlags.copy(app);
+            auto app = appender!(string);
+            e.parseFlag(flag_filter).completeFlags.joiner(" ").copy(app);
             // add back dummy -c otherwise clang-tidy do not work
-            ["-c", cast(string) e.absoluteFile].copy(app);
-            return app.data;
+            [null, "-c", cast(string) e.absoluteFile].joiner(" ").copy(app);
+            // correctly quotes interior strings as JSON requires.
+            return JSONValue(app.data).toString;
         }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
-        formattedWrite(app, `"command": "%-(%s %)",`, raw_flags);
+        formattedWrite(app, `"command": %s,`, raw_flags);
 
         if (e.output.hasValue)
             formattedWrite(app, `"output": "%s",`, cast(string) e.absoluteOutput);
@@ -295,4 +300,29 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
     formattedWrite(app, "}");
 
     formattedWrite(app, "]");
+}
+
+@(`shall quote compile_commands entries as JSON requires when the value is a string containing "`)
+unittest {
+    import std.algorithm : canFind;
+    import std.array : appender;
+
+    // arrange
+    enum test_compile_db = `[
+    {
+        "directory": "dir1/dir2",
+        "arguments": [ "cc", "-c", "-DFOO=\"bar\"" ],
+        "file": "file1.cpp"
+    }
+]`;
+    auto db = test_compile_db.toCompileCommandDB(Path("."));
+    // act
+    auto unified = appender!string();
+    unifyCompileDb(db, unified);
+    // assert
+    try {
+        unified.data.canFind(`cc -DFOO=\"bar\"`).shouldBeTrue;
+    } catch (UnitTestException e) {
+        unified.data.shouldEqual("a trick to print the unified string when the test fail");
+    }
 }
