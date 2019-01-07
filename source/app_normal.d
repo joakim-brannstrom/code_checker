@@ -266,16 +266,17 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
         import std.json : JSONValue;
 
         auto raw_flags = () @safe {
-            auto app = appender!(string);
-            e.parseFlag(flag_filter).completeFlags.joiner(" ").copy(app);
-            // add back dummy -c otherwise clang-tidy do not work
-            [null, "-c", cast(string) e.absoluteFile].joiner(" ").copy(app);
+            auto app = appender!(string[]);
+            e.parseFlag(flag_filter).completeFlags.copy(app);
+            // add back dummy -c otherwise clang-tidy do not work.
+            // clang-tidy says "Passed" on everything.
+            [null, "-c", cast(string) e.absoluteFile].copy(app);
             // correctly quotes interior strings as JSON requires.
             return JSONValue(app.data).toString;
         }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
-        formattedWrite(app, `"command": %s,`, raw_flags);
+        formattedWrite(app, `"arguments": %s,`, raw_flags);
 
         if (e.output.hasValue)
             formattedWrite(app, `"output": "%s",`, cast(string) e.absoluteOutput);
@@ -321,7 +322,7 @@ unittest {
     unifyCompileDb(db, unified);
     // assert
     try {
-        unified.data.canFind(`cc -DFOO=\"bar\"`).shouldBeTrue;
+        unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;
     } catch (UnitTestException e) {
         unified.data.shouldEqual("a trick to print the unified string when the test fail");
     }
