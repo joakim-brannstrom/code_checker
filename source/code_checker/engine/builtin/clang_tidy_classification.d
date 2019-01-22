@@ -466,7 +466,8 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
-    const re_error = ctRegex!(`(?P<file>.*):\d*:\d*:.*(error|warning):.*\[(?P<severity>.*)\]`);
+    const re_error = ctRegex!(
+            `(?P<file>.*):\d*:\d*:.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
 
     enum State {
         none,
@@ -506,7 +507,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.none:
             break;
         case State.match:
-            msg.severity = classify(m_error["severity"]);
+            msg.severity = classify(m_error["severity"], m_error["kind"]);
             msg.diagnostic = l;
             msg.file = m_error["file"];
             break;
@@ -516,7 +517,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.newMatch:
             callDiagFnAndReset(msg, app);
 
-            msg.severity = classify(m_error["severity"]);
+            msg.severity = classify(m_error["severity"], m_error["kind"]);
             msg.diagnostic = l;
             msg.file = m_error["file"];
             break;
@@ -618,8 +619,11 @@ unittest {
 }
 
 /// Returns: the classification of the diagnostic message.
-Severity classify(string diagnostic_msg) {
+Severity classify(string diagnostic_msg, string kind) {
     import std.string : startsWith;
+
+    if (kind == "error")
+        return Severity.critical;
 
     if (auto v = diagnostic_msg in diagnosticSeverity) {
         return *v;

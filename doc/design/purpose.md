@@ -77,9 +77,11 @@ The following severity levels are defined:
  * Low: A true positive indicates that the source code is hard to read/understand or could be easily optimized. Example: Unused variables, Dead code.
  * Medium: A true positive indicates that the source code that may not cause a run-time error (yet), but against intuition and hence prone to error. Example: Redundant expression in a condition.
  * High: A true positive indicates that the source code will cause a run-time error. Example of this category: out of bounds array access, division by zero, memory leak.
- * Critical: Currently unused. This severity level is reserved for later use.
+ * Critical: A compiler error.
 
 **Note**: This is copied from [Ericssons CodeChecker tool](https://github.com/Ericsson/codechecker/blob/master/config/config.md).
+
+**Note**: Critical is modified from the Ericsson classification.
 
 # SPC-suppressed_warnings
 partof: REQ-static_code_analysis
