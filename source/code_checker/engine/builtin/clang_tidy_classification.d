@@ -466,7 +466,8 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
-    const re_error = ctRegex!(`(?P<file>.*):\d*:\d*:.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
+    const re_error = ctRegex!(
+            `(?P<file>.*):\d*:\d*:.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
 
     enum State {
         none,
