@@ -12,7 +12,7 @@ import std.exception : collectException;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB, toCompileCommandDB;
+import code_checker.compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 version (unittest) {
@@ -174,7 +174,7 @@ struct NormalFSM {
         auto compile_db = appender!string();
         try {
             auto db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
-            unifyCompileDb(db, compile_db);
+            unifyCompileDb(db, conf.compiler.useCompilerSystemIncludes, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
@@ -248,7 +248,7 @@ struct NormalFSM {
 }
 
 /// Unify multiple compilation databases to one json file.
-void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
+void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler, ref AppT app) {
     import std.algorithm : map, joiner, filter, copy;
     import std.array : array, appender;
     import std.ascii : newline;
@@ -267,7 +267,9 @@ void unifyCompileDb(AppT)(CompileCommandDB db, ref AppT app) {
 
         auto raw_flags = () @safe {
             auto app = appender!(string[]);
-            e.parseFlag(flag_filter).completeFlags.copy(app);
+            auto pflags = e.parseFlag(flag_filter, user_compiler);
+            app.put(pflags.compiler);
+            pflags.completeFlags.copy(app);
             // add back dummy -c otherwise clang-tidy do not work.
             // clang-tidy says "Passed" on everything.
             [null, "-c", cast(string) e.absoluteFile].copy(app);
@@ -319,7 +321,7 @@ unittest {
     auto db = test_compile_db.toCompileCommandDB(Path("."));
     // act
     auto unified = appender!string();
-    unifyCompileDb(db, unified);
+    unifyCompileDb(db, DbCompiler.init, unified);
     // assert
     try {
         unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;

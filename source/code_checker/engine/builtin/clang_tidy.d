@@ -124,8 +124,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     import std.concurrency : Tid, thisTid, receiveTimeout;
     import std.format : format;
     import std.parallelism : task, TaskPool;
-    import code_checker.compile_db : UserFileRange, parseFlag,
-        CompileCommandFilter, SearchResult;
+    import code_checker.compile_db : UserFileRange, parseFlag, CompileCommandFilter, SearchResult;
     import code_checker.engine.logger : Logger;
 
     bool logged_failure;
@@ -185,7 +184,8 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     ExpectedReplyCounter cond;
 
     auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
-    foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)) {
+    foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags,
+            env.flagFilter, env.compiler.useCompilerSystemIncludes)) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;
@@ -201,7 +201,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
         cond.expected++;
 
-        immutable(TidyWork)* w = () @trusted{
+        immutable(TidyWork)* w = () @trusted {
             return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile,
                     !env.logg.toFile, env.staticCode.fileExcludeFilter);
         }();
@@ -210,7 +210,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     }
 
     while (cond.isWaitingForReplies) {
-        () @trusted{
+        () @trusted {
             try {
                 if (receiveTimeout(1.dur!"seconds", &handleResult)) {
                     cond.replies++;
@@ -255,8 +255,8 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     }
 
     auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
-    auto cmds = UserFileRange(env.compileDb, env.files, env.compiler.extraFlags, env.flagFilter)
-        .array;
+    auto cmds = UserFileRange(env.compileDb, env.files, env.compiler.extraFlags,
+            env.flagFilter, env.compiler.useCompilerSystemIncludes).array;
     const max_nr = cmds.length;
     foreach (idx, cmd; cmds.enumerate) {
         if (cmd.isNull) {

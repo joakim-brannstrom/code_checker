@@ -14,7 +14,8 @@ module code_checker.compile_db.user_filerange;
 
 import logger = std.experimental.logger;
 
-import code_checker.compile_db : CompileCommandFilter, CompileCommandDB, parseFlag, SearchResult;
+import code_checker.compile_db : CompileCommandFilter, CompileCommandDB,
+    parseFlag, SearchResult, DbCompiler = Compiler;
 import code_checker.types : FileName, AbsolutePath;
 
 @safe:
@@ -29,11 +30,12 @@ struct UserFileRange {
     }
 
     this(CompileCommandDB db, string[] in_files, string[] cflags,
-            const CompileCommandFilter ccFilter) {
+            const CompileCommandFilter ccFilter, const DbCompiler userCompiler) {
         this.db = db;
         this.cflags = cflags;
         this.ccFilter = ccFilter;
         this.inFiles = in_files;
+        this.userCompiler = userCompiler;
 
         if (in_files.length == 0) {
             kind = RangeOver.database;
@@ -47,6 +49,7 @@ struct UserFileRange {
     string[] inFiles;
     string[] cflags;
     const CompileCommandFilter ccFilter;
+    const DbCompiler userCompiler;
 
     Nullable!SearchResult front() {
         assert(!empty, "Can't get front of an empty range");
@@ -56,7 +59,7 @@ struct UserFileRange {
         final switch (kind) {
         case RangeOver.inFiles:
             if (db.length > 0) {
-                curr = db.findFlags(FileName(inFiles[0]), cflags, ccFilter);
+                curr = db.findFlags(FileName(inFiles[0]), cflags, ccFilter, userCompiler);
             } else {
                 curr = SearchResult(cflags.dup, AbsolutePath(FileName(inFiles[0])));
             }
@@ -67,7 +70,7 @@ struct UserFileRange {
             auto tmp = db.payload[0];
             auto flags = appender!(string[])();
             flags.put(cflags);
-            flags.put(tmp.parseFlag(ccFilter).completeFlags);
+            flags.put(tmp.parseFlag(ccFilter, userCompiler).completeFlags);
             curr = SearchResult(flags.data, tmp.absoluteFile);
             break;
         }
@@ -113,7 +116,7 @@ import std.typecons : Nullable;
 
 /// Find flags for fname by searching in the compilation DB.
 Nullable!SearchResult findFlags(ref CompileCommandDB compdb, FileName fname,
-        const string[] flags, ref const CompileCommandFilter flag_filter) {
+        const string[] flags, ref const CompileCommandFilter flag_filter, DbCompiler userCompiler) {
     import std.file : exists;
     import std.path : baseName;
     import std.string : join;
@@ -122,7 +125,7 @@ Nullable!SearchResult findFlags(ref CompileCommandDB compdb, FileName fname,
 
     typeof(return) rval;
 
-    auto db_search_result = compdb.appendOrError(flags, fname, flag_filter);
+    auto db_search_result = compdb.appendOrError(flags, fname, flag_filter, userCompiler);
     if (!db_search_result.isNull) {
         rval = SearchResult(db_search_result.cflags, db_search_result.absoluteFile);
         return rval;

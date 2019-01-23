@@ -33,6 +33,11 @@ version (unittest) {
 
 @safe:
 
+struct Compiler {
+    string value;
+    alias value this;
+}
+
 struct SystemIncludePath {
     string value;
     alias value this;
@@ -42,13 +47,11 @@ struct SystemIncludePath {
  *
  * Note that how the compilers are inspected is hard coded.
  */
-SystemIncludePath[] deduceSystemIncludes(ref CompileCommand cmd) {
+SystemIncludePath[] deduceSystemIncludes(ref CompileCommand cmd, const Compiler compiler) {
     import std.process : execute;
 
-    if (cmd.command.length == 0)
+    if (cmd.command.length == 0 || compiler.length == 0)
         return null;
-
-    auto compiler = Compiler(cmd.command[0]);
 
     if (auto v = compiler in cacheSysIncludes) {
         return *v;
@@ -71,7 +74,7 @@ SystemIncludePath[] deduceSystemIncludes(ref CompileCommand cmd) {
 
 private:
 
-string[] systemCompilerArg(ref CompileCommand cmd, Compiler compiler) {
+string[] systemCompilerArg(ref CompileCommand cmd, const Compiler compiler) {
     string[] args = ["-v", "/dev/null", "-fsyntax-only"];
     if (auto v = language(compiler, cmd.command)) {
         args = [v] ~ args;
@@ -93,11 +96,6 @@ SystemIncludePath[] parseCompilerOutput(T)(T output) {
     auto incls = lines[start .. end].map!(a => SystemIncludePath(a.stripLeft)).array;
 
     return incls;
-}
-
-struct Compiler {
-    string value;
-    alias value this;
 }
 
 SystemIncludePath[][Compiler] cacheSysIncludes;

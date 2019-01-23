@@ -1,0 +1,12 @@
+[defaults]
+severity = "style"
+
+[compiler]
+extra_flags = [ "-xc++" ]
+use_compiler_system_includes = "./fake_cc.d"
+
+[compile_commands]
+search_paths = [ "./compile_commands.json" ]
+
+[clang_tidy]
+header_filter = ".*"
