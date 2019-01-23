@@ -69,3 +69,22 @@ unittest {
     res.stderr.any!(a => a.canFind("--workdir")).shouldBeTrue;
     res.stderr.any!(a => a.canFind("error: exit 1")).shouldBeTrue;
 }
+
+@("shall use the user specified compiler to determine system includes")
+unittest {
+    auto ta = TestArea(__FILE__, __LINE__);
+    dirContentCopy(buildPath(testData, "conf", "specify_system_compiler"), ta);
+
+    auto res = run([codeCherckerBin, "--vverbose"], ta);
+
+    res.print;
+    res.status.shouldEqual(0);
+
+    foreach (l; res.stdout) {
+        if (l.canFind("Compiler: ./fake_cc.d flags: -isystem /foo/bar"))
+            return;
+    }
+
+    // no -isystem /foo/bar found
+    shouldBeTrue(false);
+}

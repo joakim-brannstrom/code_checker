@@ -81,8 +81,15 @@ struct ConfigCompileDb {
 
 /// Settings for the compiler
 struct Compiler {
+    import code_checker.compile_db : SystemCompiler = Compiler;
+
     /// Additional flags the user wants to add besides those that are in the compile_commands.json.
     string[] extraFlags;
+
+    /// Deduce compiler flags from this compiler and not the one in the
+    /// supplied compilation database.  / This is needed when the one specified
+    /// in the DB has e.g. a c++ stdlib that is not compatible with clang.
+    SystemCompiler useCompilerSystemIncludes;
 }
 
 /// Settings for logging.
@@ -162,6 +169,10 @@ struct Config {
 #    "-Wuseless-cast", # warn if you perform a cast to the same type
 #    "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
 # ]`);
+        app.put(
+                "# use this compilers system includes instead of the one used in the compile_commands.json");
+        app.put(format(`# use_compiler_system_includes = "%s"`, compiler.useCompilerSystemIncludes.length == 0
+                ? "/path/to/c++" : compiler.useCompilerSystemIncludes.value));
         app.put(null);
 
         app.put("[compile_commands]");
@@ -424,6 +435,9 @@ void loadConfig(ref Config rval) @trusted {
     };
     callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
         c.compiler.extraFlags = v.array.map!(a => a.str).array;
+    };
+    callbacks["compiler.use_compiler_system_includes"] = (ref Config c, ref TOMLValue v) {
+        c.compiler.useCompilerSystemIncludes = v.str;
     };
 
     void iterSection(ref Config c, string sectionName) {
