@@ -789,8 +789,10 @@ struct FilterClangFlag {
 
 @("Should be cflags with all unnecessary flags removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I",
-            "bar", "-Igun", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I", "bar", "-Igun", "-c",
+            "a_filename.c"
+            ], AbsoluteCompileDbDirectory("/home"), null);
     auto s = cmd.parseFlag(defaultCompilerFilter, Compiler.init);
     s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
     s.includes.shouldEqual(["/home/bar", "/home/gun"]);
@@ -798,8 +800,9 @@ unittest {
 
 @("Should be cflags with some excess spacing")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-MD", "-lfoo.a", "-l",
-            "bar.a", "-I", "bar", "-Igun"], AbsoluteCompileDbDirectory("/home"), null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-MD", "-lfoo.a", "-l", "bar.a", "-I", "bar", "-Igun"
+            ], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter, Compiler.init);
     s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -808,9 +811,10 @@ unittest {
 
 @("Should be cflags with machine dependent removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-mfoo", "-m", "bar",
-            "-MD", "-lfoo.a", "-l", "bar.a", "-I", "bar", "-Igun", "-c", "a_filename.c"],
-            AbsoluteCompileDbDirectory("/home"), null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-mfoo", "-m", "bar", "-MD", "-lfoo.a", "-l", "bar.a", "-I",
+            "bar", "-Igun", "-c", "a_filename.c"
+            ], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter, Compiler.init);
     s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -819,8 +823,10 @@ unittest {
 
 @("Should be cflags with all -f removed")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-fmany-fooo", "-I", "bar", "-fno-fooo", "-Igun",
-            "-flolol", "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-fmany-fooo", "-I", "bar", "-fno-fooo", "-Igun", "-flolol",
+            "-c", "a_filename.c"
+            ], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter, Compiler.init);
     s.cflags.shouldEqual(["-I", "/home/bar", "-I", "/home/gun"]);
@@ -829,8 +835,9 @@ unittest {
 
 @("shall NOT remove -std=xyz flags")
 unittest {
-    auto cmd = toCompileCommand("/home", "file1.cpp", ["g++", "-std=c++11",
-            "-c", "a_filename.c"], AbsoluteCompileDbDirectory("/home"), null);
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-std=c++11", "-c", "a_filename.c"
+            ], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.parseFlag(defaultCompilerFilter, Compiler.init);
     s.cflags.shouldEqual(["-std=c++11"]);
@@ -932,7 +939,9 @@ unittest {
 
     assert(cmds.length == 1);
     cmds[0].directory.shouldEqual(dummy_dir ~ "/dir1/dir2");
-    cmds[0].command.shouldEqual(["g++", "-Idir1", "-c", "-o", "binary", "file1.cpp"]);
+    cmds[0].command.shouldEqual([
+            "g++", "-Idir1", "-c", "-o", "binary", "file1.cpp"
+            ]);
     cmds[0].file.shouldEqual("file1.cpp");
     cmds[0].absoluteFile.shouldEqual(dummy_dir ~ "/dir1/dir2/file1.cpp");
 }
