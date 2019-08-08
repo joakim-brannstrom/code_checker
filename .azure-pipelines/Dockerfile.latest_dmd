@@ -1,6 +1,11 @@
 # ubuntu_bionic_base
 FROM dlang2/dmd-ubuntu
 
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install \
+        ca-certificates \
+        clang-tidy
+
 WORKDIR /opt
 
 # fix_repo
