@@ -1,6 +1,11 @@
 # ubuntu_bionic_base
 FROM dlang2/dmd-ubuntu
 
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install \
+        ca-certificates \
+        clang-tidy
+
 WORKDIR /opt
 
 # fix_repo
@@ -9,5 +14,6 @@ RUN mkdir repo
 RUN tar xfz repo.tar.gz -C repo && rm repo.tar.gz
 
 # build_with_dub
+RUN cd repo && dub build
 RUN cd repo && dub test
 RUN cd repo/test && dub test -- -s
