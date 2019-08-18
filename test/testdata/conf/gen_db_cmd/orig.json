@@ -2,6 +2,6 @@
     {
         "directory": ".",
         "arguments": ["g++", "-c", "empty.cpp", "-o", "empty.o"],
-        "file": "../empty.cpp"
+        "file": "./empty.cpp"
     }
 ]

@@ -150,19 +150,14 @@ void log(TotalResult tres) {
 
     if (tres.status == Status.passed) {
         logger.info("Congratulations!!!");
-        logger.infof("Your code reached Quality Level %s", 1 + tres.score / 10);
     }
 
-    const string score = () {
-        if (tres.score < 0)
-            return tres.score.to!string.color(Color.red).mode(Mode.bold).toString;
-        return tres.score.to!string;
-    }();
+    string score() {
+        return tres.score < 0 ? tres.score.to!string.color(Color.red)
+            .mode(Mode.bold).toString : tres.score.to!string;
+    }
+
     logger.infof("You scored %s points", score);
-
-    if (tres.score < 0) {
-        logger.info("Sorry, your code needs a major rework to reach an acceptable quality level");
-    }
 }
 
 /// Input range over the analysers.
