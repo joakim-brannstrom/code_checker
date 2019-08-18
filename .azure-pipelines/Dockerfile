@@ -37,6 +37,8 @@ RUN mkdir repo
 RUN tar xfz repo.tar.gz -C repo && rm repo.tar.gz
 
 # build_with_dub
+RUN cd repo && dub build
 RUN cd repo && dub test
+RUN cd repo && dub run -c integration_test
 # unable to run integration tests because some requires ssh
 #RUN cd repo && dub run -c integration_test
