@@ -9,40 +9,42 @@ import config;
 
 @("shall create a log file")
 unittest {
-    auto ta = TestArea(__FILE__, __LINE__);
+    auto ta = makeTestArea;
 
-    run([codeCherckerBin, "--init"], ta).status.shouldEqual(0);
-    run([codeCherckerBin, "--vverbose", "--log", "--compile-db",
-            buildPath(testData, "log", "compile_commands.json").absolutePath], ta)
-        .status.shouldEqual(1);
+    ta.exec([appPath, "--init"]).status.shouldEqual(0);
+    ta.exec([
+            appPath, "--vverbose", "--log", "--compile-db",
+            buildPath(testData, "log", "compile_commands.json").absolutePath
+            ]).status.shouldEqual(1);
 
-    // 2 because it should be one configuration file and one logfile
-    dirEntries(ta, SpanMode.shallow).count.shouldEqual(2);
+    dirEntries(ta.sandboxPath, SpanMode.shallow).filter!(a => a.extension.among(".toml",
+            ".txt")).count.shouldEqual(2);
 }
 
 @("shall create logs in the specified directory")
 unittest {
-    auto ta = TestArea(__FILE__, __LINE__);
+    auto ta = makeTestArea;
 
-    run([codeCherckerBin, "--init"], ta).status.shouldEqual(0);
-    run([codeCherckerBin, "--log", "--logdir", "log", "--compile-db",
-            buildPath(testData, "log", "compile_commands.json").absolutePath], ta)
-        .status.shouldEqual(1);
+    ta.exec([appPath, "--init"]).status.shouldEqual(0);
+    ta.exec([
+            appPath, "--log", "--logdir", "log", "--compile-db",
+            buildPath(testData, "log", "compile_commands.json").absolutePath
+            ]).status.shouldEqual(1);
 
-    // 1 because it is separated from the config file
-    dirEntries(buildPath(ta, "log"), SpanMode.shallow).count.shouldEqual(1);
+    dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
+            a => a.extension == ".txt").count.shouldEqual(1);
 }
 
-@("shall create a log file and a yaml fixit log")
+@("shall create a yaml fixit log")
 unittest {
-    auto ta = TestArea(__FILE__, __LINE__);
-    copy(buildPath(testData, "log", "compile_commands.json"), buildPath(ta,
-            "compile_commands.json"));
-    copy(buildPath(testData, "log", "empty.cpp"), buildPath(ta, "empty.cpp"));
+    auto ta = makeTestArea;
+    copy(buildPath(testData, "log", "compile_commands.json"),
+            ta.inSandboxPath("compile_commands.json"));
+    copy(buildPath(testData, "log", "empty.cpp"), ta.inSandboxPath("empty.cpp"));
 
-    run([codeCherckerBin, "--init"], ta).status.shouldEqual(0);
-    run([codeCherckerBin, "--clang-tidy-fix", "--log"], ta).status.shouldEqual(1);
+    ta.exec([appPath, "--init"]).status.shouldEqual(0);
+    ta.exec([appPath, "--clang-tidy-fix", "--log", "log", "--logdir", "log"]).status.shouldEqual(1);
 
-    // 4 because it should be one configuration file, one logfile, one compile_commands.json and one yaml file
-    dirEntries(ta, SpanMode.shallow).count.shouldEqual(4);
+    dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
+            a => a.extension == ".yaml").count.shouldEqual(1);
 }

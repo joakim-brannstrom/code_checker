@@ -9,22 +9,22 @@ import config;
 
 @("shall successfully run clang-tidy on a c++ file")
 unittest {
+    auto ta = makeTestArea;
     // action
-    auto res = executeShell(codeCherckerBin ~ " --vverbose --compile-db " ~ buildPath(testData,
-            "cpp", "empty", compileCommandsFile));
+    auto res = ta.exec(appPath, "--vverbose", "--compile-db",
+            buildPath(testData, "cpp", "empty", compileCommandsFile));
 
     // assert
-    writeln(res.output);
     res.status.shouldEqual(0);
 }
 
 @("shall warn about name style in a c++ file")
 unittest {
+    auto ta = makeTestArea;
     // action
-    auto res = run([codeCherckerBin, "--vverbose", "--compile-db",
-            buildPath(testData, "cpp", "name_style", compileCommandsFile)]);
+    auto res = ta.exec(appPath, "--vverbose", "--compile-db",
+            buildPath(testData, "cpp", "name_style", compileCommandsFile));
 
     // assert
-    res.print;
     res.status.shouldNotEqual(0);
 }

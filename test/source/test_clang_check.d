@@ -9,11 +9,11 @@ import config;
 
 @("shall run clang-check and warning about div by zero")
 unittest {
+    auto ta = makeTestArea;
+
     // action
-    auto res = run([codeCherckerBin, "--vverbose", "--compile-db",
-            buildPath(testData, "cpp", "code_mistakes")]);
+    auto res = ta.exec(appPath, "--vverbose", "--compile-db", inTestData("cpp/code_mistakes"));
 
     // assert
-    res.print;
     res.status.shouldNotEqual(0);
 }
