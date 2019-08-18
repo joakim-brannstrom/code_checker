@@ -2,7 +2,8 @@ module tests.pass.io;
 
 import unit_threaded;
 
-class TestIo : TestCase {
+
+class TestIo: TestCase {
     override void test() {
         writelnUt("Class writelnUt should only print with '-d' option");
     }

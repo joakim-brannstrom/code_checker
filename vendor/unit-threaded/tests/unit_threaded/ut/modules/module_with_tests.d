@@ -4,71 +4,41 @@
 
 module unit_threaded.ut.modules.module_with_tests;
 
-import unit_threaded.attrs;
+import unit_threaded.runner.attrs;
+import unit_threaded.runner.reflection: Test;
 
-version (unittest) {
-    import std.meta;
-    import unit_threaded.should;
+import std.meta;
+import unit_threaded.should;
 
-    //test functions
-    void testFoo() {
-    }
+//test functions
+void testFoo() {}
+void testBar() {}
+private void testPrivate() { } //should not show up
+@UnitTest void funcThatShouldShowUpCosOfAttr() { }
 
-    void testBar() {
-    }
+//non-test functions
+private void someFun() {}
+private void testosterone() {}
+private void tes() {}
 
-    private void testPrivate() {
-    } //should not show up
-    @UnitTest void funcThatShouldShowUpCosOfAttr() {
-    }
+//non-test non-functions
+int testInt;
 
-    //non-test functions
-    private void someFun() {
-    }
+//test classes
+class FooTest { void test() { } }
+class BarTest { void test() { } }
+@UnitTest class Blergh { }
 
-    private void testosterone() {
-    }
+//non-test classes
+class NotATest { void tes() { } }
+class AlsoNotATest { void testosterone() { } }
 
-    private void tes() {
-    }
+@HiddenTest void withHidden() {}
+void withoutHidden() { }
 
-    //non-test non-functions
-    int testInt;
+//other non-test members
+alias seq = AliasSeq!(int, float, string);
 
-    //test classes
-    class FooTest {
-        void test() {
-        }
-    }
-
-    class BarTest {
-        void test() {
-        }
-    }
-
-    @UnitTest class Blergh {
-    }
-
-    //non-test classes
-    class NotATest {
-        void tes() {
-        }
-    }
-
-    class AlsoNotATest {
-        void testosterone() {
-        }
-    }
-
-    @HiddenTest void withHidden() {
-    }
-
-    void withoutHidden() {
-    }
-
-    //other non-test members
-    alias seq = AliasSeq!(int, float, string);
-}
 
 unittest {
     //1st block
@@ -85,15 +55,14 @@ unittest {
     assert(true);
 }
 
-struct StructWithUnitTests {
+struct StructWithUnitTests{
     alias SelfSoDontRecurseForever = StructWithUnitTests;
 
     @Name("InStruct")
-    unittest {
+    unittest{
         assert(false);
     }
-
-    unittest {
+    unittest{
         // 2nd inner block.
         assert(true);
     }
@@ -102,12 +71,25 @@ struct StructWithUnitTests {
 // github issue #26 - template instance GetTypes!uint does not match template declaration
 alias RGB = uint;
 
-import unit_threaded : TestCase;
 
-class Issue83 : TestCase {
-    this() {
-    }
+import unit_threaded: TestCase;
 
-    override void test() {
-    }
+class Issue83: TestCase {
+    this() {}
+    override void test() {}
 }
+
+
+mixin Test!(
+    "this is my successful test name",
+    {
+
+    }
+);
+
+mixin Test!(
+    "this is my unsuccessful test name",
+    {
+        assert(false);
+    }
+);

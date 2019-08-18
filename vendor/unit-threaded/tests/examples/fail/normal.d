@@ -2,7 +2,8 @@ module tests.fail.normal;
 
 import unit_threaded;
 
-class WrongTest : TestCase {
+
+class WrongTest: TestCase {
     override void test() {
         shouldBeTrue(5 == 3);
         shouldBeFalse(5 == 5);
@@ -12,13 +13,13 @@ class WrongTest : TestCase {
     }
 }
 
-class OtherWrongTest : TestCase {
+class OtherWrongTest: TestCase {
     override void test() {
         shouldBeTrue(false);
     }
 }
 
-class RightTest : TestCase {
+class RightTest: TestCase {
     override void test() {
         shouldBeTrue(true);
     }

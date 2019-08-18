@@ -6,94 +6,79 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 module config;
 
 public import core.stdc.stdlib;
+public import logger = std.experimental.logger;
 public import std.algorithm;
 public import std.array;
 public import std.ascii;
 public import std.conv;
 public import std.file;
-public import std.process;
 public import std.path;
+public import std.process;
 public import std.range;
 public import std.stdio;
 public import std.string;
-public import logger = std.experimental.logger;
+public import std.string;
 
 public import unit_threaded.light;
 
-immutable string codeCherckerBin;
 immutable compileCommandsFile = "compile_commands.json";
-immutable testData = "testdata";
-immutable tmpDir = "./build/test_area";
 
-shared static this() {
-    codeCherckerBin = absolutePath("../build/code_checker");
+string appPath() {
+    foreach (a; ["../build/code_checker"].filter!(a => exists(a)))
+        return a.absolutePath;
+    assert(0, "unable to find an app binary");
+}
+
+/// Path to where data used for integration tests exists
+string testData() {
+    return "testdata".absolutePath;
+}
+
+string inTestData(string p) {
+    return buildPath(testData, p);
+}
+
+string tmpDir() {
+    return "build/test".absolutePath;
+}
+
+auto makeTestArea(string file = __FILE__, int line = __LINE__) {
+    return TestArea(file, line);
 }
 
 struct TestArea {
-    const string workdir;
+    const string sandboxPath;
+    private int commandLogCnt;
 
-    alias workdir this;
+    this(string file, int line) {
+        prepare();
+        sandboxPath = buildPath(tmpDir, file.baseName ~ line.to!string).absolutePath;
 
-    this(string file, ulong id) {
-        this.workdir = buildPath(tmpDir, file ~ id.to!string).absolutePath;
-        setup();
-    }
-
-    void setup() {
-        if (exists(workdir)) {
-            rmdirRecurse(workdir);
+        if (exists(sandboxPath)) {
+            rmdirRecurse(sandboxPath);
         }
-        mkdirRecurse(workdir);
+        mkdirRecurse(sandboxPath);
     }
-}
 
-struct RunResult {
-    int status;
-    string[] stdout;
-    string[] stderr;
-
-    void print() {
-        import std.ascii : newline;
-
-        writeln("stdout: ", stdout.joiner(newline));
-        writeln("stderr: ", stderr.joiner(newline));
-    }
-}
-
-RunResult run(string[] cmd, string workdir = null) {
-    import std.array : appender;
-    import std.algorithm : joiner, copy;
-    import std.ascii : newline;
-    import std.process : pipeProcess, tryWait, Redirect;
-    import std.stdio : writeln;
-    import core.thread : Thread;
-    import core.time : dur;
-
-    logger.trace("run: ", cmd.joiner(" "));
-    if (workdir !is null)
-        logger.trace("workdir is ", workdir);
-
-    auto app_out = appender!(string[])();
-    auto app_err = appender!(string[])();
-
-    auto p = pipeProcess(cmd, Redirect.all, null, Config.none, workdir);
-    int exit_status = -1;
-
-    while (true) {
-        auto pres = p.pid.tryWait;
-
-        p.stdout.byLineCopy.copy(app_out);
-        p.stderr.byLineCopy.copy(app_err);
-
-        if (pres.terminated) {
-            exit_status = pres.status;
-            break;
+    auto exec(Args...)(auto ref Args args_) {
+        string[] args;
+        static foreach (a; args_)
+            args ~= a;
+        auto res = execute(args, null, Config.none, size_t.max, sandboxPath);
+        try {
+            auto fout = File(inSandboxPath(format("command%s.log", commandLogCnt++)), "w");
+            fout.writefln("%-(%s %)", args);
+            fout.write(res.output);
+        } catch (Exception e) {
         }
-
-        Thread.sleep(25.dur!"msecs");
+        return res;
     }
 
-    return RunResult(exit_status, app_out.data, app_err.data);
+    string inSandboxPath(in string fileName) @safe pure nothrow const {
+        import std.path : buildPath;
+
+        return buildPath(sandboxPath, fileName);
+    }
 }
 
 void dirContentCopy(string src, string dst) {
@@ -111,5 +96,34 @@ void dirContentCopy(string src, string dst) {
         auto attrs = getAttributes(f.name);
         if (attrs & S_IXUSR)
             setAttributes(dst_f, attrs | S_IXUSR);
+    }
+}
+
+private:
+
+shared(bool) g_isPrepared = false;
+
+void prepare() {
+    import core.thread : Thread;
+    import core.time : dur;
+
+    synchronized {
+        if (g_isPrepared)
+            return;
+        scope (exit)
+            g_isPrepared = true;
+
+        // prepare by cleaning up
+        if (exists(tmpDir)) {
+            while (true) {
+                try {
+                    rmdirRecurse(tmpDir);
+                    break;
+                } catch (Exception e) {
+                    logger.info(e.msg);
+                }
+                Thread.sleep(100.dur!"msecs");
+            }
+        }
     }
 }

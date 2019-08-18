@@ -1,16 +1,15 @@
 module unit_threaded.ut.modules.tags;
 
-import unit_threaded.attrs;
+import unit_threaded.runner.attrs;
 
 @Tags(["ninja", "make"])
-unittest {
-}
+unittest { }
 
 unittest {
     assert(1 == 2);
 }
 
-version (unittest) {
+version(unittest) {
     @Tags("make")
     void testMake() {
         import unit_threaded.should;
@@ -24,6 +23,7 @@ unittest {
     assert(1 == 2);
 }
 
-@HiddenTest unittest {
+@HiddenTest
+unittest {
     assert(1 == 2);
 }

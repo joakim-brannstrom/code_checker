@@ -17,6 +17,7 @@ import unit_threaded;
     fun(m);
 }
 
+
 @safe pure unittest {
     auto m = mockStruct;
     m.expect!"foo"(2);
@@ -36,7 +37,6 @@ void generic(T)(auto ref T thing) {
 
 struct Namespace {
     import std.datetime : Duration;
-
     class HiddenTypes {
         abstract Duration identity(Duration) pure @safe;
     }
@@ -46,7 +46,6 @@ struct Namespace {
     auto m = mock!(Namespace.HiddenTypes);
     {
         import std.datetime : Duration;
-
         m.expect!"identity"(Duration.init);
         m.identity(Duration.init);
         m.verify;
@@ -56,15 +55,14 @@ struct Namespace {
 @("private or protected members") @safe pure unittest {
     interface InterfaceWithProtected {
         bool result();
-        protected final void inner(int i) {
-        }
+        protected final void inner(int i) { }
     }
 
     auto m = mock!InterfaceWithProtected;
 }
 
-struct Struct {
-}
+
+struct Struct { }
 
 @("default params")
 @safe pure unittest {

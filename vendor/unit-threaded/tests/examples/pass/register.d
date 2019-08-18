@@ -2,8 +2,9 @@ module tests.pass.register;
 
 import unit_threaded;
 
+
 //won't be registered, impossible to instantiate
-class BaseClass : TestCase {
+class BaseClass: TestCase {
     override void test() {
         doTest();
     }
@@ -12,7 +13,7 @@ class BaseClass : TestCase {
 }
 
 //will be registered since actually has 'test' method
-class DerivedClass : BaseClass {
+class DerivedClass: BaseClass{
     override void doTest() {
         2.shouldEqual(2);
     }
