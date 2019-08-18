@@ -6,7 +6,6 @@ import unit_threaded.asserts;
 @("Verify anti-identity property for int[] fails")
 @safe unittest {
     import unit_threaded.should;
-
     int numCalls;
     bool antiIdentity(int[] a) {
         ++numCalls;
@@ -24,13 +23,15 @@ import unit_threaded.asserts;
     // is small enough to disconsider even if it were truly random
     // since Gen!int[] is front-loaded, it'll fail deterministically
     assertExceptionMsg(check!((int[] a) => a.length % 2 == 1)(42),
-            "    tests/unit_threaded/ut/property.d:123 - Property failed. Seed: 42. Input: []");
+                       "    tests/unit_threaded/ut/property.d:123 - Property failed. Seed: 42. Input: []");
 }
+
 
 @("shrink int when already shrunk")
 @safe pure unittest {
     assertEqual(0.shrink!(a => a != 0), 0);
 }
+
 
 @("shrink int when not already shrunk going up")
 @safe pure unittest {
@@ -52,8 +53,7 @@ import unit_threaded.asserts;
 @("shrink unsigneds")
 @safe pure unittest {
     import std.meta;
-
-    foreach (T; AliasSeq!(ubyte, ushort, uint, ulong)) {
+    foreach(T; AliasSeq!(ubyte, ushort, uint, ulong)) {
         T value = 3;
         assertEqual(value.shrink!(a => a == 0), 1);
     }
@@ -72,8 +72,7 @@ import unit_threaded.asserts;
 
 @("shrink string")
 @safe pure unittest {
-    import std.algorithm : canFind;
-
+    import std.algorithm: canFind;
     assertEqual("abcdef".shrink!(a => !a.canFind("e")), "e");
 }
 
@@ -85,7 +84,7 @@ unittest {
 @("shrink one item with check")
 unittest {
     assertExceptionMsg(check!((int i) => i < 3)(33),
-            "    tests/unit_threaded/ut/property.d:123 - Property failed. Seed: 33. Input: 3");
+                       "    tests/unit_threaded/ut/property.d:123 - Property failed. Seed: 33. Input: 3");
 }
 
 @("string[]")
@@ -93,7 +92,6 @@ unittest {
     bool identity(string[] a) pure {
         return a == a;
     }
-
     check!identity;
 }
 
@@ -114,25 +112,20 @@ unittest {
 @("issue 93 uint")
 unittest {
     import unit_threaded.should;
-
     check!((uint i) => i != i)(77).shouldThrowWithMessage("Property failed. Seed: 77. Input: 0");
 }
 
 @("issue 93 array")
 unittest {
     import unit_threaded.should;
-
     check!((int[] i) => i != i)(11).shouldThrowWithMessage("Property failed. Seed: 11. Input: []");
 }
 
 @("check function that throws is the same as check function that returns false")
 @safe unittest {
     import unit_threaded.should;
-
     bool funcThrows(uint) {
         throw new Exception("Fail!");
     }
-
-    check!funcThrows(42).shouldThrowWithMessage(
-            "Property threw. Seed: 42. Input: 0. Message: Fail!");
+    check!funcThrows(42).shouldThrowWithMessage("Property threw. Seed: 42. Input: 0. Message: Fail!");
 }

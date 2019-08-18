@@ -12,7 +12,14 @@ import tests.pass.fixtures;
 import tests.pass.mock;
 
 int main(string[] args) {
-    return args.runTests!(tests.pass.normal, tests.pass.delayed,
-            tests.pass.attributes, tests.pass.register, tests.pass.io,
-            tests.pass.fixtures, tests.pass.property, tests.pass.mock,);
+    return args.runTests!(
+        tests.pass.normal,
+        tests.pass.delayed,
+        tests.pass.attributes,
+        tests.pass.register,
+        tests.pass.io,
+        tests.pass.fixtures,
+        tests.pass.property,
+        tests.pass.mock,
+    );
 }

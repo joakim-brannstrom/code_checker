@@ -9,10 +9,15 @@ unittest {
 }
 
 @("int[] sorting twice yields the same result") unittest {
-    import std.algorithm : sort;
-
-    check!((int[] a) { sort(a); auto b = a.dup; sort(b); return a == b; });
+    import std.algorithm: sort;
+    check!((int[] a) {
+        sort(a);
+        auto b = a.dup;
+        sort(b);
+        return a == b;
+    });
 }
+
 
 struct MyStruct {
     int i;
@@ -20,14 +25,19 @@ struct MyStruct {
 
 @("Property testing with user defined type")
 unittest {
-    checkCustom!(() { return MyStruct(5); }, (MyStruct s) { return s.i == 5; });
+    checkCustom!(
+        () {
+            return MyStruct(5);
+        },
+        (MyStruct s) {
+            return s.i == 5;
+        });
 }
 
 @("Property testing with strings")
 unittest {
     check!((string s) {
         import std.utf : validate, UTFException;
-
         try {
             validate(s);
         } catch (UTFException e) {
@@ -41,7 +51,6 @@ unittest {
 unittest {
     check!((wstring s) {
         import std.utf : validate, UTFException;
-
         try {
             validate(s);
         } catch (UTFException e) {
@@ -55,7 +64,6 @@ unittest {
 unittest {
     check!((dstring s) {
         import std.utf : validate, UTFException;
-
         try {
             validate(s);
         } catch (UTFException e) {

@@ -2,6 +2,7 @@ module tests.fail.priv;
 
 import unit_threaded;
 
+
 /**
  * Private stuff to test compile-time scanning doesn't break
  */
@@ -21,6 +22,7 @@ private:
     int[] a;
     int[int] aa;
 }
+
 
 struct StructWithPrivateData {
 private:

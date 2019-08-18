@@ -1,0 +1,20 @@
+name "unit-threaded"
+version "0.10.3"
+description "Advanced multi-threaded unit testing framework with minimal to no boilerplate using built-in unittest blocks"
+homepage "https://github.com/atilaneves/unit-threaded"
+authors "Atila Neves"
+copyright "Copyright © 2013, Atila Neves"
+license "BSD 3-clause"
+targetType "library"
+sourcePaths "source/" "./subpackages/from/source" "./subpackages/exception/source" "./subpackages/assertions/source" "./subpackages/runner/source" "./subpackages/mocks/source" "./subpackages/integration/source" "./subpackages/property/source"
+importPaths "source/" "./subpackages/from/source" "./subpackages/exception/source" "./subpackages/assertions/source" "./subpackages/runner/source" "./subpackages/mocks/source" "./subpackages/integration/source" "./subpackages/property/source"
+configuration "library" {
+    targetType "library"
+}
+configuration "gen_ut_main" {
+    targetType "executable"
+    targetName "gen_ut_main"
+    mainSourceFile "gen/gen_ut_main.d"
+    sourcePaths "gen/source"
+    importPaths "gen/source"
+}

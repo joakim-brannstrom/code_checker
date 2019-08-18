@@ -4,15 +4,14 @@ authors "Joakim Brännström"
 copyright "Copyright © 2018, Joakim Brännström"
 license "BSL-1.0"
 
-dependency "code_checker:toml" version="*"
-subPackage "./vendor/toml"
+targetPath "build"
 
-dependency "code_checker:colorlog" version="*"
 subPackage "./vendor/colorlog"
-
+subPackage "./vendor/toml"
 subPackage "./vendor/unit-threaded"
 
-targetPath "build"
+dependency "code_checker:colorlog" version="*"
+dependency "code_checker:toml" version="*"
 
 configuration "application" {
     targetType "executable"
@@ -21,10 +20,16 @@ configuration "application" {
 configuration "unittest" {
     targetType "executable"
     targetName "code_checker_ut"
-
     dependency "code_checker:unit-threaded" version="*" optional=true
-
     mainSourceFile "build/ut.d"
     preBuildCommands "./update_ut.d build/ut.d"
     excludedSourceFiles "source/app.d"
+}
+
+// redirect testing which is primarily integration testing
+configuration "integration_test" {
+    targetType "executable"
+    targetName "integration_test"
+    excludedSourceFiles "source/*"
+    sourceFiles "test/redirect.d"
 }
