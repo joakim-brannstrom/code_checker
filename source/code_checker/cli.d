@@ -149,26 +149,26 @@ struct Config {
         app.put("# extra flags to pass on to the compiler");
         app.put(
                 "# the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s");
-        app.put(`# extra_flags = [ "-Wall",
-#    "-Wextra", # resonable and standard
-#    "-Wshadow", # warn the user if a variable declaration shadows one from a parent context
-#    "-Wnon-virtual-dtor", # warn the user if a class with virtual functions has a non-virtual destructor
-#    "-Wold-style-cast", # warn for c-style casts
-#    "-Wcast-align", # warn for potential performance problem casts
+        app.put(`extra_flags = [ "-Wall",
+    "-Wextra", # resonable and standard
+    "-Wshadow", # warn the user if a variable declaration shadows one from a parent context
+    "-Wnon-virtual-dtor", # warn the user if a class with virtual functions has a non-virtual destructor
+    "-Wold-style-cast", # warn for c-style casts
+    "-Wcast-align", # warn for potential performance problem casts
 #    "-Wunused", # warn on anything being unused
-#    "-Woverloaded-virtual", # warn if you overload (not override) a virtual func
-#    "-Wpedantic", # warn if non-standard C++ is used
-#    "-Wconversion", # warn on type conversions that may lose data
-#    "-Wsign-conversion", # warn on sign conversion
-#    "-Wnull-dereference", # warn if a null dereference is detected
-#    "-Wdouble-promotion", # Warn if float is implicit promoted to double
-#    "-Wformat=2", # warn on security issues around functions that format output (ie printf)
-#    "-Wduplicated-cond", # warn if if /else chain has duplicated conditions
-#    "-Wduplicated-branches", # warn if if / else branches have duplicated code
-#    "-Wlogical-op", # warn about logical operations being used where bitwise were probably wanted
-#    "-Wuseless-cast", # warn if you perform a cast to the same type
-#    "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
-# ]`);
+    "-Woverloaded-virtual", # warn if you overload (not override) a virtual func
+    "-Wpedantic", # warn if non-standard C++ is used
+    "-Wconversion", # warn on type conversions that may lose data
+    "-Wsign-conversion", # warn on sign conversion
+    "-Wnull-dereference", # warn if a null dereference is detected
+    "-Wdouble-promotion", # Warn if float is implicit promoted to double
+    "-Wformat=2", # warn on security issues around functions that format output (ie printf)
+    "-Wduplicated-cond", # warn if if /else chain has duplicated conditions
+    "-Wduplicated-branches", # warn if if / else branches have duplicated code
+    "-Wlogical-op", # warn about logical operations being used where bitwise were probably wanted
+    "-Wuseless-cast", # warn if you perform a cast to the same type
+    "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
+ ]`);
         app.put(
                 "# use this compilers system includes instead of the one used in the compile_commands.json");
         app.put(format(`# use_compiler_system_includes = "%s"`, compiler.useCompilerSystemIncludes.length == 0
