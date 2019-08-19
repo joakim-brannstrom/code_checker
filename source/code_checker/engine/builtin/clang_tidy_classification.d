@@ -392,9 +392,6 @@ struct CountErrorsResult {
             }
         }
 
-        // suppressing warnings should not be encouraged
-        sum -= suppressedWarnings;
-
         return sum;
     }
 
@@ -433,7 +430,9 @@ unittest {
     foreach (s; [EnumMembers!Severity])
         r.put(s);
 
-    r.toRange.shouldEqual(["1 critical", "1 high", "1 medium", "1 low", "1 style"]);
+    r.toRange.shouldEqual([
+            "1 critical", "1 high", "1 medium", "1 low", "1 style"
+            ]);
 }
 
 struct DiagMessage {
