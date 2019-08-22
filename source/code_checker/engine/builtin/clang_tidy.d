@@ -142,8 +142,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        // one point for each good file. This is to try and encourage good behaviour.
-        result_.score += res.errors.score == 0 ? 1 : res.errors.score;
+        result_.score += res.errors.score;
         result_.supp += res.suppressedWarnings;
 
         if (res.clangTidyStatus != 0) {
