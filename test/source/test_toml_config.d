@@ -76,7 +76,30 @@ unittest {
     res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
-        if (l.canFind("Compiler: ./fake_cc.d flags: -isystem /foo/bar"))
+        if (l.canFind(`compiler: ./fake_cc.d flags: [] includes: [] system-includes: ["/foo/bar"]`))
+            return;
+    }
+
+    // no -isystem /foo/bar found
+    shouldBeTrue(false);
+}
+
+@("shall only execute the specified analyser iwyu when checking")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "conf", "specify_analysers"), ta.sandboxPath);
+    {
+        auto txt = readText(ta.inSandboxPath(".code_checker.toml"));
+        File(ta.inSandboxPath(".code_checker.toml"), "w").writef(txt,
+                ta.inSandboxPath("fake_iwyu.d"));
+    }
+
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
+
+    res.status.shouldEqual(0);
+
+    foreach (l; res.output.splitLines) {
+        if (l.canFind(`staticCode: using iwyu`))
             return;
     }
 

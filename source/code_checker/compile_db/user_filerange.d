@@ -15,7 +15,7 @@ module code_checker.compile_db.user_filerange;
 import logger = std.experimental.logger;
 
 import code_checker.compile_db : CompileCommandFilter, CompileCommandDB,
-    parseFlag, SearchResult, DbCompiler = Compiler;
+    parseFlag, SearchResult, DbCompiler = Compiler, ParseFlags;
 import code_checker.types : FileName, AbsolutePath;
 
 @safe:
@@ -59,19 +59,18 @@ struct UserFileRange {
         final switch (kind) {
         case RangeOver.inFiles:
             if (db.length > 0) {
-                curr = db.findFlags(FileName(inFiles[0]), cflags, ccFilter, userCompiler);
+                curr = findFlags(db, FileName(inFiles[0]), cflags, ccFilter, userCompiler);
             } else {
-                curr = SearchResult(cflags.dup, AbsolutePath(FileName(inFiles[0])));
+                curr = SearchResult(ParseFlags(null, cflags), AbsolutePath(FileName(inFiles[0])));
             }
             break;
         case RangeOver.database:
             import std.array : appender;
 
             auto tmp = db.payload[0];
-            auto flags = appender!(string[])();
-            flags.put(cflags);
-            flags.put(tmp.parseFlag(ccFilter, userCompiler).completeFlags);
-            curr = SearchResult(flags.data, tmp.absoluteFile);
+            auto flags = parseFlag(db.payload[0], ccFilter, userCompiler);
+            flags.cflags ~= cflags;
+            curr = SearchResult(flags, tmp.absoluteFile);
             break;
         }
 
@@ -120,14 +119,13 @@ Nullable!SearchResult findFlags(ref CompileCommandDB compdb, FileName fname,
     import std.file : exists;
     import std.path : baseName;
     import std.string : join;
-
     import code_checker.compile_db : appendOrError;
 
     typeof(return) rval;
 
     auto db_search_result = compdb.appendOrError(flags, fname, flag_filter, userCompiler);
     if (!db_search_result.isNull) {
-        rval = SearchResult(db_search_result.cflags, db_search_result.absoluteFile);
+        rval = SearchResult(db_search_result.flags, db_search_result.absoluteFile);
         return rval;
     }
 

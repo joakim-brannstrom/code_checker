@@ -428,16 +428,6 @@ struct SearchResult {
         this.flags = flags;
         this.absoluteFile = p;
     }
-
-    // TODO: consider deprecating.
-    this(string[] flags, AbsolutePath p) {
-        this(ParseFlags(null, flags), p);
-    }
-
-    // TODO: consider deprecating.
-    string[] cflags() @safe pure nothrow const {
-        return flags.completeFlags;
-    }
 }
 
 /** Append the compiler flags if a match is found in the DB or error out.
@@ -606,7 +596,7 @@ struct ParseFlags {
     alias completeFlags this;
 
     this(Include[] incls, string[] flags) {
-        this(Compiler.init, incls, SystemIncludePath[].init, flags);
+        this(Compiler.init, incls, null, flags);
     }
 
     this(Compiler compiler, Include[] incls, string[] flags) {
@@ -763,7 +753,6 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
     }();
 
     auto compiler = user_compiler.length == 0 ? Compiler(skipArgs[0]) : user_compiler;
-
     auto pargs = filterPair(skipArgs, cmd.directory, flag_filter.filter, compiler);
 
     auto sysincls = () {
@@ -777,9 +766,11 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
         return SystemIncludePath[].init;
     }();
 
-    logger.tracef("Compiler: %s flags: %-(%s %)", pargs.compiler, pargs.completeFlags);
+    auto rval = ParseFlags(pargs.compiler, pargs.includes, sysincls, pargs.cflags);
+    logger.tracef("compiler: %s flags: %s includes: %s system-includes: %s",
+            rval.compiler, rval.cflags, rval.includes, rval.systemIncludes);
 
-    return ParseFlags(pargs.compiler, pargs.includes, sysincls, pargs.cflags);
+    return rval;
 }
 
 /** Convert the string to a CompileCommandDB.

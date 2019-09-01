@@ -58,6 +58,8 @@ struct NormalFSM {
 
     State st;
     Config conf;
+    CompileCommandDB db;
+    /// If the compile_commands.json that is written to the file system should be deleted when code_checker is done.
     bool removeCompileDb;
     /// Root directory from which the program where initially started.
     AbsolutePath root;
@@ -173,7 +175,7 @@ struct NormalFSM {
 
         auto compile_db = appender!string();
         try {
-            auto db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
+            this.db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
             unifyCompileDb(db, conf.compiler.useCompilerSystemIncludes, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
@@ -191,7 +193,7 @@ struct NormalFSM {
 
         Environment env;
         env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
-        env.compileDb = fromArgCompileDb([env.compileDbFile]);
+        env.compileDb = this.db;
         env.files = () {
             if (conf.analyzeFiles.length == 0)
                 return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile).array;
@@ -201,14 +203,14 @@ struct NormalFSM {
         env.genCompileDb = conf.compileDb.generateDb;
         env.flagFilter = conf.compileDb.flagFilter;
 
-        env.staticCode = conf.staticCode;
         env.clangTidy = conf.clangTidy;
         env.compiler = conf.compiler;
+        env.iwyu = conf.iwyu;
         env.logg = conf.logg;
+        env.staticCode = conf.staticCode;
 
-        Registry reg;
-        reg.put(new ClangTidy, Type.staticCode);
-        exitStatus = execute(env, reg) == Status.passed ? 0 : 1;
+        auto reg = makeRegistry;
+        exitStatus = execute(env, conf.staticCode.analyzers, reg) == Status.passed ? 0 : 1;
     }
 
     void act_cleanup() {

@@ -74,7 +74,7 @@ struct TestArea {
         return res;
     }
 
-    string inSandboxPath(in string fileName) @safe pure nothrow const {
+    string inSandboxPath(const string fileName) @safe pure nothrow const {
         import std.path : buildPath;
 
         return buildPath(sandboxPath, fileName);

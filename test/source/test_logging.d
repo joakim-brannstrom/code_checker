@@ -46,7 +46,7 @@ unittest {
     ta.exec([
             appPath, "--verbose", "trace", "--clang-tidy-fix", "--log", "log",
             "--logdir", "log"
-            ]).status.shouldEqual(0);
+            ]).status.shouldEqual(1);
 
     dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
             a => a.extension == ".yaml").count.shouldEqual(1);
