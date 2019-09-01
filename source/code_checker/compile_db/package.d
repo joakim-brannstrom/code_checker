@@ -347,15 +347,11 @@ private void parseCommands(T)(string raw_input, CompileDbFile in_file, ref T out
 }
 
 void fromFile(T)(CompileDbFile filename, ref T app) {
-    import std.algorithm : joiner;
-    import std.conv : text;
-    import std.stdio : File;
+    import std.file : readText;
 
-    // trusted: using the GC for memory management.
-    // assuming any UTF-8 errors in the input is validated by phobos byLineCopy.
-    auto raw = () @trusted {
-        return File(cast(string) filename).byLineCopy.joiner.text;
-    }();
+    auto raw = readText(filename);
+    if (raw.length == 0)
+        logger.warning("File is empty: ", filename);
 
     raw.parseCommands(filename, app);
 }
