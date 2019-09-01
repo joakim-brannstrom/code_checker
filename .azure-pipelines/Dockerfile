@@ -12,6 +12,7 @@ RUN apt-get update && \
 RUN apt-get -y --no-install-recommends install \
         curl \
         xz-utils \
+        iwyu \
         gnupg
 
 WORKDIR /opt

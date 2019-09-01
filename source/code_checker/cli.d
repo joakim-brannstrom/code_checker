@@ -304,6 +304,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
+            "a|analyzer", "Analysers to run", &conf.staticCode.analyzers,
             "clang-tidy-bin", "clang-tidy binary to use", &conf.clangTidy.binary,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
@@ -312,6 +313,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "dump-config", "dump the full, detailed configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
+            "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,

@@ -177,7 +177,6 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
         result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
                 ? Status.passed : Status.failed);
-        logger.trace(result_).collectException;
     }
 
     auto pool = new TaskPool;

@@ -96,13 +96,14 @@ unittest {
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
 
-    res.status.shouldEqual(0);
+    res.status.shouldEqual(1);
 
     foreach (l; res.output.splitLines) {
         if (l.canFind(`staticCode: using iwyu`))
             return;
+        l.canFind(`staticCode: using iwyu`).shouldBeFalse;
     }
 
-    // no -isystem /foo/bar found
+    // failed
     shouldBeTrue(false);
 }
