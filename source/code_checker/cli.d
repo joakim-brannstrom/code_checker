@@ -10,6 +10,7 @@ This allows the user to override the configuration via the CLI.
 */
 module code_checker.cli;
 
+import std.array : array, empty, appender;
 import std.exception : collectException, ifThrown;
 import std.typecons : Tuple, Flag;
 import logger = std.experimental.logger;
@@ -146,7 +147,6 @@ struct Config {
     string toTOML(Flag!"fullConfig" full) @trusted {
         import std.algorithm : joiner, map;
         import std.ascii : newline;
-        import std.array : appender, array;
         import std.format : format;
         import std.utf : toUTF8;
         import std.traits : EnumMembers;
@@ -281,7 +281,6 @@ MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
 
 void parseCLI(string[] args, ref Config conf) @trusted {
     import std.algorithm : map, among, filter;
-    import std.array : array;
     import std.format : format;
     import std.path : dirName, buildPath;
     import std.traits : EnumMembers;
@@ -293,6 +292,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
+        string[] analyzers;
         string[] analyze_files;
         string[] compile_dbs;
         string[] src_filter;
@@ -304,7 +304,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
-            "a|analyzer", "Analysers to run", &conf.staticCode.analyzers,
+            "a|analyzer", "Analysers to run", &analyzers,
             "clang-tidy-bin", "clang-tidy binary to use", &conf.clangTidy.binary,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
@@ -336,6 +336,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         } else if (compile_dbs.length != 0) {
             conf.compileDb.rawDbs = compile_dbs;
         }
+
+        if (!analyzers.empty)
+            conf.staticCode.analyzers = analyzers;
 
         if (conf.logg.toFile)
             conf.logg.dir = Path(logdir).AbsolutePath;
@@ -382,8 +385,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * ---
  */
 void loadConfig(ref Config rval) @trusted {
-    import std.algorithm;
-    import std.array : array;
+    import std.algorithm : map;
     import std.file : exists, readText;
     import std.path : dirName, buildPath;
     import toml;
@@ -495,7 +497,6 @@ void loadConfig(ref Config rval) @trusted {
 /// Returns: default configuration as embedded in the binary
 void setClangTidyFromDefault(ref Config c) @safe nothrow {
     import std.algorithm;
-    import std.array;
     import std.ascii : newline;
 
     static auto readConf(immutable string raw) {
