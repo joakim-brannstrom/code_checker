@@ -66,6 +66,7 @@ int modeNone_Error(ref Config conf) {
 int modeInitConfig(ref Config conf) {
     import std.stdio : File;
     import std.file : exists;
+    import code_checker.engine;
 
     if (exists(conf.miniConf.confFile)) {
         logger.error("Configuration file already exists: ", conf.miniConf.confFile);

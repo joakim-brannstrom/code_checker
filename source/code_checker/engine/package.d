@@ -10,3 +10,4 @@ module code_checker.engine;
 public import code_checker.engine.types : Environment, Status, Severity;
 public import code_checker.engine.registry;
 public import code_checker.engine.builtin.clang_tidy;
+public import code_checker.engine.builtin.include_what_you_use;

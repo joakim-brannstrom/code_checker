@@ -7,12 +7,14 @@ module code_checker.engine.types;
 
 @safe:
 
-public import code_checker.cli : ConfigStaticCode, ConfigClangTidy, Compiler,
-    Logging;
+public import code_checker.cli : ConfigStaticCode, ConfigClangTidy, Compiler, Logging, ConfigIwyu;
 
 /** The base fixture that an analyzer implement
  */
 interface BaseFixture {
+    /// the name of the analyser.
+    string name();
+
     /// Explain what the analyser is.
     string explain();
 
@@ -37,9 +39,11 @@ struct Environment {
     import code_checker.types : AbsolutePath;
     import code_checker.compile_db : CompileCommandDB, CompileCommandFilter;
 
-    ConfigStaticCode staticCode;
-    ConfigClangTidy clangTidy;
     Compiler compiler;
+    ConfigClangTidy clangTidy;
+    ConfigIwyu iwyu;
+    ConfigStaticCode staticCode;
+
     Logging logg;
 
     /// Flags the user wants to be automatically removed from the compile_commands.json.

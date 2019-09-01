@@ -7,10 +7,10 @@ This file contains an analyzer that uses clang-tidy.
 */
 module code_checker.engine.builtin.clang_tidy;
 
-import std.typecons : Tuple;
-import std.exception : collectException;
-import std.concurrency : Tid, thisTid;
 import logger = std.experimental.logger;
+import std.concurrency : Tid, thisTid;
+import std.exception : collectException;
+import std.typecons : Tuple;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.file_filter;
@@ -25,6 +25,10 @@ class ClangTidy : BaseFixture {
         Environment env;
         Result result_;
         string[] tidyArgs;
+    }
+
+    override string name() {
+        return "clang-tidy";
     }
 
     override string explain() {
@@ -173,7 +177,6 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
         result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
                 ? Status.passed : Status.failed);
-        logger.trace(result_).collectException;
     }
 
     auto pool = new TaskPool;

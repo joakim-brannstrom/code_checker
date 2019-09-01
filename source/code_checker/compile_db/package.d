@@ -347,15 +347,11 @@ private void parseCommands(T)(string raw_input, CompileDbFile in_file, ref T out
 }
 
 void fromFile(T)(CompileDbFile filename, ref T app) {
-    import std.algorithm : joiner;
-    import std.conv : text;
-    import std.stdio : File;
+    import std.file : readText;
 
-    // trusted: using the GC for memory management.
-    // assuming any UTF-8 errors in the input is validated by phobos byLineCopy.
-    auto raw = () @trusted {
-        return File(cast(string) filename).byLineCopy.joiner.text;
-    }();
+    auto raw = readText(filename);
+    if (raw.length == 0)
+        logger.warning("File is empty: ", filename);
 
     raw.parseCommands(filename, app);
 }
@@ -425,8 +421,13 @@ body {
 }
 
 struct SearchResult {
-    string[] cflags;
+    ParseFlags flags;
     AbsolutePath absoluteFile;
+
+    this(ParseFlags flags, AbsolutePath p) {
+        this.flags = flags;
+        this.absoluteFile = p;
+    }
 }
 
 /** Append the compiler flags if a match is found in the DB or error out.
@@ -461,7 +462,9 @@ Nullable!(SearchResult) appendOrError(ref CompileCommandDB compile_db, const str
         return rval;
     } else {
         rval = SearchResult.init;
-        rval.cflags = cflags ~ compile_commands[0].parseFlag(flag_filter, user_compiler);
+        auto p = compile_commands[0].parseFlag(flag_filter, user_compiler);
+        p.prependCflags(cflags.dup);
+        rval.flags = p;
         rval.absoluteFile = compile_commands[0].absoluteFile;
     }
 
@@ -558,6 +561,14 @@ struct ParseFlags {
     /// Compiler used to compile the item.
     Compiler compiler;
 
+    void prependCflags(string[] v) {
+        this.cflags = v ~ this.cflags;
+    }
+
+    void appendCflags(string[] v) {
+        this.cflags ~= v;
+    }
+
     bool hasSystemIncludes() @safe pure nothrow const @nogc {
         return systemIncludes.length != 0;
     }
@@ -576,7 +587,17 @@ struct ParseFlags {
         return cflags.idup ~ systemIncludes.map!(a => ["-isystem", a.value]).joiner.array;
     }
 
+    string toString() @safe pure const {
+        import std.format : format;
+
+        return format("Compiler: %-(%s %) flags: %-(%s %)", compiler, completeFlags);
+    }
+
     alias completeFlags this;
+
+    this(Include[] incls, string[] flags) {
+        this(Compiler.init, incls, null, flags);
+    }
 
     this(Compiler compiler, Include[] incls, string[] flags) {
         this(compiler, incls, null, flags);
@@ -732,7 +753,6 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
     }();
 
     auto compiler = user_compiler.length == 0 ? Compiler(skipArgs[0]) : user_compiler;
-
     auto pargs = filterPair(skipArgs, cmd.directory, flag_filter.filter, compiler);
 
     auto sysincls = () {
@@ -746,9 +766,11 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
         return SystemIncludePath[].init;
     }();
 
-    logger.tracef("Compiler: %s flags: %-(%s %)", pargs.compiler, pargs.completeFlags);
+    auto rval = ParseFlags(pargs.compiler, pargs.includes, sysincls, pargs.cflags);
+    logger.tracef("compiler: %s flags: %s includes: %s system-includes: %s",
+            rval.compiler, rval.cflags, rval.includes, rval.systemIncludes);
 
-    return ParseFlags(pargs.compiler, pargs.includes, sysincls, pargs.cflags);
+    return rval;
 }
 
 /** Convert the string to a CompileCommandDB.

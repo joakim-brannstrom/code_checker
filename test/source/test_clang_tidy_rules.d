@@ -11,7 +11,7 @@ import config;
 unittest {
     auto ta = makeTestArea;
     // action
-    auto res = ta.exec(appPath, "--vverbose", "--compile-db",
+    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
             buildPath(testData, "cpp", "empty", compileCommandsFile));
 
     // assert
@@ -22,7 +22,7 @@ unittest {
 unittest {
     auto ta = makeTestArea;
     // action
-    auto res = ta.exec(appPath, "--vverbose", "--compile-db",
+    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
             buildPath(testData, "cpp", "name_style", compileCommandsFile));
 
     // assert

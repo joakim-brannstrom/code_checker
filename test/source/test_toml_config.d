@@ -17,7 +17,7 @@ unittest {
             ta.inSandboxPath("db/compile_commands.json"));
     copy(buildPath(testData, "conf", "read_sections", "empty.cpp"), ta.inSandboxPath("empty.cpp"));
 
-    auto res = ta.exec([appPath, "--vverbose"]);
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
 
     res.status.shouldEqual(0);
     foreach (l; res.output.splitLines) {
@@ -40,7 +40,7 @@ unittest {
     copy(buildPath(testData, "conf", "file_filter", "error_in_header.hpp"),
             ta.inSandboxPath("error_in_header.hpp"));
 
-    auto res = ta.exec([appPath, "--vverbose"]);
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
 
     res.status.shouldEqual(0);
 }
@@ -50,7 +50,7 @@ unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "gen_db_cmd"), ta.sandboxPath);
 
-    auto res = ta.exec([appPath, "--vverbose", "-c", "gen_cmd.toml"]);
+    auto res = ta.exec([appPath, "--verbose", "trace", "-c", "gen_cmd.toml"]);
     res.status.shouldEqual(0);
 }
 
@@ -59,7 +59,7 @@ unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "fail_gen_db_cmd"), ta.sandboxPath);
 
-    auto res = ta.exec([appPath, "--vverbose", "-c", "gen_cmd.toml"]);
+    auto res = ta.exec([appPath, "--verbose", "trace", "-c", "gen_cmd.toml"]);
     res.status.shouldEqual(1);
 
     res.output.splitLines.any!(a => a.canFind("--workdir")).shouldBeTrue;
@@ -71,15 +71,39 @@ unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "specify_system_compiler"), ta.sandboxPath);
 
-    auto res = ta.exec([appPath, "--vverbose"]);
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
 
     res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
-        if (l.canFind("Compiler: ./fake_cc.d flags: -isystem /foo/bar"))
+        if (l.canFind(`compiler: ./fake_cc.d flags: [] includes: [] system-includes: ["/foo/bar"]`))
             return;
     }
 
     // no -isystem /foo/bar found
+    shouldBeTrue(false);
+}
+
+@("shall only execute the specified analyser iwyu when checking")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "conf", "specify_analysers"), ta.sandboxPath);
+    {
+        auto txt = readText(ta.inSandboxPath(".code_checker.toml"));
+        File(ta.inSandboxPath(".code_checker.toml"), "w").writef(txt,
+                ta.inSandboxPath("fake_iwyu.d"));
+    }
+
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
+
+    res.status.shouldEqual(1);
+
+    foreach (l; res.output.splitLines) {
+        if (l.canFind(`staticCode: using iwyu`))
+            return;
+        l.canFind(`staticCode: using iwyu`).shouldBeFalse;
+    }
+
+    // failed
     shouldBeTrue(false);
 }

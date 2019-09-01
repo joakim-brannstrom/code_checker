@@ -20,6 +20,15 @@ enum Type {
     dynamic,
 }
 
+auto makeRegistry() {
+    import code_checker.engine;
+
+    Registry reg;
+    reg.put(new ClangTidy, Type.staticCode);
+    reg.put(new IncludeWhatYouUse, Type.staticCode);
+    return reg;
+}
+
 struct Registry {
     private {
         BaseFixture[][Type] analysers;
@@ -55,8 +64,11 @@ struct Registry {
     }
 }
 
-/// Returns: The total status of running the analyzers.
-Status execute(Environment env, ref Registry reg) @trusted {
+/** Run the `checkers` from `reg` inside `env`.
+ *
+ * Returns: The total status of running the analyzers.
+ */
+Status execute(Environment env, string[] analysers, ref Registry reg) @trusted {
     import std.algorithm;
     import std.range;
 
@@ -86,7 +98,11 @@ Status execute(Environment env, ref Registry reg) @trusted {
         }
     }
 
-    foreach (a; reg.range) {
+    foreach (a; reg.range.filter!((a) {
+            if (analysers.empty)
+                return true;
+            return analysers.canFind(a.analyzer.name);
+        })) {
         logger.infof("%s: %s", a.type, a.analyzer.explain);
         a.analyzer.putEnv(env);
         handleResult(executeOneAnalyzer(a.analyzer));

@@ -34,6 +34,9 @@ struct ConfigStaticCode {
     /// Filter results from analyzers on this severity.
     Severity severity;
 
+    /// Analyzers to use.
+    string[] analyzers = ["clang-tidy"];
+
     /// Files matching this pattern should not be analyzed.
     string[] fileExcludeFilter;
 }
@@ -57,6 +60,15 @@ struct ConfigClangTidy {
 
     /// The clang-tidy binary to use.
     string binary = "clang-tidy";
+}
+
+/// Configuration options only relevant for iwyu.
+struct ConfigIwyu {
+    /// The clang-tidy binary to use.
+    string binary = "iwyu";
+
+    /// Extra args to pass on to iwyu.
+    string[] extraFlags;
 }
 
 /// Configuration data for the compile_commands.json
@@ -109,12 +121,14 @@ struct Logging {
 struct Config {
     AppMode mode;
 
-    ConfigStaticCode staticCode;
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
+    ConfigIwyu iwyu;
+    ConfigStaticCode staticCode;
+
     Compiler compiler;
-    MiniConfig miniConf;
     Logging logg;
+    MiniConfig miniConf;
 
     /// If set then only analyze these files.
     AbsolutePath[] analyzeFiles;
@@ -125,12 +139,12 @@ struct Config {
 
         Config c;
         setClangTidyFromDefault(c);
-        c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 1);
+        c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
         return c;
     }
 
     string toTOML(Flag!"fullConfig" full) @trusted {
-        import std.algorithm : joiner;
+        import std.algorithm : joiner, map;
         import std.ascii : newline;
         import std.array : appender, array;
         import std.format : format;
@@ -138,11 +152,17 @@ struct Config {
         import std.traits : EnumMembers;
         import code_checker.engine : Severity;
 
+        // this is an ugly hack to get all the available analysers.
+        import code_checker.engine : makeRegistry;
+
         auto app = appender!(string[])();
         app.put("[defaults]");
         app.put(format("# only report issues with a severity >= to this value (%(%s, %))",
                 [EnumMembers!Severity]));
         app.put(format(`severity = "%s"`, staticCode.severity));
+        app.put(format("# analysers to run. Available are: %s",
+                makeRegistry.range.map!(a => a.analyzer.name)));
+        app.put(format(`# analysers = %s`, staticCode.analyzers));
         app.put(null);
 
         app.put("[compiler]");
@@ -206,6 +226,13 @@ struct Config {
             app.put("# options affecting the checks");
             app.put(format("options = [%(%s,\n%)]", clangTidy.options));
         }
+        app.put(null);
+
+        app.put("[iwyu]");
+        app.put("# iwyu (include what you use) binary");
+        app.put(format(`# binary = "%s"`, iwyu.binary));
+        app.put("# extra flags to pass on to the iwyu command");
+        app.put(format(`# flags = [%(%s, %)]`, iwyu.extraFlags));
         app.put(null);
 
         return app.data.joiner(newline).toUTF8;
@@ -277,6 +304,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         // dfmt off
         help_info = std.getopt.getopt(args,
+            "a|analyzer", "Analysers to run", &conf.staticCode.analyzers,
             "clang-tidy-bin", "clang-tidy binary to use", &conf.clangTidy.binary,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
@@ -285,12 +313,12 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "dump-config", "dump the full, detailed configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
+            "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
-            "vverbose", "verbose mode is set to trace", &verbose_trace,
-            "v|verbose", "verbose mode is set to information", &verbose_info,
+            "v|verbose", format("verbose mode is set to trace (%-(%s,%))", [EnumMembers!VerboseMode]), &conf.logg.verbose,
             "workdir", "use this path as the working directory when programs used by analyzers are executed (default: .)", &workdir,
             );
         // dfmt on
@@ -301,13 +329,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.initConfig;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
-        conf.logg.verbose = () {
-            if (verbose_trace)
-                return VerboseMode.trace;
-            if (verbose_info)
-                return VerboseMode.info;
-            return VerboseMode.minimal;
-        }();
 
         // use a sane default which is to look in the current directory
         if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
@@ -403,6 +424,9 @@ void loadConfig(ref Config rval) @trusted {
     }
 
     callbacks["defaults.severity"] = &defaults__check_name_standard;
+    callbacks["defaults.analyzers"] = (ref Config c, ref TOMLValue v) {
+        c.staticCode.analyzers = v.array.map!"a.str".array;
+    };
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.rawDbs = v.array.map!"a.str".array;
@@ -421,6 +445,7 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["compile_commands.skip_compiler_args"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.flagFilter.skipCompilerArgs = cast(int) v.integer;
     };
+
     callbacks["clang_tidy.binary"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.binary = v.str;
     };
@@ -433,11 +458,19 @@ void loadConfig(ref Config rval) @trusted {
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.options = v.array.map!(a => a.str).array;
     };
+
     callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
         c.compiler.extraFlags = v.array.map!(a => a.str).array;
     };
     callbacks["compiler.use_compiler_system_includes"] = (ref Config c, ref TOMLValue v) {
         c.compiler.useCompilerSystemIncludes = v.str;
+    };
+
+    callbacks["iwyu.binary"] = (ref Config c, ref TOMLValue v) {
+        c.iwyu.binary = v.str;
+    };
+    callbacks["iwyu.flags"] = (ref Config c, ref TOMLValue v) {
+        c.iwyu.extraFlags = v.array.map!(a => a.str).array;
     };
 
     void iterSection(ref Config c, string sectionName) {
@@ -453,9 +486,10 @@ void loadConfig(ref Config rval) @trusted {
     }
 
     iterSection(rval, "defaults");
-    iterSection(rval, "clang_tidy");
     iterSection(rval, "compile_commands");
     iterSection(rval, "compiler");
+    iterSection(rval, "clang_tidy");
+    iterSection(rval, "iwyu");
 }
 
 /// Returns: default configuration as embedded in the binary
