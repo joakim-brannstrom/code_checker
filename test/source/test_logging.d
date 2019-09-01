@@ -13,7 +13,7 @@ unittest {
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
-            appPath, "--vverbose", "--log", "--compile-db",
+            appPath, "--verbose", "trace", "--log", "--compile-db",
             buildPath(testData, "log", "compile_commands.json").absolutePath
             ]).status.shouldEqual(1);
 
@@ -43,7 +43,10 @@ unittest {
     copy(buildPath(testData, "log", "empty.cpp"), ta.inSandboxPath("empty.cpp"));
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
-    ta.exec([appPath, "--clang-tidy-fix", "--log", "log", "--logdir", "log"]).status.shouldEqual(0);
+    ta.exec([
+            appPath, "--verbose", "trace", "--clang-tidy-fix", "--log", "log",
+            "--logdir", "log"
+            ]).status.shouldEqual(0);
 
     dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
             a => a.extension == ".yaml").count.shouldEqual(1);

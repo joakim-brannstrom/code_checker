@@ -12,7 +12,8 @@ unittest {
     auto ta = makeTestArea;
 
     // action
-    auto res = ta.exec(appPath, "--vverbose", "--compile-db", inTestData("cpp/code_mistakes"));
+    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
+            inTestData("cpp/code_mistakes"));
 
     // assert
     res.status.shouldNotEqual(0);

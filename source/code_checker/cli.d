@@ -289,8 +289,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
-            "vverbose", "verbose mode is set to trace", &verbose_trace,
-            "v|verbose", "verbose mode is set to information", &verbose_info,
+            "v|verbose", format("verbose mode is set to trace (%-(%s,%))", [EnumMembers!VerboseMode]), &conf.logg.verbose,
             "workdir", "use this path as the working directory when programs used by analyzers are executed (default: .)", &workdir,
             );
         // dfmt on
@@ -301,13 +300,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.initConfig;
         else if (dump_conf)
             conf.mode = AppMode.dumpConfig;
-        conf.logg.verbose = () {
-            if (verbose_trace)
-                return VerboseMode.trace;
-            if (verbose_info)
-                return VerboseMode.info;
-            return VerboseMode.minimal;
-        }();
 
         // use a sane default which is to look in the current directory
         if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
