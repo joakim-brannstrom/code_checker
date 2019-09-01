@@ -421,8 +421,23 @@ body {
 }
 
 struct SearchResult {
-    string[] cflags;
+    ParseFlags flags;
     AbsolutePath absoluteFile;
+
+    this(ParseFlags flags, AbsolutePath p) {
+        this.flags = flags;
+        this.absoluteFile = p;
+    }
+
+    // TODO: consider deprecating.
+    this(string[] flags, AbsolutePath p) {
+        this(ParseFlags(null, flags), p);
+    }
+
+    // TODO: consider deprecating.
+    string[] cflags() @safe pure nothrow const {
+        return flags.completeFlags;
+    }
 }
 
 /** Append the compiler flags if a match is found in the DB or error out.
@@ -457,7 +472,9 @@ Nullable!(SearchResult) appendOrError(ref CompileCommandDB compile_db, const str
         return rval;
     } else {
         rval = SearchResult.init;
-        rval.cflags = cflags ~ compile_commands[0].parseFlag(flag_filter, user_compiler);
+        auto p = compile_commands[0].parseFlag(flag_filter, user_compiler);
+        p.prependCflags(cflags.dup);
+        rval.flags = p;
         rval.absoluteFile = compile_commands[0].absoluteFile;
     }
 
@@ -554,6 +571,14 @@ struct ParseFlags {
     /// Compiler used to compile the item.
     Compiler compiler;
 
+    void prependCflags(string[] v) {
+        this.cflags = v ~ this.cflags;
+    }
+
+    void appendCflags(string[] v) {
+        this.cflags ~= v;
+    }
+
     bool hasSystemIncludes() @safe pure nothrow const @nogc {
         return systemIncludes.length != 0;
     }
@@ -572,7 +597,17 @@ struct ParseFlags {
         return cflags.idup ~ systemIncludes.map!(a => ["-isystem", a.value]).joiner.array;
     }
 
+    string toString() @safe pure const {
+        import std.format : format;
+
+        return format("Compiler: %-(%s %) flags: %-(%s %)", compiler, completeFlags);
+    }
+
     alias completeFlags this;
+
+    this(Include[] incls, string[] flags) {
+        this(Compiler.init, incls, SystemIncludePath[].init, flags);
+    }
 
     this(Compiler compiler, Include[] incls, string[] flags) {
         this(compiler, incls, null, flags);
