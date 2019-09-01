@@ -125,7 +125,7 @@ struct Config {
 
         Config c;
         setClangTidyFromDefault(c);
-        c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 1);
+        c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
         return c;
     }
 
