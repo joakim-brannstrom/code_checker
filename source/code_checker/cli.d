@@ -70,6 +70,9 @@ struct ConfigIwyu {
 
     /// Extra args to pass on to iwyu.
     string[] extraFlags;
+
+    /// Map files to pass on to iwyu.
+    string[] maps;
 }
 
 /// Configuration data for the compile_commands.json
@@ -233,6 +236,8 @@ struct Config {
         app.put(format(`# binary = "%s"`, iwyu.binary));
         app.put("# extra flags to pass on to the iwyu command");
         app.put(format(`# flags = [%(%s, %)]`, iwyu.extraFlags));
+        app.put("# gives iwyu one or more mapping file");
+        app.put(format(`# mapping_files = [%(%s, %)]`, iwyu.maps));
         app.put(null);
 
         return app.data.joiner(newline).toUTF8;
@@ -314,6 +319,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
+            "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,
@@ -473,6 +479,9 @@ void loadConfig(ref Config rval) @trusted {
     };
     callbacks["iwyu.flags"] = (ref Config c, ref TOMLValue v) {
         c.iwyu.extraFlags = v.array.map!(a => a.str).array;
+    };
+    callbacks["iwyu.mapping_files"] = (ref Config c, ref TOMLValue v) {
+        c.iwyu.maps = v.array.map!(a => a.str).array;
     };
 
     void iterSection(ref Config c, string sectionName) {

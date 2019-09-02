@@ -94,7 +94,7 @@ unittest {
     }
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-    res.status.shouldEqual(1);
+    res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
         if (l.canFind(`staticCode: using iwyu`))
