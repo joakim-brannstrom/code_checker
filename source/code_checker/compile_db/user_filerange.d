@@ -124,11 +124,11 @@ Nullable!SearchResult findFlags(ref CompileCommandDB compdb, FileName fname,
     typeof(return) rval;
 
     auto db_search_result = compdb.appendOrError(flags, fname, flag_filter, userCompiler);
-    if (!db_search_result.isNull) {
-        rval = SearchResult(db_search_result.flags, db_search_result.absoluteFile);
-        return rval;
+    if (db_search_result.isNull) {
+        logger.error("Unable to find any compiler flags for: ", fname);
+    } else {
+        rval = SearchResult(db_search_result.get.flags, db_search_result.get.absoluteFile);
     }
 
-    logger.error("Unable to find any compiler flags for: ", fname);
     return rval;
 }
