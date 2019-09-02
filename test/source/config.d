@@ -99,6 +99,64 @@ void dirContentCopy(string src, string dst) {
     }
 }
 
+auto regexIn(T)(string rawRegex, T[] array, string file = __FILE__, in size_t line = __LINE__) {
+    import std.regex : regex, matchFirst;
+
+    auto r = regex(rawRegex);
+
+    foreach (v; array) {
+        if (!matchFirst(v, r).empty)
+            return;
+    }
+
+    import unit_threaded.exception : fail;
+
+    fail(formatValueInItsOwnLine("Value ",
+            rawRegex) ~ formatValueInItsOwnLine("not in ", array), file, line);
+}
+
+string[] formatValueInItsOwnLine(T)(in string prefix, scope auto ref T value) {
+    import std.conv : to;
+    import std.traits : isSomeString;
+    import std.range.primitives : isInputRange;
+    import std.traits; // too many to list
+    import std.range; // also
+
+    static if (isSomeString!T) {
+        // isSomeString is true for wstring and dstring,
+        // so call .to!string anyway
+        return [prefix ~ `"` ~ value.to!string ~ `"`];
+    } else static if (isInputRange!T) {
+        return formatRange(prefix, value);
+    } else {
+        return [prefix ~ convertToString(value)];
+    }
+}
+
+string[] formatRange(T)(in string prefix, scope auto ref T value) {
+    import std.conv : text;
+    import std.range : ElementType;
+    import std.algorithm : map, reduce, max;
+
+    //some versions of `text` are @system
+    auto defaultLines = () @trusted { return [prefix ~ value.text]; }();
+
+    static if (!isInputRange!(ElementType!T))
+        return defaultLines;
+    else {
+        import std.array : array;
+
+        const maxElementSize = value.empty ? 0 : value.map!(a => a.array.length)
+            .reduce!max;
+        const tooBigForOneLine = (value.array.length > 5 && maxElementSize > 5)
+            || maxElementSize > 10;
+        if (!tooBigForOneLine)
+            return defaultLines;
+        return [prefix ~ "["] ~ value.map!(a => formatValueInItsOwnLine("              ",
+                a).join("") ~ ",").array ~ "          ]";
+    }
+}
+
 private:
 
 shared(bool) g_isPrepared = false;
