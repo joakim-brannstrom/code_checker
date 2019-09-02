@@ -1,0 +1,6 @@
+[defaults]
+severity = "style"
+analyzers = ["iwyu"]
+
+[compile_commands]
+search_paths = [ "./compile_commands.json" ]

@@ -88,7 +88,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         logger.infof("%s '%s'", "iwyu analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        result_.score -= res.exitStatus > 0 ? -res.exitStatus : 0;
+        result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
 
         if (res.exitStatus != 0) {
             res.print;

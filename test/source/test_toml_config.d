@@ -72,7 +72,6 @@ unittest {
     dirContentCopy(buildPath(testData, "conf", "specify_system_compiler"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-
     res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
@@ -95,7 +94,6 @@ unittest {
     }
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-
     res.status.shouldEqual(1);
 
     foreach (l; res.output.splitLines) {
