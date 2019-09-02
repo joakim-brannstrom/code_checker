@@ -101,7 +101,8 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
 
             if (env.logg.toFile) {
                 try {
-                    logg.put(res.file, [res.output]);
+                    const logFile = Path(res.file.payload ~ ".iwyu").AbsolutePath;
+                    logg.put(logFile, [res.output]);
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
                     logger.warning("Unable to log to file").collectException;
