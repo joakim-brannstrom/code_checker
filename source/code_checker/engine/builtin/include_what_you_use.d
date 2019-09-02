@@ -131,7 +131,8 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         if (cmd.isNull) {
             result_.score -= 1000;
             result_.msg ~= Msg(MsgSeverity.failReason, "iwyu where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
-        } else if (!file_filter.match(cmd.absoluteFile)) {
+            continue;
+        } else if (!file_filter.match(cmd.get.absoluteFile)) {
             continue;
         }
 
@@ -140,11 +141,11 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         immutable(IwyuWork)* w = () @trusted {
             auto args = appender!(string[])();
             iwyuArgs.copy(args);
-            cmd.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
-            cmd.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
-            args.put(cmd.absoluteFile);
+            cmd.get.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
+            cmd.get.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
+            args.put(cmd.get.absoluteFile);
 
-            return cast(immutable) new IwyuWork(args.data, cmd.absoluteFile);
+            return cast(immutable) new IwyuWork(args.data, cmd.get.absoluteFile);
         }();
 
         auto t = task!taskIwyu(thisTid, w);

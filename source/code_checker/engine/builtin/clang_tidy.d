@@ -193,18 +193,18 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
             result_.score -= 100;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             break;
-        } else if (!file_filter.match(cmd.absoluteFile)) {
+        } else if (!file_filter.match(cmd.get.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            cmd.absoluteFile));
+                            cmd.get.absoluteFile));
             continue;
         }
 
         cond.expected++;
 
         immutable(TidyWork)* w = () @trusted {
-            return cast(immutable) new TidyWork(tidyArgs, cmd.absoluteFile,
+            return cast(immutable) new TidyWork(tidyArgs, cmd.get.absoluteFile,
                     !env.logg.toFile, env.staticCode.fileExcludeFilter);
         }();
         auto t = task!taskTidy(thisTid, w);
@@ -266,16 +266,16 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
             result_.score -= 1000;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             continue;
-        } else if (!file_filter.match(cmd.absoluteFile)) {
+        } else if (!file_filter.match(cmd.get.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            cmd.absoluteFile));
+                            cmd.get.absoluteFile));
             continue;
         }
 
-        logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.absoluteFile);
-        executeTidy(cmd.absoluteFile);
+        logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.get.absoluteFile);
+        executeTidy(cmd.get.absoluteFile);
     }
 }
 

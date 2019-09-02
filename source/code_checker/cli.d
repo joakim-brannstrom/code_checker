@@ -421,7 +421,7 @@ void loadConfig(ref Config rval) @trusted {
             logger.warningf("valid values are: %s", [EnumMembers!Severity]);
             c.staticCode.severity = Severity.style;
         } else {
-            c.staticCode.severity = s;
+            c.staticCode.severity = s.get;
         }
     }
 

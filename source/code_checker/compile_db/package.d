@@ -464,8 +464,8 @@ Nullable!(SearchResult) appendOrError(ref CompileCommandDB compile_db, const str
         rval = SearchResult.init;
         auto p = compile_commands[0].parseFlag(flag_filter, user_compiler);
         p.prependCflags(cflags.dup);
-        rval.flags = p;
-        rval.absoluteFile = compile_commands[0].absoluteFile;
+        rval.get.flags = p;
+        rval.get.absoluteFile = compile_commands[0].absoluteFile;
     }
 
     return rval;
