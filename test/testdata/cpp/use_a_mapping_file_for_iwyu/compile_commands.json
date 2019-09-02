@@ -1,0 +1,7 @@
+[
+    {
+        "directory": ".",
+        "arguments": ["g++", "-c", "first.cpp", "-o", "first.o"],
+        "file": "first.cpp"
+    }
+]

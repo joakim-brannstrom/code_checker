@@ -25,3 +25,17 @@ unittest {
     `iwyu: 4 in.*first.cpp`.regexIn(lines);
     `You scored -4 points`.regexIn(lines);
 }
+
+@("shall use the map file for iwyu when suggesting improvements to includes")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "cpp", "use_a_mapping_file_for_iwyu"), ta.sandboxPath);
+
+    auto res = ta.exec([appPath, "--verbose", "trace"]);
+    res.status.shouldEqual(0);
+
+    auto lines = res.output.splitLines.array;
+
+    `Analyzers reported Passed`.regexIn(lines);
+    `You scored 0 points`.regexIn(lines);
+}

@@ -43,17 +43,19 @@ class IncludeWhatYouUse : BaseFixture {
 
     /// Setup the environment for analyze.
     override void setup() {
-        import std.algorithm : copy;
+        import std.algorithm : copy, map, joiner;
         import std.array : appender;
-        import std.range : put;
+        import std.range : put, only;
 
         auto app = appender!(string[])();
         app.put(env.iwyu.binary);
+        env.iwyu.maps.map!(a => only("-Xiwyu", "--mapping_file=" ~ a)).joiner.copy(app);
         env.iwyu.extraFlags.copy(app);
         iwyuArgs = app.data;
     }
 
     override void execute() {
+        result_.status = Status.passed;
         executeParallel(env, iwyuArgs, result_);
     }
 
@@ -88,9 +90,13 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         logger.infof("%s '%s'", "iwyu analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
+        // seems like 2 also means OK.
+        const allIsOk = res.exitStatus == 0 || res.exitStatus == 2;
 
-        if (res.exitStatus != 0) {
+        if (!allIsOk)
+            result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
+
+        if (!allIsOk) {
             res.print;
 
             if (env.logg.toFile) {
@@ -115,8 +121,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
                 logger.warning("Unable to add user message to the result").collectException;
             }
 
-            result_.status = mergeStatus(result_.status, res.exitStatus == 0
-                    ? Status.passed : Status.failed);
+            result_.status = mergeStatus(result_.status, Status.failed);
         }
     }
 
