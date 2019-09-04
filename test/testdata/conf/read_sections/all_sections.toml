@@ -1,5 +1,6 @@
 [defaults]
 severity = "style"
+analyzers = ["clang-tidy"]
 
 [compile_commands]
 search_paths = [ "db/compile_commands.json" ]
@@ -12,3 +13,8 @@ binary = "clang-tidy"
 header_filter = ".*"
 checks = [ "*", "-readability-*" ]
 options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
+
+[iwyu]
+binary = "iwyu"
+flags = ["-Xiwyu", "--level=3"]
+mapping_files = ["foo.imp"]

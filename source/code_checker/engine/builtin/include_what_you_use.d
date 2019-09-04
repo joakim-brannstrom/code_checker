@@ -44,18 +44,15 @@ class IncludeWhatYouUse : BaseFixture {
     /// Setup the environment for analyze.
     override void setup() {
         import std.algorithm : copy, map, joiner;
-        import std.array : appender, replace;
-        import std.file : thisExePath;
+        import std.array : appender;
+        import std.file : exists;
         import std.range : put, only;
+        import code_checker.utility : replaceConfigWords, warnIfFileDoNotExist;
 
         auto app = appender!(string[])();
         app.put(env.iwyu.binary);
-        env.iwyu
-            .maps
-            .map!(a => a.replace("{code_checker}", thisExePath))
-            .map!(a => only("-Xiwyu", "--mapping_file=" ~ a))
-            .joiner
-            .copy(app);
+        env.iwyu.maps.replaceConfigWords.warnIfFileDoNotExist.map!(a => only("-Xiwyu",
+                "--mapping_file=" ~ a)).joiner.copy(app);
         env.iwyu.extraFlags.copy(app);
         iwyuArgs = app.data;
     }

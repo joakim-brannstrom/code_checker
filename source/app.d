@@ -17,20 +17,34 @@ import code_checker.compile_db : CompileCommandDB;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 int main(string[] args) {
+    import std.file : thisExePath, exists;
     import std.functional : toDelegate;
+    import std.path : buildPath;
+    import std.process : environment;
     import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig, Config;
     import colorlog;
     import app_normal;
 
+    const defaultConfig = environment.get("CODE_CHECKER_DEFAULT",
+            buildPath(thisExePath, "..", "default_code_checker.toml"));
+
     auto conf = () {
-        auto conf = Config.make();
+        Config conf;
         try {
             confLogger(VerboseMode.info);
-            conf.miniConf = parseConfigCLI(args);
-            loadConfig(conf);
+            auto miniConf = parseConfigCLI(args);
+            conf = Config.make(miniConf.workDir, miniConf.confFile);
+            if (exists(defaultConfig)) {
+                logger.trace("No default configuration for code_checker found at: ", defaultConfig);
+                // populate the configuration with data from the default
+                // config.  this allows a user of code_checker to modify the
+                // config without having to rebuild code_checker.
+                loadConfig(conf, defaultConfig);
+            }
+            loadConfig(conf, miniConf.confFile);
         } catch (Exception e) {
             logger.warning(e.msg);
-            logger.warning("Unable to read configuration");
+            logger.error("Unable to read configuration: ", conf.confFile);
         }
         return conf;
     }();
@@ -68,14 +82,14 @@ int modeInitConfig(ref Config conf) {
     import std.file : exists;
     import code_checker.engine;
 
-    if (exists(conf.miniConf.confFile)) {
-        logger.error("Configuration file already exists: ", conf.miniConf.confFile);
+    if (exists(conf.confFile)) {
+        logger.error("Configuration file already exists: ", conf.confFile);
         return 1;
     }
 
     try {
-        File(conf.miniConf.confFile, "w").write(conf.toTOML(No.fullConfig));
-        logger.info("Wrote configuration to ", conf.miniConf.confFile);
+        File(conf.confFile, "w").write(conf.toTOML(No.fullConfig));
+        logger.info("Wrote configuration to ", conf.confFile);
         return 0;
     } catch (Exception e) {
         logger.error(e.msg);

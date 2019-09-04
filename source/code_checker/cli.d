@@ -125,6 +125,12 @@ struct Logging {
 struct Config {
     AppMode mode;
 
+    /// Working directory as specified by the user.
+    AbsolutePath workDir;
+
+    /// Configuration file as specified by the user or the default one.
+    AbsolutePath confFile;
+
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
     ConfigIwyu iwyu;
@@ -132,16 +138,17 @@ struct Config {
 
     Compiler compiler;
     Logging logg;
-    MiniConfig miniConf;
 
     /// If set then only analyze these files.
     AbsolutePath[] analyzeFiles;
 
     /// Returns: a config object with default values.
-    static Config make() @safe {
+    static Config make(AbsolutePath workDir, AbsolutePath confFile) @safe {
         import code_checker.compile_db : defaultCompilerFlagFilter, CompileCommandFilter;
 
         Config c;
+        c.workDir = workDir;
+        c.confFile = confFile;
         setClangTidyFromDefault(c);
         c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
         return c;
@@ -353,11 +360,11 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         conf.compileDb.dbs = conf
             .compileDb.rawDbs
             .filter!(a => a.length != 0)
-            .map!(a => Path(buildPath(conf.miniConf.workDir, a)).AbsolutePath)
+            .map!(a => Path(buildPath(conf.workDir, a)).AbsolutePath)
             .array;
         // dfmt on
 
-        conf.analyzeFiles = analyze_files.map!(a => Path(buildPath(conf.miniConf.workDir,
+        conf.analyzeFiles = analyze_files.map!(a => Path(buildPath(conf.workDir,
                 a)).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
@@ -390,13 +397,13 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * check_name_standard = true
  * ---
  */
-void loadConfig(ref Config rval) @trusted {
+void loadConfig(ref Config rval, string configFile) @trusted {
     import std.algorithm : map;
     import std.file : exists, readText;
     import std.path : dirName, buildPath;
     import toml;
 
-    if (!exists(rval.miniConf.confFile))
+    if (!exists(configFile))
         return;
 
     static auto tryLoading(string configFile) {
@@ -407,9 +414,9 @@ void loadConfig(ref Config rval) @trusted {
 
     TOMLDocument doc;
     try {
-        doc = tryLoading(rval.miniConf.confFile);
+        doc = tryLoading(configFile);
     } catch (Exception e) {
-        logger.warning("Unable to read the configuration from ", rval.miniConf.confFile);
+        logger.warning("Unable to read the configuration from ", configFile);
         logger.warning(e.msg);
         return;
     }
