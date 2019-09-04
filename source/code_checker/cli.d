@@ -165,7 +165,7 @@ struct Config {
         app.put(format(`severity = "%s"`, staticCode.severity));
         app.put(format("# analysers to run. Available are: %s",
                 makeRegistry.range.map!(a => a.analyzer.name)));
-        app.put(format(`# analysers = %s`, staticCode.analyzers));
+        app.put(format(`# analyzers = %s`, staticCode.analyzers));
         app.put(null);
 
         app.put("[compiler]");
