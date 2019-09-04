@@ -74,6 +74,17 @@ struct TestArea {
         return res;
     }
 
+    auto exec(string[] args, string[string] env) {
+        auto res = execute(args, env, Config.none, size_t.max, sandboxPath);
+        try {
+            auto fout = File(inSandboxPath(format("command%s.log", commandLogCnt++)), "w");
+            fout.writefln("%-(%s %)", args);
+            fout.write(res.output);
+        } catch (Exception e) {
+        }
+        return res;
+    }
+
     string inSandboxPath(const string fileName) @safe pure nothrow const {
         import std.path : buildPath;
 

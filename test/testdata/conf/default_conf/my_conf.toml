@@ -1,0 +1,6 @@
+[defaults]
+severity = "style"
+analyzers = ["clang-tidy", "iwyu"]
+
+[iwyu]
+mapping_files = ["foo.imp"]

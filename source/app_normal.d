@@ -140,8 +140,8 @@ struct NormalFSM {
         import std.file : getcwd, chdir;
 
         root = Path(getcwd).AbsolutePath;
-        if (conf.miniConf.workDir != root)
-            chdir(conf.miniConf.workDir);
+        if (conf.workDir != root)
+            chdir(conf.workDir);
     }
 
     void act_checkForDb() {

@@ -31,3 +31,9 @@ dub build -b release
 Done! The binary is place in build/.
 Have fun.
 Don't be shy to report any issue that you find.
+
+# Config
+
+The default configuration file that `code_checker` is the one located at
+`<binary>/../default_code_checker.toml`.  This can be changed via the
+environment variable `CODE_CHECKER_DEFAULT`.

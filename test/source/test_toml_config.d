@@ -105,3 +105,17 @@ unittest {
     // failed
     shouldBeTrue(false);
 }
+
+@("shall generate a new config file from the default settings when called with --init")
+unittest {
+    auto ta = makeTestArea;
+
+    auto res = ta.exec([appPath, "--verbose", "trace", "--init"],
+            [
+                "CODE_CHECKER_DEFAULT": buildPath(testData, "conf",
+                    "default_conf", "my_conf.toml")
+            ]);
+    res.status.shouldEqual(0);
+
+    ".*foo.imp.*".regexIn(File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
+}
