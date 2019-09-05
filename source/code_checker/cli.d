@@ -73,6 +73,9 @@ struct ConfigIwyu {
 
     /// Map files to pass on to iwyu.
     string[] maps;
+
+    /// Map files to pass on to iwyu.
+    string[] defaultMaps;
 }
 
 /// Configuration data for the compile_commands.json
@@ -241,10 +244,15 @@ struct Config {
         app.put("[iwyu]");
         app.put("# iwyu (include what you use) binary");
         app.put(format(`# binary = "%s"`, iwyu.binary));
-        app.put("# extra flags to pass on to the iwyu command");
+        app.put(
+                `# extra flags to pass on to the iwyu command. For example: ["-Xiwyu", "--verbose=3"]`);
         app.put(format(`# flags = [%(%s, %)]`, iwyu.extraFlags));
         app.put("# gives iwyu one or more mapping file");
         app.put(format(`# mapping_files = [%(%s, %)]`, iwyu.maps));
+        if (full) {
+            app.put("# the global mapping files as provided by the tool installation");
+            app.put(format(`# default_mapping_files = [%(%s, %)]`, iwyu.defaultMaps));
+        }
         app.put(null);
 
         return app.data.joiner(newline).toUTF8;
@@ -489,6 +497,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["iwyu.mapping_files"] = (ref Config c, ref TOMLValue v) {
         c.iwyu.maps = v.array.map!(a => a.str).array;
+    };
+    callbacks["iwyu.default_mapping_files"] = (ref Config c, ref TOMLValue v) {
+        c.iwyu.defaultMaps = v.array.map!(a => a.str).array;
     };
 
     void iterSection(ref Config c, string sectionName) {

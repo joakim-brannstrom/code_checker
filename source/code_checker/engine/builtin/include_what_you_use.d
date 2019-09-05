@@ -51,8 +51,8 @@ class IncludeWhatYouUse : BaseFixture {
 
         auto app = appender!(string[])();
         app.put(env.iwyu.binary);
-        env.iwyu.maps.replaceConfigWords.warnIfFileDoNotExist.map!(a => only("-Xiwyu",
-                "--mapping_file=" ~ a)).joiner.copy(app);
+        only(env.iwyu.maps, env.iwyu.defaultMaps).joiner.replaceConfigWords.warnIfFileDoNotExist.map!(
+                a => only("-Xiwyu", "--mapping_file=" ~ a)).joiner.copy(app);
         env.iwyu.extraFlags.copy(app);
         iwyuArgs = app.data;
     }
