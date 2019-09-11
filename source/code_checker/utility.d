@@ -12,8 +12,9 @@ auto replaceConfigWords(T)(T range) {
     import std.algorithm : map;
     import std.array : replace;
     import std.file : thisExePath;
+    import std.path : dirName;
 
-    return range.map!(a => a.replace("{code_checker}", thisExePath));
+    return range.map!(a => a.replace("{code_checker}", thisExePath.dirName));
 }
 
 auto warnIfFileDoNotExist(T)(T range) {
@@ -23,7 +24,7 @@ auto warnIfFileDoNotExist(T)(T range) {
     return range.filter!((a) {
         if (exists(a))
             return true;
-        logger.tracef("Unable to load the mapping file '%s' because it do not exist", a);
+        logger.tracef("File '%s' do not exist", a);
         return false;
     });
 }
