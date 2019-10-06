@@ -200,14 +200,8 @@ struct NormalFSM {
             else
                 return conf.analyzeFiles.map!(a => cast(string) a).array;
         }();
-        env.genCompileDb = conf.compileDb.generateDb;
-        env.flagFilter = conf.compileDb.flagFilter;
 
-        env.clangTidy = conf.clangTidy;
-        env.compiler = conf.compiler;
-        env.iwyu = conf.iwyu;
-        env.logg = conf.logg;
-        env.staticCode = conf.staticCode;
+        env.conf = conf;
 
         auto reg = makeRegistry;
         exitStatus = execute(env, conf.staticCode.analyzers, reg) == Status.passed ? 0 : 1;

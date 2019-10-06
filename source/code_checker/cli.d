@@ -47,6 +47,9 @@ struct ConfigClangTidy {
     /// Checks to toggle on/off
     string[] checks;
 
+    /// Checks to toggle on/off. Used as a compliment to checks.
+    string[] checkExtensions;
+
     /// Arguments to be baked into the checks parameter
     string[] options;
 
@@ -233,6 +236,8 @@ struct Config {
         app.put(format(`# binary = "%s"`, clangTidy.binary));
         app.put("# arguments to -header-filter");
         app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
+        app.put("# extend the checks configuration");
+        app.put(format(`check_extensions = "%s"`, clangTidy.checkExtensions));
         if (full) {
             app.put("# checks to use");
             app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
@@ -477,6 +482,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["clang_tidy.checks"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.checks = v.array.map!(a => a.str).array;
+    };
+    callbacks["clang_tidy.check_extensions"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.checkExtensions = v.array.map!(a => a.str).array;
     };
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.options = v.array.map!(a => a.str).array;

@@ -50,10 +50,10 @@ class IncludeWhatYouUse : BaseFixture {
         import code_checker.utility : replaceConfigWords, warnIfFileDoNotExist;
 
         auto app = appender!(string[])();
-        app.put(env.iwyu.binary);
-        only(env.iwyu.maps, env.iwyu.defaultMaps).joiner.replaceConfigWords.warnIfFileDoNotExist.map!(
+        app.put(env.conf.iwyu.binary);
+        only(env.conf.iwyu.maps, env.conf.iwyu.defaultMaps).joiner.replaceConfigWords.warnIfFileDoNotExist.map!(
                 a => only("-Xiwyu", "--mapping_file=" ~ a)).joiner.copy(app);
-        env.iwyu.extraFlags.copy(app);
+        env.conf.iwyu.extraFlags.copy(app);
         iwyuArgs = app.data;
     }
 
@@ -82,7 +82,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
     import code_checker.engine.logger : Logger;
 
     bool logged_failure;
-    auto logg = Logger(env.logg.dir);
+    auto logg = Logger(env.conf.logg.dir);
 
     void collectResult(immutable(IwyuResult)* res_) @trusted nothrow {
         import std.typecons : nullableRef;
@@ -102,7 +102,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         if (!allIsOk) {
             res.print;
 
-            if (env.logg.toFile) {
+            if (env.conf.logg.toFile) {
                 try {
                     const logFile = Path(res.file.payload ~ ".iwyu").AbsolutePath;
                     logg.put(logFile, [res.output]);
@@ -134,9 +134,9 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         pool.finish;
     ExpectedReplyCounter cond;
 
-    auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
-    foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags,
-            env.flagFilter, env.compiler.useCompilerSystemIncludes)) {
+    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    foreach (cmd; UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
+            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes)) {
         if (cmd.isNull) {
             result_.score -= 1000;
             result_.msg ~= Msg(MsgSeverity.failReason, "iwyu where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");

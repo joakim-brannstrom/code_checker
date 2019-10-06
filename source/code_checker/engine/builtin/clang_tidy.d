@@ -51,24 +51,24 @@ class ClangTidy : BaseFixture {
         import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
         auto app = appender!(string[])();
-        app.put(env.clangTidy.binary);
+        app.put(env.conf.clangTidy.binary);
 
         app.put("-p=.");
 
-        if (env.clangTidy.applyFixit) {
+        if (env.conf.clangTidy.applyFixit) {
             app.put(["-fix"]);
-        } else if (env.clangTidy.applyFixitErrors) {
+        } else if (env.conf.clangTidy.applyFixitErrors) {
             app.put(["-fix-errors"]);
         }
 
-        env.compiler.extraFlags.map!(a => ["-extra-arg", a]).joiner.copy(app);
+        env.conf.compiler.extraFlags.map!(a => ["-extra-arg", a]).joiner.copy(app);
 
-        ["-header-filter", env.clangTidy.headerFilter].copy(app);
+        ["-header-filter", env.conf.clangTidy.headerFilter].copy(app);
 
         // inactivate those that are below the configured severity level.
         // dfmt off
-        env.clangTidy.checks ~=
-            filterSeverity!(a => a < env.staticCode.severity)
+        env.conf.clangTidy.checks ~=
+            filterSeverity!(a => a < env.conf.staticCode.severity)
             .map!(a => format("-%s", a))
             .array;
         // dfmt on
@@ -81,10 +81,11 @@ class ClangTidy : BaseFixture {
 
             auto c = appender!string();
             c.put(`{Checks: "`);
-            env.clangTidy.checks.joiner(",").copy(c);
+            env.conf.clangTidy.checks.joiner(",").copy(c);
+            env.conf.clangTidy.checkExtensions.joiner(",").copy(c);
             c.put(`",`);
             c.put("CheckOptions: [");
-            env.clangTidy.options.joiner(",").copy(c);
+            env.conf.clangTidy.options.joiner(",").copy(c);
             c.put("]");
             c.put("}");
 
@@ -97,7 +98,7 @@ class ClangTidy : BaseFixture {
 
     /// Execute the analyzer.
     override void execute() {
-        if (env.clangTidy.applyFixit || env.clangTidy.applyFixitErrors) {
+        if (env.conf.clangTidy.applyFixit || env.conf.clangTidy.applyFixitErrors) {
             executeFixit(env, tidyArgs, result_);
         } else {
             executeParallel(env, tidyArgs, result_);
@@ -132,7 +133,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     import code_checker.engine.logger : Logger;
 
     bool logged_failure;
-    auto logg = Logger(env.logg.dir);
+    auto logg = Logger(env.conf.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
         import std.array : appender;
@@ -152,7 +153,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         if (res.clangTidyStatus != 0) {
             res.print;
 
-            if (env.logg.toFile) {
+            if (env.conf.logg.toFile) {
                 try {
                     logg.put(res.file, [res.output]);
                 } catch (Exception e) {
@@ -185,9 +186,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
     ExpectedReplyCounter cond;
 
-    auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
-    foreach (cmd; UserFileRange(env.compileDb, env.files, env.compiler.extraFlags,
-            env.flagFilter, env.compiler.useCompilerSystemIncludes)) {
+    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    foreach (cmd; UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
+            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes)) {
         if (cmd.isNull) {
             result_.status = Status.failed;
             result_.score -= 100;
@@ -205,7 +206,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
         immutable(TidyWork)* w = () @trusted {
             return cast(immutable) new TidyWork(tidyArgs, cmd.get.absoluteFile,
-                    !env.logg.toFile, env.staticCode.fileExcludeFilter);
+                    !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter);
         }();
         auto t = task!taskTidy(thisTid, w);
         pool.put(t);
@@ -236,11 +237,13 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     import code_checker.engine.logger : Logger;
 
     AbsolutePath[] files;
-    auto logg = Logger(env.logg.dir);
+    auto logg = Logger(env.conf.logg.dir);
 
-    if (env.logg.toFile) {
+    if (env.conf.logg.toFile) {
         logg.setup;
-        tidyArgs ~= ["-export-fixes", buildPath(env.logg.dir, "fixes.yaml")];
+        tidyArgs ~= [
+            "-export-fixes", buildPath(env.conf.logg.dir, "fixes.yaml")
+        ];
     }
 
     void executeTidy(string file) {
@@ -256,9 +259,9 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         }
     }
 
-    auto file_filter = FileFilter(env.staticCode.fileExcludeFilter);
-    auto cmds = UserFileRange(env.compileDb, env.files, env.compiler.extraFlags,
-            env.flagFilter, env.compiler.useCompilerSystemIncludes).array;
+    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    auto cmds = UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
+            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes).array;
     const max_nr = cmds.length;
     foreach (idx, cmd; cmds.enumerate) {
         if (cmd.isNull) {

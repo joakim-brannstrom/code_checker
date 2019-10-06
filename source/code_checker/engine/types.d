@@ -7,7 +7,7 @@ module code_checker.engine.types;
 
 @safe:
 
-public import code_checker.cli : ConfigStaticCode, ConfigClangTidy, Compiler, Logging, ConfigIwyu;
+public import code_checker.cli : Config;
 
 /** The base fixture that an analyzer implement
  */
@@ -39,18 +39,13 @@ struct Environment {
     import code_checker.types : AbsolutePath;
     import code_checker.compile_db : CompileCommandDB, CompileCommandFilter;
 
-    Compiler compiler;
-    ConfigClangTidy clangTidy;
-    ConfigIwyu iwyu;
-    ConfigStaticCode staticCode;
-
-    Logging logg;
+    Config conf;
 
     /// Flags the user wants to be automatically removed from the compile_commands.json.
-    CompileCommandFilter flagFilter;
+    //CompileCommandFilter flagFilter;
 
     /// Command to generate the compile_commands.json
-    string genCompileDb;
+    //string genCompileDb;
 
     /// The compile_commands.json that contains all files to analyse.
     AbsolutePath compileDbFile;
