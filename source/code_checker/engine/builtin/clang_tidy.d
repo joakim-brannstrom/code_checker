@@ -82,6 +82,7 @@ class ClangTidy : BaseFixture {
             auto c = appender!string();
             c.put(`{Checks: "`);
             env.clangTidy.checks.joiner(",").copy(c);
+            env.clangTidy.checkExtensions.joiner(",").copy(c);
             c.put(`",`);
             c.put("CheckOptions: [");
             env.clangTidy.options.joiner(",").copy(c);
