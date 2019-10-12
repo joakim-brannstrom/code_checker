@@ -24,7 +24,7 @@ unittest {
         l.canFind("Unknown key").shouldBeFalse;
     }
     res.output.splitLines.any!(
-            a => a.canFind(`Checks: "*,-readability-**,-modernize-*"`)).shouldBeTrue;
+            a => a.canFind(`Checks: "*,-readability-*,*,-modernize-*"`)).shouldBeTrue;
 }
 
 @("shall exclude files based on the regex from the config file")
