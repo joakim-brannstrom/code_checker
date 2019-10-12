@@ -44,9 +44,8 @@ class ClangTidy : BaseFixture {
     override void setup() {
         import std.algorithm;
         import std.array : appender, array;
-        import std.ascii;
         import std.file : exists;
-        import std.range : put;
+        import std.range : put, only;
         import std.format : format;
         import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
@@ -81,8 +80,8 @@ class ClangTidy : BaseFixture {
 
             auto c = appender!string();
             c.put(`{Checks: "`);
-            env.conf.clangTidy.checks.joiner(",").copy(c);
-            env.conf.clangTidy.checkExtensions.joiner(",").copy(c);
+            only(env.conf.clangTidy.checks, env.conf.clangTidy.checkExtensions).joiner.joiner(",")
+                .copy(c);
             c.put(`",`);
             c.put("CheckOptions: [");
             env.conf.clangTidy.options.joiner(",").copy(c);
