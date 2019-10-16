@@ -20,13 +20,9 @@ int main(string[] args) {
     import std.file : thisExePath, exists;
     import std.functional : toDelegate;
     import std.path : buildPath;
-    import std.process : environment;
     import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig, Config;
     import colorlog;
     import app_normal;
-
-    const defaultConfig = environment.get("CODE_CHECKER_DEFAULT",
-            buildPath(thisExePath, "..", "default_code_checker.toml"));
 
     auto conf = () {
         Config conf;
@@ -34,12 +30,11 @@ int main(string[] args) {
             confLogger(VerboseMode.info);
             auto miniConf = parseConfigCLI(args);
             conf = Config.make(miniConf.workDir, miniConf.confFile);
-            if (exists(defaultConfig)) {
-                logger.trace("No default configuration for code_checker found at: ", defaultConfig);
-                // populate the configuration with data from the default
-                // config.  this allows a user of code_checker to modify the
-                // config without having to rebuild code_checker.
-                loadConfig(conf, defaultConfig);
+            if (exists(conf.baseUserConf)) {
+                loadConfig(conf, conf.baseUserConf);
+            } else {
+                logger.trace("No default configuration for code_checker found at: ",
+                        conf.baseUserConf);
             }
             loadConfig(conf, miniConf.confFile);
         } catch (Exception e) {
@@ -52,14 +47,13 @@ int main(string[] args) {
     confLogger(conf.logg.verbose);
     logger.trace(conf);
 
-    alias Command = int delegate(ref Config conf);
+    alias Command = int delegate(Config conf);
     Command[AppMode] cmds;
     cmds[AppMode.none] = toDelegate(&modeNone);
     cmds[AppMode.help] = toDelegate(&modeNone);
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
     cmds[AppMode.initConfig] = toDelegate(&modeInitConfig);
-    cmds[AppMode.dumpConfig] = toDelegate(&modeDumpFullConfig);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);
@@ -69,43 +63,36 @@ int main(string[] args) {
     return 1;
 }
 
-int modeNone(ref Config conf) {
+int modeNone(Config conf) {
     return 0;
 }
 
-int modeNone_Error(ref Config conf) {
+int modeNone_Error(Config conf) {
     return 1;
 }
 
-int modeInitConfig(ref Config conf) {
-    import std.stdio : File;
-    import std.file : exists;
-    import code_checker.engine;
+int modeInitConfig(Config conf) {
+    import std.file : exists, copy;
+    import std.path : stripExtension;
 
     if (exists(conf.confFile)) {
         logger.error("Configuration file already exists: ", conf.confFile);
         return 1;
     }
 
-    try {
-        File(conf.confFile, "w").write(conf.toTOML(No.fullConfig));
-        logger.info("Wrote configuration to ", conf.confFile);
-        return 0;
-    } catch (Exception e) {
-        logger.error(e.msg);
+    const tmpl = conf.baseUserConf.stripExtension ~ "_template.toml";
+    if (!exists(tmpl)) {
+        logger.error("Configuration template do not exist: ", tmpl);
+        return 1;
     }
 
-    return 1;
-}
-
-int modeDumpFullConfig(ref Config conf) {
-    import std.stdio : writeln, stderr;
-
-    // make it easy for a user to pipe the output to the config file
-    stderr.writeln("Dumping the configuration used. The format is TOML (.toml)");
-    stderr.writeln("If you want to use it put it in your '.code_checker.toml'");
-
-    writeln(conf.toTOML(Yes.fullConfig));
+    try {
+        copy(tmpl, cast(string) conf.confFile);
+        logger.info("Wrote configuration to ", conf.confFile);
+    } catch (Exception e) {
+        logger.error(e.msg);
+        return 1;
+    }
 
     return 0;
 }
