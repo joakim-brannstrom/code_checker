@@ -21,7 +21,7 @@ version (unittest) {
 
 immutable compileCommandsFile = "compile_commands.json";
 
-int modeNormal(ref Config conf) {
+int modeNormal(Config conf) {
     auto fsm = NormalFSM(conf);
     return fsm.run;
 }

@@ -10,10 +10,11 @@ This allows the user to override the configuration via the CLI.
 */
 module code_checker.cli;
 
+import logger = std.experimental.logger;
 import std.array : array, empty, appender;
 import std.exception : collectException, ifThrown;
+import std.path : buildPath, dirName;
 import std.typecons : Tuple, Flag;
-import logger = std.experimental.logger;
 
 import code_checker.types : AbsolutePath, Path;
 
@@ -25,7 +26,6 @@ enum AppMode {
     helpUnknownCommand,
     normal,
     initConfig,
-    dumpConfig,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -131,6 +131,17 @@ struct Logging {
 struct Config {
     AppMode mode;
 
+    /// Where the base configurations are stored.
+    AbsolutePath baseConfDir;
+
+    /// Name of the base configuration to merge with the users.
+    string baseConfName = "default";
+
+    /// Path to the base configuration that the user wants to use.
+    AbsolutePath baseUserConf() @safe const {
+        return buildPath(baseConfDir, "code_checker_" ~ baseConfName ~ ".toml").Path.AbsolutePath;
+    }
+
     /// Working directory as specified by the user.
     AbsolutePath workDir;
 
@@ -150,117 +161,18 @@ struct Config {
 
     /// Returns: a config object with default values.
     static Config make(AbsolutePath workDir, AbsolutePath confFile) @safe {
+        import std.file : thisExePath;
+        import std.process : environment;
         import code_checker.compile_db : defaultCompilerFlagFilter, CompileCommandFilter;
 
         Config c;
         c.workDir = workDir;
         c.confFile = confFile;
-        setClangTidyFromDefault(c);
         c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
+        c.baseConfDir = environment.get("CODE_CHECKER_DEFAULT",
+                buildPath(thisExePath.dirName, "..")).Path.AbsolutePath;
+
         return c;
-    }
-
-    string toTOML(Flag!"fullConfig" full) @trusted {
-        import std.algorithm : joiner, map;
-        import std.ascii : newline;
-        import std.format : format;
-        import std.utf : toUTF8;
-        import std.traits : EnumMembers;
-        import code_checker.engine : Severity;
-
-        // this is an ugly hack to get all the available analysers.
-        import code_checker.engine : makeRegistry;
-
-        auto app = appender!(string[])();
-        app.put("[defaults]");
-        app.put(format("# only report issues with a severity >= to this value (%(%s, %))",
-                [EnumMembers!Severity]));
-        app.put(format(`severity = "%s"`, staticCode.severity));
-        app.put(format("# analysers to run. Available are: %s",
-                makeRegistry.range.map!(a => a.analyzer.name)));
-        app.put(format(`# analyzers = %s`, staticCode.analyzers));
-        app.put(null);
-
-        app.put("[compiler]");
-        app.put("# extra flags to pass on to the compiler");
-        app.put(
-                "# the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s");
-        app.put(`extra_flags = [ "-Wall",
-    "-Wextra", # resonable and standard
-    "-Wshadow", # warn the user if a variable declaration shadows one from a parent context
-    "-Wnon-virtual-dtor", # warn the user if a class with virtual functions has a non-virtual destructor
-    "-Wold-style-cast", # warn for c-style casts
-    "-Wcast-align", # warn for potential performance problem casts
-#    "-Wunused", # warn on anything being unused
-    "-Woverloaded-virtual", # warn if you overload (not override) a virtual func
-    "-Wpedantic", # warn if non-standard C++ is used
-    "-Wconversion", # warn on type conversions that may lose data
-    "-Wsign-conversion", # warn on sign conversion
-    "-Wnull-dereference", # warn if a null dereference is detected
-    "-Wdouble-promotion", # Warn if float is implicit promoted to double
-    "-Wformat=2", # warn on security issues around functions that format output (ie printf)
-    "-Wduplicated-cond", # warn if if /else chain has duplicated conditions
-    "-Wduplicated-branches", # warn if if / else branches have duplicated code
-    "-Wlogical-op", # warn about logical operations being used where bitwise were probably wanted
-    "-Wuseless-cast", # warn if you perform a cast to the same type
-    "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
- ]`);
-        app.put(
-                "# use this compilers system includes instead of the one used in the compile_commands.json");
-        app.put(format(`# use_compiler_system_includes = "%s"`, compiler.useCompilerSystemIncludes.length == 0
-                ? "/path/to/c++" : compiler.useCompilerSystemIncludes.value));
-        app.put(null);
-
-        app.put("[compile_commands]");
-        app.put("# command to execute to generate compile_commands.json");
-        app.put(format(`generate_cmd = "%s"`, compileDb.generateDb));
-        app.put("# search for compile_commands.json in this paths");
-        if (compileDb.dbs.length == 0 || compileDb.dbs.length == 1
-                && compileDb.dbs[0] == Path("./compile_commands.json").AbsolutePath)
-            app.put(format("search_paths = %s", ["./compile_commands.json"]));
-        else
-            app.put(format("search_paths = %s", compileDb.dbs));
-        app.put("# files matching any of the regex will not be analyzed");
-        app.put(`# exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]`);
-
-        if (full) {
-            app.put("# flags to remove when analyzing a file in the DB");
-            app.put(format("# filter = [%(%s,\n%)]", compileDb.flagFilter.filter));
-            app.put("# compiler arguments to skip from the beginning. Needed when the first argument is NOT a compiler but rather a wrapper");
-            app.put(format("# skip_compiler_args = %s", compileDb.flagFilter.skipCompilerArgs));
-        }
-        app.put(null);
-
-        app.put("[clang_tidy]");
-        app.put("# clang-tidy binary to use");
-        app.put(format(`# binary = "%s"`, clangTidy.binary));
-        app.put("# arguments to -header-filter");
-        app.put(format(`header_filter = "%s"`, clangTidy.headerFilter));
-        app.put("# extend the checks configuration");
-        app.put(format(`check_extensions = "%s"`, clangTidy.checkExtensions));
-        if (full) {
-            app.put("# checks to use");
-            app.put(format("checks = [%(%s,\n%)]", clangTidy.checks));
-            app.put("# options affecting the checks");
-            app.put(format("options = [%(%s,\n%)]", clangTidy.options));
-        }
-        app.put(null);
-
-        app.put("[iwyu]");
-        app.put("# iwyu (include what you use) binary");
-        app.put(format(`# binary = "%s"`, iwyu.binary));
-        app.put(
-                `# extra flags to pass on to the iwyu command. For example: ["-Xiwyu", "--verbose=3"]`);
-        app.put(format(`# flags = [%(%s, %)]`, iwyu.extraFlags));
-        app.put("# gives iwyu one or more mapping file");
-        app.put(format(`# mapping_files = [%(%s, %)]`, iwyu.maps));
-        if (full) {
-            app.put("# the global mapping files as provided by the tool installation");
-            app.put(format(`# default_mapping_files = [%(%s, %)]`, iwyu.defaultMaps));
-        }
-        app.put(null);
-
-        return app.data.joiner(newline).toUTF8;
     }
 }
 
@@ -324,7 +236,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string config_file = ".code_checker.toml";
         string logdir = ".";
         string workdir;
-        bool dump_conf;
         bool init_conf;
 
         // dfmt off
@@ -335,9 +246,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
-            "dump-config", "dump the full, detailed configuration used", &dump_conf,
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
+            "init-name", "base the initial config on the named template (default: default)", &conf.baseConfName,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
@@ -353,8 +264,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.help;
         else if (init_conf)
             conf.mode = AppMode.initConfig;
-        else if (dump_conf)
-            conf.mode = AppMode.dumpConfig;
 
         // use a sane default which is to look in the current directory
         if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
@@ -527,29 +436,4 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     iterSection(rval, "compiler");
     iterSection(rval, "clang_tidy");
     iterSection(rval, "iwyu");
-}
-
-/// Returns: default configuration as embedded in the binary
-void setClangTidyFromDefault(ref Config c) @safe nothrow {
-    import std.algorithm;
-    import std.ascii : newline;
-
-    static auto readConf(immutable string raw) {
-        // dfmt off
-        return raw
-            .splitter(newline)
-            // remove empty lines
-            .filter!(a => a.length != 0)
-            // remove comments
-            .filter!(a => !a.startsWith("#"))
-            .array;
-        // dfmt on
-    }
-
-    immutable raw_checks = import("clang_tidy_checks.conf");
-    immutable raw_options = import("clang_tidy_options.conf");
-
-    c.clangTidy.checks = readConf(raw_checks);
-    c.clangTidy.options = readConf(raw_options);
-    c.clangTidy.headerFilter = ".*";
 }

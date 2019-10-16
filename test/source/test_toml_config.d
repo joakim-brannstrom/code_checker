@@ -112,10 +112,10 @@ unittest {
 unittest {
     auto ta = makeTestArea;
 
-    auto res = ta.exec([appPath, "--verbose", "trace", "--init"],
-            [
-                "CODE_CHECKER_DEFAULT": buildPath(testData, "conf",
-                    "default_conf", "my_conf.toml")
+    auto res = ta.exec([
+            appPath, "--verbose", "trace", "--init", "--init-name", "my_conf"
+            ], [
+            "CODE_CHECKER_DEFAULT": buildPath(testData, "conf", "default_conf")
             ]);
     res.status.shouldEqual(0);
 
