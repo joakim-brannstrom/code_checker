@@ -248,7 +248,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
-            "init-name", "base the initial config on the named template (default: default)", &conf.baseConfName,
+            "init-template", "base the initial config on the named template (default: default)", &conf.baseConfName,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
