@@ -113,7 +113,7 @@ unittest {
     auto ta = makeTestArea;
 
     auto res = ta.exec([
-            appPath, "--verbose", "trace", "--init", "--init-name", "my_conf"
+            appPath, "--verbose", "trace", "--init", "--init-template", "my_conf"
             ], [
             "CODE_CHECKER_DEFAULT": buildPath(testData, "conf", "default_conf")
             ]);
