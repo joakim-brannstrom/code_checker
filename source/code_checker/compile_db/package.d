@@ -549,7 +549,11 @@ struct ParseFlags {
         alias payload this;
     }
 
-    ///
+    private {
+        bool forceSystemIncludes_;
+    }
+
+    /// The includes used in the compile command.
     Include[] includes;
 
     /// System include paths extracted from the compiler used for the file.
@@ -569,8 +573,20 @@ struct ParseFlags {
         this.cflags ~= v;
     }
 
+    /// Set to true to use -I instead of -isystem for system includes.
+    auto forceSystemIncludes(bool v) {
+        this.forceSystemIncludes_ = v;
+        return this;
+    }
+
     bool hasSystemIncludes() @safe pure nothrow const @nogc {
         return systemIncludes.length != 0;
+    }
+
+    string toString() @safe pure const {
+        import std.format : format;
+
+        return format("Compiler: %-(%s %) flags: %-(%s %)", compiler, completeFlags);
     }
 
     /** Easy to use method that has the complete flags ready to use with a GCC
@@ -584,19 +600,15 @@ struct ParseFlags {
         import std.algorithm : map, joiner;
         import std.array : array;
 
-        return cflags.idup ~ systemIncludes.map!(a => ["-isystem", a.value]).joiner.array;
-    }
+        auto incl_param = forceSystemIncludes_ ? "-I" : "-isystem";
 
-    string toString() @safe pure const {
-        import std.format : format;
-
-        return format("Compiler: %-(%s %) flags: %-(%s %)", compiler, completeFlags);
+        return cflags.idup ~ systemIncludes.map!(a => [incl_param, a.value]).joiner.array;
     }
 
     alias completeFlags this;
 
     this(Include[] incls, string[] flags) {
-        this(Compiler.init, incls, null, flags);
+        this(Compiler.init, incls, SystemIncludePath[].init, flags);
     }
 
     this(Compiler compiler, Include[] incls, string[] flags) {
@@ -623,7 +635,7 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
 
     static bool excludeStartWith(const string raw_flag, const FilterClangFlag[] flag_filter) @safe {
         import std.algorithm : startsWith, filter, count;
-        import std.array : split, empty;
+        import std.array : split;
 
         // the purpuse is to find if any of the flags in flag_filter matches
         // the start of flag.
