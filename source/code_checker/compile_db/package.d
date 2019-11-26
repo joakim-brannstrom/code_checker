@@ -633,7 +633,7 @@ ParseFlags parseFlag(CompileCommand cmd, const CompileCommandFilter flag_filter,
         const parts = raw_flag.split('=');
         if (parts.length == 2) {
             // is a -foo=bar flag thus exact match is the only sensible
-            cmp = (const FilterClangFlag a) => parts[0] == a.payload;
+            cmp = (const FilterClangFlag a) => raw_flag == a.payload;
         } else {
             // the flag has the argument merged thus have to check if the start match
             cmp = (const FilterClangFlag a) => raw_flag.startsWith(a.payload);
@@ -862,6 +862,17 @@ unittest {
             ], AbsoluteCompileDbDirectory("/home"), null);
 
     auto s = cmd.get.parseFlag(defaultCompilerFilter, Compiler.init);
+    s.cflags.shouldEqual(["-std=c++11"]);
+}
+
+@("shall remove -mfloat-gprs=double")
+unittest {
+    auto cmd = toCompileCommand("/home", "file1.cpp", [
+            "g++", "-std=c++11", "-mfloat-gprs=double", "-c", "a_filename.c"
+            ], AbsoluteCompileDbDirectory("/home"), null);
+    auto my_filter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
+    my_filter.filter ~= FilterClangFlag("-mfloat-gprs=double", FilterClangFlag.Kind.exclude);
+    auto s = cmd.get.parseFlag(my_filter, Compiler.init);
     s.cflags.shouldEqual(["-std=c++11"]);
 }
 
