@@ -126,6 +126,21 @@ auto regexIn(T)(string rawRegex, T[] array, string file = __FILE__, in size_t li
             rawRegex) ~ formatValueInItsOwnLine("not in ", array), file, line);
 }
 
+auto regexNotIn(T)(string rawRegex, T[] array, string file = __FILE__, in size_t line = __LINE__) {
+    import std.regex : regex, matchFirst;
+    import unit_threaded.exception : fail;
+
+    auto r = regex(rawRegex);
+
+    foreach (v; array) {
+        if (!matchFirst(v, r).empty) {
+            fail(formatValueInItsOwnLine("Value ",
+                    rawRegex) ~ formatValueInItsOwnLine("in ", array), file, line);
+            return;
+        }
+    }
+}
+
 string[] formatValueInItsOwnLine(T)(in string prefix, scope auto ref T value) {
     import std.conv : to;
     import std.traits : isSomeString;
