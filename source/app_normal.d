@@ -12,7 +12,8 @@ import std.exception : collectException;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler;
+import code_checker.compile_db : CompileCommandDB, toCompileCommandDB,
+    DbCompiler = Compiler, CompileCommandFilter, defaultCompilerFilter;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 version (unittest) {
@@ -176,7 +177,8 @@ struct NormalFSM {
         auto compile_db = appender!string();
         try {
             this.db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
-            unifyCompileDb(db, conf.compiler.useCompilerSystemIncludes, compile_db);
+            unifyCompileDb(db, conf.compiler.useCompilerSystemIncludes,
+                    compile_db, conf.compileDb.flagFilter);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
@@ -244,7 +246,8 @@ struct NormalFSM {
 }
 
 /// Unify multiple compilation databases to one json file.
-void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler, ref AppT app) {
+void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
+        ref AppT app, CompileCommandFilter flag_filter) {
     import std.algorithm : map, joiner, filter, copy;
     import std.array : array, appender;
     import std.ascii : newline;
@@ -253,7 +256,6 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler, r
     import std.range : put;
     import code_checker.compile_db;
 
-    auto flag_filter = CompileCommandFilter(defaultCompilerFilter.filter.dup, 0);
     logger.trace(flag_filter);
 
     void writeEntry(T)(ref T e) {
@@ -317,7 +319,8 @@ unittest {
     auto db = test_compile_db.toCompileCommandDB(Path("."));
     // act
     auto unified = appender!string();
-    unifyCompileDb(db, DbCompiler.init, unified);
+    unifyCompileDb(db, DbCompiler.init, unified,
+            CompileCommandFilter(defaultCompilerFilter.filter.dup, 0));
     // assert
     try {
         unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;

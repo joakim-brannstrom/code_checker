@@ -121,3 +121,19 @@ unittest {
 
     ".*foo.imp.*".regexIn(File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
 }
+
+@("shall use the compiler flag filter from the config when analyzing a file")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "conf", "compiler_filter"), ta.sandboxPath);
+    mkdir(ta.inSandboxPath("db"));
+    dirContentCopy(buildPath(testData, "conf", "compiler_filter", "db"), ta.inSandboxPath("db"));
+
+    auto res = ta.exec([
+            appPath, "--verbose", "trace", "--keep-db", "-c", "code_checker.toml"
+            ]);
+    res.status.shouldEqual(0);
+
+    ".*mremove-dummy=foobar.*".regexNotIn(
+            File(ta.inSandboxPath("compile_commands.json")).byLineCopy.array);
+}
