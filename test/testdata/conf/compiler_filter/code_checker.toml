@@ -1,0 +1,13 @@
+[defaults]
+severity = "style"
+
+[compile_commands]
+# search for compile_commands.json in this paths
+search_paths = ["./db/compile_commands.json"]
+filter = ["-c",
+"-o",
+"-mremove-dummy=foobar"
+]
+
+[clang_tidy]
+header_filter = ".*"

@@ -262,7 +262,7 @@ private Nullable!CompileCommand toCompileCommand(JSONValue v, AbsoluteCompileDbD
         return toCompileCommand(directory.str, file.str, command, db_dir, output);
     } catch (Exception e) {
         logger.info("Input JSON: ", v.toPrettyString).collectException;
-        logger.errorf("Unable to parse json: %s", e.msg).collectException;
+        logger.error("Unable to parse json: ", e.msg).collectException;
     }
 
     return typeof(return)();
@@ -295,7 +295,7 @@ Nullable!CompileCommand toCompileCommand(string directory, string file,
             abs_output);
         // dfmt on
     } catch (Exception ex) {
-        logger.error("Unable to parse json: " ~ ex.msg).collectException;
+        logger.error("Unable to parse json: ", ex.msg).collectException;
     }
 
     return rval;
@@ -327,7 +327,7 @@ private void parseCommands(T)(string raw_input, CompileDbFile in_file, ref T out
             }
             // dfmt on
         } catch (Exception ex) {
-            logger.error("Unable to parse json:" ~ ex.msg).collectException;
+            logger.error("Unable to parse json:", ex.msg).collectException;
         }
     }
 
