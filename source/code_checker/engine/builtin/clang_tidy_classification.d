@@ -514,7 +514,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     import std.conv : to;
     import std.exception : ifThrown;
     import std.range : put;
-    import std.regex : ctRegex, matchFirst;
+    import std.regex : regex, matchFirst;
     import std.string : startsWith;
 
     void callDiagFnAndReset(ref DiagMessage msg, ref Appender!(string[]) app) {
@@ -529,7 +529,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
-    const re_error = ctRegex!(
+    const re_error = regex(
             `(?P<file>.*):\d*:\d*:.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
 
     enum State {
@@ -598,9 +598,9 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
 void mapClangTidyStats(alias statFn)(string[] lines) {
     import std.conv : to;
     import std.exception : ifThrown;
-    import std.regex : ctRegex, matchFirst;
+    import std.regex : regex, matchFirst;
 
-    const re_nolint = ctRegex!(`Supp.*\D(?P<nolint>\d+)\s*NOLINT.*`);
+    const re_nolint = regex(`Supp.*\D(?P<nolint>\d+)\s*NOLINT.*`);
 
     foreach (l; lines) {
         auto m_nolint = matchFirst(l, re_nolint);
