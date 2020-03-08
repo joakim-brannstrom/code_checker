@@ -16,13 +16,11 @@ import std.algorithm : canFind, min, stripRight;
 import std.array : Appender;
 import std.ascii : newline;
 import std.conv : to;
-import std.datetime : SysTime, DateTimeD = DateTime, Date,
-	TimeOfDayD = TimeOfDay;
+import std.datetime : SysTime, DateTimeD = DateTime, Date, TimeOfDayD = TimeOfDay;
 import std.exception : enforce, assertThrown;
 import std.math : isNaN, isFinite;
 import std.string : join, strip, replace, indexOf;
-import std.traits : isNumeric, isIntegral, isFloatingPoint, isArray,
-	isAssociativeArray, KeyType;
+import std.traits : isNumeric, isIntegral, isFloatingPoint, isArray, isAssociativeArray, KeyType;
 import std.typecons : Tuple;
 import std.utf : encode, UseReplacementDchar;
 
@@ -164,7 +162,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.OFFSET_DATETIME
 	 */
-	public @property ref SysTime offsetDatetime()
+	public @property ref SysTime offsetDatetime() return 
 	{
 		enforce!TOMLException(this.type == TOML_TYPE.OFFSET_DATETIME,
 				"TOMLValue is not an offset datetime");
@@ -174,7 +172,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_DATETIME
 	 */
-	public @property @trusted ref DateTime localDatetime()
+	public @property @trusted ref DateTime localDatetime() return 
 	{
 		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_DATETIME,
 				"TOMLValue is not a local datetime");
@@ -184,7 +182,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_DATE
 	 */
-	public @property @trusted ref Date localDate()
+	public @property @trusted ref Date localDate() return 
 	{
 		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_DATE, "TOMLValue is not a local date");
 		return this.store.localDate;
@@ -193,7 +191,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_TIME
 	 */
-	public @property @trusted ref TimeOfDay localTime()
+	public @property @trusted ref TimeOfDay localTime() return 
 	{
 		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_TIME, "TOMLValue is not a local time");
 		return this.store.localTime;
@@ -202,7 +200,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.ARRAY
 	 */
-	public @property @trusted ref TOMLValue[] array()
+	public @property @trusted ref TOMLValue[] array() return 
 	{
 		enforce!TOMLException(this._type == TOML_TYPE.ARRAY, "TOMLValue is not an array");
 		return this.store.array;
@@ -211,7 +209,7 @@ struct TOMLValue
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.TABLE
 	 */
-	public @property @trusted ref TOMLValue[string] table()
+	public @property @trusted ref TOMLValue[string] table() return 
 	{
 		enforce!TOMLException(this._type == TOML_TYPE.TABLE, "TOMLValue is not a table");
 		return this.store.table;
@@ -461,7 +459,7 @@ struct TOMLValue
 		}
 	}
 
-	public inout void append(ref Appender!string appender)
+	public void append(ref Appender!string appender)
 	{
 		final switch (this._type) with (TOML_TYPE)
 		{
@@ -522,7 +520,7 @@ struct TOMLValue
 		}
 	}
 
-	public inout string toString()
+	public string toString()
 	{
 		Appender!string appender;
 		this.append(appender);
@@ -1370,7 +1368,7 @@ unittest
 		site."google.com" = true
 	`);
 	assert(doc["name"] == "Orange");
-	assert(doc["physical"] == ["color" : "orange", "shape" : "round"]);
+	assert(doc["physical"] == ["color": "orange", "shape": "round"]);
 	assert(doc["site"]["google.com"] == true);
 
 	// ------
@@ -1654,8 +1652,14 @@ trimmed in raw strings.
 		key2 = 456
 	`);
 	assert(doc["table-1"].type == TOML_TYPE.TABLE);
-	assert(doc["table-1"] == ["key1" : TOMLValue("some string"), "key2" : TOMLValue(123)]);
-	assert(doc["table-2"] == ["key1" : TOMLValue("another string"), "key2" : TOMLValue(456)]);
+	assert(doc["table-1"] == [
+			"key1": TOMLValue("some string"),
+			"key2": TOMLValue(123)
+			]);
+	assert(doc["table-2"] == [
+			"key1": TOMLValue("another string"),
+			"key2": TOMLValue(456)
+			]);
 
 	doc = parseTOML(`
 		[dog."tater.man"]
@@ -1729,7 +1733,7 @@ trimmed in raw strings.
 	`);
 	assert(doc["name"]["first"] == "Tom");
 	assert(doc["name"]["last"] == "Preston-Werner");
-	assert(doc["point"] == ["x" : 1, "y" : 2]);
+	assert(doc["point"] == ["x": 1, "y": 2]);
 	assert(doc["animal"]["type"]["name"] == "pug");
 
 	// ---------------
@@ -1750,10 +1754,16 @@ trimmed in raw strings.
 	`);
 	assert(doc["products"].type == TOML_TYPE.ARRAY);
 	assert(doc["products"].array.length == 3);
-	assert(doc["products"][0] == ["name" : TOMLValue("Hammer"), "sku" : TOMLValue(738594937)]);
+	assert(doc["products"][0] == [
+			"name": TOMLValue("Hammer"),
+			"sku": TOMLValue(738594937)
+			]);
 	assert(doc["products"][1] == (TOMLValue[string]).init);
-	assert(doc["products"][2] == ["name" : TOMLValue("Nail"), "sku"
-			: TOMLValue(284758393), "color" : TOMLValue("gray")]);
+	assert(doc["products"][2] == [
+			"name": TOMLValue("Nail"),
+			"sku": TOMLValue(284758393),
+			"color": TOMLValue("gray")
+			]);
 
 	// nested
 	doc = parseTOML(`
@@ -1779,11 +1789,13 @@ trimmed in raw strings.
 	assert(doc["fruit"].type == TOML_TYPE.ARRAY);
 	assert(doc["fruit"].array.length == 2);
 	assert(doc["fruit"][0]["name"] == "apple");
-	assert(doc["fruit"][0]["physical"] == ["color" : "red", "shape" : "round"]);
-	assert(doc["fruit"][0]["variety"][0] == ["name" : "red delicious"]);
+	assert(doc["fruit"][0]["physical"] == ["color": "red", "shape": "round"]);
+	assert(doc["fruit"][0]["variety"][0] == ["name": "red delicious"]);
 	assert(doc["fruit"][0]["variety"][1]["name"] == "granny smith");
-	assert(doc["fruit"][1] == ["name" : TOMLValue("banana"), "variety"
-			: TOMLValue([["name" : "plantain"]])]);
+	assert(doc["fruit"][1] == [
+			"name": TOMLValue("banana"),
+			"variety": TOMLValue([["name": "plantain"]])
+			]);
 
 	assertThrown!TOMLException({ parseTOML(`
 			# INVALID TOML DOC
@@ -1804,9 +1816,9 @@ trimmed in raw strings.
 			{ x = 2, y = 4, z = 8 } ]
 	`);
 	assert(doc["points"].array.length == 3);
-	assert(doc["points"][0] == ["x" : 1, "y" : 2, "z" : 3]);
-	assert(doc["points"][1] == ["x" : 7, "y" : 8, "z" : 9]);
-	assert(doc["points"][2] == ["x" : 2, "y" : 4, "z" : 8]);
+	assert(doc["points"][0] == ["x": 1, "y": 2, "z": 3]);
+	assert(doc["points"][1] == ["x": 7, "y": 8, "z": 9]);
+	assert(doc["points"][2] == ["x": 2, "y": 4, "z": 8]);
 
 	// additional tests for code coverage
 
@@ -1849,7 +1861,7 @@ trimmed in raw strings.
 
 	// document
 
-	TOMLValue value = TOMLValue(["test" : 44]);
+	TOMLValue value = TOMLValue(["test": 44]);
 	doc = TOMLDocument(value);
 
 	// opEquals
@@ -1867,11 +1879,11 @@ trimmed in raw strings.
 	assert(TOMLValue(TimeOfDay.fromISOExtString("07:32:00")) == TOMLValue(
 			TimeOfDay.fromISOExtString("07:32:00")));
 	assert(TOMLValue([1, 2, 3]) == TOMLValue([1, 2, 3]));
-	assert(TOMLValue(["a" : 0, "b" : 1]) == TOMLValue(["a" : 0, "b" : 1]));
+	assert(TOMLValue(["a": 0, "b": 1]) == TOMLValue(["a": 0, "b": 1]));
 
 	// toString()
 
-	assert(TOMLDocument(["test" : TOMLValue(0)]).toString() == "test = 0" ~ newline);
+	assert(TOMLDocument(["test": TOMLValue(0)]).toString() == "test = 0" ~ newline);
 
 	assert(TOMLValue(true).toString() == "true");
 	assert(TOMLValue("string").toString() == "\"string\"");
@@ -1888,10 +1900,10 @@ trimmed in raw strings.
 	assert(TOMLValue(Date.fromISOExtString("1979-05-27")).toString() == "1979-05-27");
 	assert(TOMLValue(TimeOfDay.fromISOExtString("07:32:00.999999")).toString() == "07:32:00.999999");
 	assert(TOMLValue([1, 2, 3]).toString() == "[1, 2, 3]");
-	immutable table = TOMLValue(["a" : 0, "b" : 1]).toString();
+	immutable table = TOMLValue(["a": 0, "b": 1]).toString();
 	assert(table == "{ a = 0, b = 1 }" || table == "{ b = 1, a = 0 }");
 
-	foreach (key, value; TOMLValue(["0" : 0, "1" : 1]))
+	foreach (key, value; TOMLValue(["0": 0, "1": 1]))
 	{
 		assert(value == key.to!int);
 	}
