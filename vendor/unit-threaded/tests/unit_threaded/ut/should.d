@@ -80,7 +80,8 @@ private void assertFail(E)(lazy E expression, in string file = __FILE__, in size
 @safe pure unittest
 {
     ubyte[] arr;
-    arr.shouldEqual([]);
+    ubyte[] empty;
+    arr.shouldEqual(empty);
 }
 
 
@@ -104,18 +105,18 @@ private void assertFail(E)(lazy E expression, in string file = __FILE__, in size
     shouldNotEqual([1 : 2.0, 2 : 4.0], [1 : 2.2, 2 : 4.0]) ;
 }
 
-@safe pure unittest {
+@system pure unittest {
     import std.range: iota;
     const constRange = 3.iota;
     shouldEqual(constRange, constRange);
 }
 
-@safe pure unittest
+@system pure unittest
 {
     class Foo
     {
         this(int i) { this.i = i; }
-        override string toString() const
+        override string toString() @safe const
         {
             import std.conv: to;
             return i.to!string;
@@ -127,7 +128,7 @@ private void assertFail(E)(lazy E expression, in string file = __FILE__, in size
     assertFail(shouldNotBeNull(null));
     shouldEqual(new Foo(5), new Foo(5));
     assertFail(shouldEqual(new Foo(5), new Foo(4)));
-    shouldNotEqual(new Foo(5), new Foo(4)) ;
+    shouldNotEqual(new Foo(5), new Foo(4));
     assertFail(shouldNotEqual(new Foo(5), new Foo(5)));
 }
 
@@ -197,6 +198,20 @@ private void assertFail(E)(lazy E expression, in string file = __FILE__, in size
                        `    tests/unit_threaded/ut/should.d:123 - Value "foo"` ~ "\n" ~
                        `    tests/unit_threaded/ut/should.d:123 - is in "foobar"`);
 
+}
+
+
+@safe pure unittest {
+    assertExceptionMsg((1 == 2).shouldThrow,
+                       `    tests/unit_threaded/ut/should.d:123 - Expression did not throw`);
+}
+
+
+@safe pure unittest {
+    static void oops() { throw new Exception("oops"); }
+    assertExceptionMsg(oops.shouldThrow!UnitTestException,
+                       `    tests/unit_threaded/ut/should.d:123 - Expression threw object.Exception instead of the expected UnitTestException:`
+                       ~ "\n"  ~ `oops`);
 }
 
 
@@ -363,7 +378,7 @@ unittest
     import core.exception: OutOfMemoryError;
 
     class CustomException : Exception {
-        this(string msg = "", in string file = __FILE__, in size_t line = __LINE__) { super(msg, file, line); }
+        this(string msg = "", string file = __FILE__, in size_t line = __LINE__) { super(msg, file, line); }
     }
 
     void func() { throw new CustomException("oh noes"); }
@@ -440,7 +455,8 @@ unittest {
     assert(!isEqual(new Foo(5), new Foo(4)));
 
     ubyte[] arr;
-    assert(isEqual(arr, []));
+    ubyte[] empty;
+    assert(isEqual(arr, empty));
 }
 
 @safe pure unittest
@@ -608,23 +624,25 @@ unittest {
 @("should ~ for range")
 @safe pure unittest {
     [1, 2, 3].should ~ [3, 2, 1];
-    [1, 2, 3].should.not ~ [1, 2, 2];
     assertFail([1, 2, 3].should ~ [1, 2, 2]);
+
+    [1, 2, 3].should.not ~ [1, 2, 2];
+    assertFail([1, 2, 3].should.not ~ [3, 2, 1]);
+    assertExceptionMsg([1, 2, 3].should.not ~ [3, 2, 1],
+        `    tests/unit_threaded/ut/should.d:123 - [1, 2, 3] should not be the same set as [3, 2, 1]`
+        );
 }
 
 @("should ~ for float")
 @safe unittest {
     1.0.should ~ 1.0001;
-    1.0.should.not ~ 2.0;
     assertFail(2.0.should ~ 1.0001);
-}
 
-
-@("void[] vs string")
-@safe unittest {
-    auto voids = () @trusted { return cast(void[]) ['f', 'o', 'o']; }();
-    "foo".shouldEqual(voids);
-    voids.shouldEqual("foo");
+    1.0.should.not ~ 2.0;
+    assertFail(1.0.should.not ~ 1.0001);
+    assertExceptionMsg(1.0.should.not ~ 1.0001,
+        `    tests/unit_threaded/ut/should.d:123 - 1 should not be approximately equal to 1.0001`
+        );
 }
 
 
@@ -640,4 +658,14 @@ unittest {
 
     3.seconds.shouldBeBetween(2.seconds, 4.seconds);
     assertFail(1.seconds.shouldBeBetween(2.seconds, 4.seconds));
+}
+
+
+@("shouldBeSameSetAs")
+@safe pure unittest {
+    [1, 2, 3].shouldBeSameSetAs([2, 3, 1]);
+    [1, 2, 3].shouldBeSameSetAs([3, 2, 1]);
+    assertExceptionMsg([1, 2, 3].shouldBeSameSetAs([2, 1, 4]),
+                       `    tests/unit_threaded/ut/should.d:123 - Expected: [1, 2, 4]` ~ "\n" ~
+                       `    tests/unit_threaded/ut/should.d:123 -      Got: [1, 2, 3]`);
 }
