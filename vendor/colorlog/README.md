@@ -1,7 +1,6 @@
-# colorlog
+# colorlog [![Build Status](https://dev.azure.com/wikodes/wikodes/_apis/build/status/joakim-brannstrom.colorlog?branchName=master)](https://dev.azure.com/wikodes/wikodes/_build/latest?definitionId=8&branchName=master)
 
-**colorlog** is a logger implementation of the interface for
-`std.experimental.logger` that supports coloring the messages.
+**colorlog** is a logger intended to be used with `std.experimental.logger`. It adds two loggers and functionality to add console colors to messages.
 
 # Usage
 

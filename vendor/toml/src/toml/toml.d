@@ -1,4 +1,4 @@
-// Written in the D programming language.
+﻿// Written in the D programming language.
 
 /**
  * 
@@ -29,31 +29,29 @@ import toml.datetime : DateTime, TimeOfDay;
 /**
  * Flags that control how a TOML document is parsed and encoded.
  */
-enum TOMLOptions
-{
+enum TOMLOptions {
 
 	none = 0x00,
-	unquotedStrings = 0x01, /// allow unquoted strings as values when parsing
+	unquotedStrings = 0x01,		/// allow unquoted strings as values when parsing
 
 }
 
 /**
  * TOML type enumeration.
  */
-enum TOML_TYPE : byte
-{
+enum TOML_TYPE : byte {
 
-	STRING, /// Indicates the type of a TOMLValue.
-	INTEGER, /// ditto
-	FLOAT, /// ditto
-	OFFSET_DATETIME, /// ditto
-	LOCAL_DATETIME, /// ditto
-	LOCAL_DATE, /// ditto
-	LOCAL_TIME, /// ditto
-	ARRAY, /// ditto
-	TABLE, /// ditto
-	TRUE, /// ditto
-	FALSE /// ditto
+	STRING,             /// Indicates the type of a TOMLValue.
+	INTEGER,            /// ditto
+	FLOAT,              /// ditto
+	OFFSET_DATETIME,    /// ditto
+	LOCAL_DATETIME,     /// ditto
+	LOCAL_DATE,         /// ditto
+	LOCAL_TIME,         /// ditto
+	ARRAY,              /// ditto
+	TABLE,              /// ditto
+	TRUE,				/// ditto
+	FALSE				/// ditto
 
 }
 
@@ -61,26 +59,21 @@ enum TOML_TYPE : byte
  * Main table of a TOML document.
  * It works as a TOMLValue with the TOML_TYPE.TABLE type.
  */
-struct TOMLDocument
-{
+struct TOMLDocument {
 
 	public TOMLValue[string] table;
 
-	public this(TOMLValue[string] table)
-	{
+	public this(TOMLValue[string] table) {
 		this.table = table;
 	}
 
-	public this(TOMLValue value)
-	{
+	public this(TOMLValue value) {
 		this(value.table);
 	}
 
-	public string toString()
-	{
+	public string toString() {
 		Appender!string appender;
-		foreach (key, value; this.table)
-		{
+		foreach(key, value; this.table) {
 			appender.put(formatKey(key));
 			appender.put(" = ");
 			value.append(appender);
@@ -96,11 +89,9 @@ struct TOMLDocument
 /**
  * Value of a TOML value.
  */
-struct TOMLValue
-{
+struct TOMLValue {
 
-	private union Store
-	{
+	private union Store {
 		string str;
 		long integer;
 		double floating;
@@ -111,417 +102,295 @@ struct TOMLValue
 		TOMLValue[] array;
 		TOMLValue[string] table;
 	}
-
 	private Store store;
 	private TOML_TYPE _type;
 
-	public this(T)(T value)
-	{
-		static if (is(T == TOML_TYPE))
-		{
+	public this(T)(T value) {
+		static if(is(T == TOML_TYPE)) {
 			this._type = value;
-		}
-		else
-		{
+		} else {
 			this.assign(value);
 		}
 	}
-
-	public inout pure nothrow @property @safe @nogc TOML_TYPE type()
-	{
+	
+	public inout pure nothrow @property @safe @nogc TOML_TYPE type() {
 		return this._type;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.STRING
 	 */
-	public inout @property @trusted string str()
-	{
+	public inout @property @trusted string str() {
 		enforce!TOMLException(this._type == TOML_TYPE.STRING, "TOMLValue is not a string");
 		return this.store.str;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.INTEGER
 	 */
-	public inout @property @trusted long integer()
-	{
+	public inout @property @trusted long integer() {
 		enforce!TOMLException(this._type == TOML_TYPE.INTEGER, "TOMLValue is not an integer");
 		return this.store.integer;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.FLOAT
 	 */
-	public inout @property @trusted double floating()
-	{
+	public inout @property @trusted double floating() {
 		enforce!TOMLException(this._type == TOML_TYPE.FLOAT, "TOMLValue is not a float");
 		return this.store.floating;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.OFFSET_DATETIME
 	 */
-	public @property ref SysTime offsetDatetime() return 
-	{
-		enforce!TOMLException(this.type == TOML_TYPE.OFFSET_DATETIME,
-				"TOMLValue is not an offset datetime");
+	public @property ref SysTime offsetDatetime() {
+		enforce!TOMLException(this.type == TOML_TYPE.OFFSET_DATETIME, "TOMLValue is not an offset datetime");
 		return this.store.offsetDatetime;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_DATETIME
 	 */
-	public @property @trusted ref DateTime localDatetime() return 
-	{
-		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_DATETIME,
-				"TOMLValue is not a local datetime");
+	public @property @trusted ref DateTime localDatetime() {
+		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_DATETIME, "TOMLValue is not a local datetime");
 		return this.store.localDatetime;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_DATE
 	 */
-	public @property @trusted ref Date localDate() return 
-	{
+	public @property @trusted ref Date localDate() {
 		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_DATE, "TOMLValue is not a local date");
 		return this.store.localDate;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.LOCAL_TIME
 	 */
-	public @property @trusted ref TimeOfDay localTime() return 
-	{
+	public @property @trusted ref TimeOfDay localTime() {
 		enforce!TOMLException(this._type == TOML_TYPE.LOCAL_TIME, "TOMLValue is not a local time");
 		return this.store.localTime;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.ARRAY
 	 */
-	public @property @trusted ref TOMLValue[] array() return 
-	{
+	public @property @trusted ref TOMLValue[] array() {
 		enforce!TOMLException(this._type == TOML_TYPE.ARRAY, "TOMLValue is not an array");
 		return this.store.array;
 	}
-
+	
 	/**
 	 * Throws: TOMLException if type is not TOML_TYPE.TABLE
 	 */
-	public @property @trusted ref TOMLValue[string] table() return 
-	{
+	public @property @trusted ref TOMLValue[string] table() {
 		enforce!TOMLException(this._type == TOML_TYPE.TABLE, "TOMLValue is not a table");
 		return this.store.table;
 	}
 
-	public TOMLValue opIndex(size_t index)
-	{
+	public TOMLValue opIndex(size_t index) {
 		return this.array[index];
 	}
 
-	public TOMLValue* opBinaryRight(string op : "in")(string key)
-	{
+	public TOMLValue* opBinaryRight(string op : "in")(string key) {
 		return key in this.table;
 	}
 
-	public TOMLValue opIndex(string key)
-	{
+	public TOMLValue opIndex(string key) {
 		return this.table[key];
 	}
 
-	public int opApply(scope int delegate(string, ref TOMLValue) dg)
-	{
+	public int opApply(scope int delegate(string, ref TOMLValue) dg) {
 		enforce!TOMLException(this._type == TOML_TYPE.TABLE, "TOMLValue is not a table");
 		int result;
-		foreach (string key, ref value; this.store.table)
-		{
+		foreach(string key, ref value; this.store.table) {
 			result = dg(key, value);
-			if (result)
-				break;
+			if(result) break;
 		}
 		return result;
 	}
 
-	public void opAssign(T)(T value)
-	{
+	public void opAssign(T)(T value) {
 		this.assign(value);
 	}
 
-	private void assign(T)(T value)
-	{
-		static if (is(T == TOMLValue))
-		{
+	private void assign(T)(T value) {
+		static if(is(T == TOMLValue)) {
 			this.store = value.store;
 			this._type = value._type;
-		}
-		else static if (is(T : string))
-		{
+		} else static if(is(T : string)) {
 			this.store.str = value;
 			this._type = TOML_TYPE.STRING;
-		}
-		else static if (isIntegral!T)
-		{
+		} else static if(isIntegral!T) {
 			this.store.integer = value;
 			this._type = TOML_TYPE.INTEGER;
-		}
-		else static if (isFloatingPoint!T)
-		{
+		} else static if(isFloatingPoint!T) {
 			this.store.floating = value.to!double;
 			this._type = TOML_TYPE.FLOAT;
-		}
-		else static if (is(T == SysTime))
-		{
+		} else static if(is(T == SysTime)) {
 			this.store.offsetDatetime = value;
 			this._type = TOML_TYPE.OFFSET_DATETIME;
-		}
-		else static if (is(T == DateTime))
-		{
+		} else static if(is(T == DateTime)) {
 			this.store.localDatetime = value;
 			this._type = TOML_TYPE.LOCAL_DATETIME;
-		}
-		else static if (is(T == DateTimeD))
-		{
+		} else static if(is(T == DateTimeD)) {
 			this.store.localDatetime = DateTime(value.date, TimeOfDay(value.timeOfDay));
 			this._type = TOML_TYPE.LOCAL_DATETIME;
-		}
-		else static if (is(T == Date))
-		{
+		} else static if(is(T == Date)) {
 			this.store.localDate = value;
 			this._type = TOML_TYPE.LOCAL_DATE;
-		}
-		else static if (is(T == TimeOfDay))
-		{
+		} else static if(is(T == TimeOfDay)) {
 			this.store.localTime = value;
 			this._type = TOML_TYPE.LOCAL_TIME;
-		}
-		else static if (is(T == TimeOfDayD))
-		{
+		} else static if(is(T == TimeOfDayD)) {
 			this.store.localTime = TimeOfDay(value);
 			this._type = TOML_TYPE.LOCAL_TIME;
-		}
-		else static if (isArray!T)
-		{
-			static if (is(T == TOMLValue[]))
-			{
-				if (value.length)
-				{
+		} else static if(isArray!T) {
+			static if(is(T == TOMLValue[])) {
+				if(value.length) {
 					// verify that every element has the same type
 					TOML_TYPE cmp = value[0].type;
-					foreach (element; value[1 .. $])
-					{
-						enforce!TOMLException(element.type == cmp,
-								"Array's values must be of the same type");
+					foreach(element ; value[1..$]) {
+						enforce!TOMLException(element.type == cmp, "Array's values must be of the same type");
 					}
 				}
 				alias data = value;
-			}
-			else
-			{
+			} else {
 				TOMLValue[] data;
-				foreach (element; value)
-				{
+				foreach(element ; value) {
 					data ~= TOMLValue(element);
 				}
 			}
 			this.store.array = data;
 			this._type = TOML_TYPE.ARRAY;
-		}
-		else static if (isAssociativeArray!T && is(KeyType!T : string))
-		{
-			static if (is(T == TOMLValue[string]))
-			{
+		} else static if(isAssociativeArray!T && is(KeyType!T : string)) {
+			static if(is(T == TOMLValue[string])) {
 				alias data = value;
-			}
-			else
-			{
+			} else {
 				TOMLValue[string] data;
-				foreach (key, v; value)
-				{
+				foreach(key, v; value) {
 					data[key] = v;
 				}
 			}
 			this.store.table = data;
 			this._type = TOML_TYPE.TABLE;
-		}
-		else static if (is(T == bool))
-		{
+		} else static if(is(T == bool)) {
 			_type = value ? TOML_TYPE.TRUE : TOML_TYPE.FALSE;
-		}
-		else
-		{
+		} else {
 			static assert(0);
 		}
 	}
 
-	public bool opEquals(T)(T value)
-	{
-		static if (is(T == TOMLValue))
-		{
-			if (this._type != value._type)
-				return false;
-			final switch (this.type) with (TOML_TYPE)
-			{
-			case STRING:
-				return this.store.str == value.store.str;
-			case INTEGER:
-				return this.store.integer == value.store.integer;
-			case FLOAT:
-				return this.store.floating == value.store.floating;
-			case OFFSET_DATETIME:
-				return this.store.offsetDatetime == value.store.offsetDatetime;
-			case LOCAL_DATETIME:
-				return this.store.localDatetime == value.store.localDatetime;
-			case LOCAL_DATE:
-				return this.store.localDate == value.store.localDate;
-			case LOCAL_TIME:
-				return this.store.localTime == value.store.localTime;
-			case ARRAY:
-				return this.store.array == value.store.array;
+	public bool opEquals(T)(T value) {
+		static if(is(T == TOMLValue)) {
+			if(this._type != value._type) return false;
+			final switch(this.type) with(TOML_TYPE) {
+				case STRING: return this.store.str == value.store.str;
+				case INTEGER: return this.store.integer == value.store.integer;
+				case FLOAT: return this.store.floating == value.store.floating;
+				case OFFSET_DATETIME: return this.store.offsetDatetime == value.store.offsetDatetime;
+				case LOCAL_DATETIME: return this.store.localDatetime == value.store.localDatetime;
+				case LOCAL_DATE: return this.store.localDate == value.store.localDate;
+				case LOCAL_TIME: return this.store.localTime == value.store.localTime;
+				case ARRAY: return this.store.array == value.store.array;
 				//case TABLE: return this.store.table == value.store.table; // causes errors
-			case TABLE:
-				return this.opEquals(value.store.table);
-			case TRUE:
-			case FALSE:
-				return true;
+				case TABLE: return this.opEquals(value.store.table);
+				case TRUE: case FALSE: return true;
 			}
-		}
-		else static if (is(T : string))
-		{
+		} else static if(is(T : string)) {
 			return this._type == TOML_TYPE.STRING && this.store.str == value;
-		}
-		else static if (isNumeric!T)
-		{
-			if (this._type == TOML_TYPE.INTEGER)
-				return this.store.integer == value;
-			else if (this._type == TOML_TYPE.FLOAT)
-				return this.store.floating == value;
-			else
-				return false;
-		}
-		else static if (is(T == SysTime))
-		{
+		} else static if(isNumeric!T ) {
+			if(this._type == TOML_TYPE.INTEGER) return this.store.integer == value;
+			else if(this._type == TOML_TYPE.FLOAT) return this.store.floating == value;
+			else return false;
+		} else static if(is(T == SysTime)) {
 			return this._type == TOML_TYPE.OFFSET_DATETIME && this.store.offsetDatetime == value;
-		}
-		else static if (is(T == DateTime))
-		{
-			return this._type == TOML_TYPE.LOCAL_DATETIME && this.store.localDatetime.dateTime == value.dateTime
-				&& this.store.localDatetime.timeOfDay.fracSecs == value.timeOfDay.fracSecs;
-		}
-		else static if (is(T == DateTimeD))
-		{
-			return this._type == TOML_TYPE.LOCAL_DATETIME
-				&& this.store.localDatetime.dateTime == value;
-		}
-		else static if (is(T == Date))
-		{
+		} else static if(is(T == DateTime)) {
+			return this._type == TOML_TYPE.LOCAL_DATETIME && this.store.localDatetime.dateTime == value.dateTime && this.store.localDatetime.timeOfDay.fracSecs == value.timeOfDay.fracSecs;
+		} else static if(is(T == DateTimeD)) {
+			return this._type == TOML_TYPE.LOCAL_DATETIME && this.store.localDatetime.dateTime == value;
+		} else static if(is(T == Date)) {
 			return this._type == TOML_TYPE.LOCAL_DATE && this.store.localDate == value;
-		}
-		else static if (is(T == TimeOfDay))
-		{
-			return this._type == TOML_TYPE.LOCAL_TIME && this.store.localTime.timeOfDay == value.timeOfDay
-				&& this.store.localTime.fracSecs == value.fracSecs;
-		}
-		else static if (is(T == TimeOfDayD))
-		{
+		} else static if(is(T == TimeOfDay)) {
+			return this._type == TOML_TYPE.LOCAL_TIME && this.store.localTime.timeOfDay == value.timeOfDay && this.store.localTime.fracSecs == value.fracSecs;
+		} else static if(is(T == TimeOfDayD)) {
 			return this._type == TOML_TYPE.LOCAL_TIME && this.store.localTime == value;
-		}
-		else static if (isArray!T)
-		{
-			if (this._type != TOML_TYPE.ARRAY || this.store.array.length != value.length)
-				return false;
-			foreach (i, element; this.store.array)
-			{
-				if (element != value[i])
-					return false;
+		} else static if(isArray!T) {
+			if(this._type != TOML_TYPE.ARRAY || this.store.array.length != value.length) return false;
+			foreach(i, element; this.store.array) {
+				if(element != value[i]) return false;
 			}
 			return true;
-		}
-		else static if (isAssociativeArray!T && is(KeyType!T : string))
-		{
-			if (this._type != TOML_TYPE.TABLE || this.store.table.length != value.length)
-				return false;
-			foreach (key, v; this.store.table)
-			{
+		} else static if(isAssociativeArray!T && is(KeyType!T : string)) {
+			if(this._type != TOML_TYPE.TABLE || this.store.table.length != value.length) return false;
+			foreach(key, v; this.store.table) {
 				auto cmp = key in value;
-				if (cmp is null || v != *cmp)
-					return false;
+				if(cmp is null || v != *cmp) return false;
 			}
 			return true;
-		}
-		else static if (is(T == bool))
-		{
+		} else static if(is(T == bool)) {
 			return value ? _type == TOML_TYPE.TRUE : _type == TOML_TYPE.FALSE;
-		}
-		else
-		{
+		} else {
 			return false;
 		}
 	}
 
-	public void append(ref Appender!string appender)
-	{
-		final switch (this._type) with (TOML_TYPE)
-		{
-		case STRING:
-			appender.put(formatString(this.store.str));
-			break;
-		case INTEGER:
-			appender.put(this.store.integer.to!string);
-			break;
-		case FLOAT:
-			immutable str = this.store.floating.to!string;
-			appender.put(str);
-			if (!str.canFind('.') && !str.canFind('e'))
-				appender.put(".0");
-			break;
-		case OFFSET_DATETIME:
-			appender.put(this.store.offsetDatetime.toISOExtString());
-			break;
-		case LOCAL_DATETIME:
-			appender.put(this.store.localDatetime.toISOExtString());
-			break;
-		case LOCAL_DATE:
-			appender.put(this.store.localDate.toISOExtString());
-			break;
-		case LOCAL_TIME:
-			appender.put(this.store.localTime.toISOExtString());
-			break;
-		case ARRAY:
-			appender.put("[");
-			foreach (i, value; this.store.array)
-			{
-				value.append(appender);
-				if (i + 1 < this.store.array.length)
-					appender.put(", ");
-			}
-			appender.put("]");
-			break;
-		case TABLE:
-			// display as an inline table
-			appender.put("{ ");
-			size_t i = 0;
-			foreach (key, value; this.store.table)
-			{
-				appender.put(formatKey(key));
-				appender.put(" = ");
-				value.append(appender);
-				if (++i != this.store.table.length)
-					appender.put(", ");
-			}
-			appender.put(" }");
-			break;
-		case TRUE:
-			appender.put("true");
-			break;
-		case FALSE:
-			appender.put("false");
-			break;
+	public inout void append(ref Appender!string appender) {
+		final switch(this._type) with(TOML_TYPE) {
+			case STRING:
+				appender.put(formatString(this.store.str));
+				break;
+			case INTEGER:
+				appender.put(this.store.integer.to!string);
+				break;
+			case FLOAT:
+				immutable str = this.store.floating.to!string;
+				appender.put(str);
+				if(!str.canFind('.') && !str.canFind('e')) appender.put(".0");
+				break;
+			case OFFSET_DATETIME:
+				appender.put(this.store.offsetDatetime.toISOExtString());
+				break;
+			case LOCAL_DATETIME:
+				appender.put(this.store.localDatetime.toISOExtString());
+				break;
+			case LOCAL_DATE:
+				appender.put(this.store.localDate.toISOExtString());
+				break;
+			case LOCAL_TIME:
+				appender.put(this.store.localTime.toISOExtString());
+				break;
+			case ARRAY:
+				appender.put("[");
+				foreach(i, value; this.store.array) {
+					value.append(appender);
+					if(i + 1 < this.store.array.length) appender.put(", ");
+				}
+				appender.put("]");
+				break;
+			case TABLE:
+				// display as an inline table
+				appender.put("{ ");
+				size_t i = 0;
+				foreach(key, value; this.store.table) {
+					appender.put(formatKey(key));
+					appender.put(" = ");
+					value.append(appender);
+					if(++i != this.store.table.length) appender.put(", ");
+				}
+				appender.put(" }");
+				break;
+			case TRUE:
+				appender.put("true");
+				break;
+			case FALSE:
+				appender.put("false");
+				break;
 		}
 	}
 
-	public string toString()
-	{
+	public inout string toString() {
 		Appender!string appender;
 		this.append(appender);
 		return appender.data;
@@ -529,47 +398,25 @@ struct TOMLValue
 
 }
 
-private string formatKey(string str)
-{
-	foreach (c; str)
-	{
-		if ((c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z')
-				&& c != '-' && c != '_')
-			return formatString(str);
+private string formatKey(string str) {
+	foreach(c ; str) {
+		if((c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && c != '-' && c != '_') return formatString(str);
 	}
 	return str;
 }
 
-private string formatString(string str)
-{
+private string formatString(string str) {
 	Appender!string appender;
-	foreach (c; str)
-	{
-		switch (c)
-		{
-		case '"':
-			appender.put("\\\"");
-			break;
-		case '\\':
-			appender.put("\\\\");
-			break;
-		case '\b':
-			appender.put("\\b");
-			break;
-		case '\f':
-			appender.put("\\f");
-			break;
-		case '\n':
-			appender.put("\\n");
-			break;
-		case '\r':
-			appender.put("\\r");
-			break;
-		case '\t':
-			appender.put("\\t");
-			break;
-		default:
-			appender.put(c);
+	foreach(c ; str) {
+		switch(c) {
+			case '"': appender.put("\\\""); break;
+			case '\\': appender.put("\\\\"); break;
+			case '\b': appender.put("\\b"); break;
+			case '\f': appender.put("\\f"); break;
+			case '\n': appender.put("\\n"); break;
+			case '\r': appender.put("\\r"); break;
+			case '\t': appender.put("\\t"); break;
+			default: appender.put(c);
 		}
 	}
 	return "\"" ~ appender.data ~ "\"";
@@ -581,28 +428,21 @@ private string formatString(string str)
  * Throws:
  * 		TOMLParserException when the document's syntax is incorrect
  */
-TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
-{
-
+TOMLDocument parseTOML(string data, TOMLOptions options=TOMLOptions.none) {
+	
 	size_t index = 0;
 
 	/**
 	 * Throws a TOMLParserException at the current line and column.
 	 */
-	void error(string message)
-	{
-		if (index >= data.length)
-			index = data.length;
+	void error(string message) {
+		if(index >= data.length) index = data.length;
 		size_t i, line, column;
-		while (i < index)
-		{
-			if (data[i++] == '\n')
-			{
+		while(i < index) {
+			if(data[i++] == '\n') {
 				line++;
 				column = 0;
-			}
-			else
-			{
+			} else {
 				column++;
 			}
 		}
@@ -613,10 +453,8 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 	 * Throws a TOMLParserException throught the error function if
 	 * cond is false.
 	 */
-	void enforceParser(bool cond, lazy string message)
-	{
-		if (!cond)
-		{
+	void enforceParser(bool cond, lazy string message) {
+		if(!cond) {
 			error(message);
 		}
 	}
@@ -626,29 +464,21 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 
 	string[][] tableNames;
 
-	void setImpl(TOMLValue[string]* table, string[] keys, string[] original, TOMLValue value)
-	{
+	void setImpl(TOMLValue[string]* table, string[] keys, string[] original, TOMLValue value) {
 		auto ptr = keys[0] in *table;
-		if (keys.length == 1)
-		{
+		if(keys.length == 1) {
 			// should not be there
 			enforceParser(ptr is null, "Key is already defined");
 			(*table)[keys[0]] = value;
-		}
-		else
-		{
+		} else {
 			// must be a table
-			if (ptr !is null)
-				enforceParser((*ptr).type == TOML_TYPE.TABLE, join(original[0 .. $ - keys.length],
-						".") ~ " is already defined and is not a table");
-			else
-				(*table)[keys[0]] = (TOMLValue[string]).init;
-			setImpl(&((*table)[keys[0]].table()), keys[1 .. $], original, value);
+			if(ptr !is null) enforceParser((*ptr).type == TOML_TYPE.TABLE, join(original[0..$-keys.length], ".") ~ " is already defined and is not a table");
+			else (*table)[keys[0]] = (TOMLValue[string]).init;
+			setImpl(&((*table)[keys[0]].table()), keys[1..$], original, value);
 		}
 	}
 
-	void set(string[] keys, TOMLValue value)
-	{
+	void set(string[] keys, TOMLValue value) {
 		setImpl(current, keys, keys, value);
 	}
 
@@ -656,46 +486,29 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 	 * Removes whitespace characters and comments.
 	 * Return: whether there's still data to read
 	 */
-	bool clear(bool clear_newline = true)()
-	{
-		static if (clear_newline)
-		{
+	bool clear(bool clear_newline=true)() {
+		static if(clear_newline) {
 			enum chars = " \t\r\n";
-		}
-		else
-		{
+		} else {
 			enum chars = " \t\r";
 		}
-		if (index < data.length)
-		{
-			if (chars.canFind(data[index]))
-			{
+		if(index < data.length) {
+			if(chars.canFind(data[index])) {
 				index++;
 				return clear!clear_newline();
-			}
-			else if (data[index] == '#')
-			{
+			} else if(data[index] == '#') {
 				// skip until end of line
-				while (++index < data.length && data[index] != '\n')
-				{
-				}
-				static if (clear_newline)
-				{
+				while(++index < data.length && data[index] != '\n') {}
+				static if(clear_newline) {
 					index++; // point at the next character
 					return clear();
-				}
-				else
-				{
+				} else {
 					return true;
 				}
-			}
-			else
-			{
+			} else {
 				return true;
 			}
-		}
-		else
-		{
+		} else {
 			return false;
 		}
 	}
@@ -703,112 +516,67 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 	/**
 	 * Indicates whether the given character is valid in an unquoted key.
 	 */
-	bool isValidKeyChar(immutable char c)
-	{
-		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0'
-			&& c <= '9' || c == '-' || c == '_';
+	bool isValidKeyChar(immutable char c) {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_';
 	}
 
-	string readQuotedString(bool multiline)()
-	{
+	string readQuotedString(bool multiline)() {
 		Appender!string ret;
 		bool backslash = false;
-		while (index < data.length)
-		{
-			static if (!multiline)
-			{
+		while(index < data.length) {
+			static if(!multiline) {
 				enforceParser(data[index] != '\n', "Unterminated quoted string");
 			}
-			if (backslash)
-			{
-				void readUnicode(size_t size)()
-				{
+			if(backslash) {
+				void readUnicode(size_t size)() {
 					enforceParser(index + size < data.length, "Invalid UTF-8 sequence");
 					char[4] buffer;
-					immutable len = encode!(UseReplacementDchar.yes)(buffer,
-							cast(dchar) to!ulong(data[index + 1 .. index + 1 + size], 16));
-					ret.put(buffer[0 .. len].idup);
+					immutable len = encode!(UseReplacementDchar.yes)(buffer, cast(dchar)to!ulong(data[index+1..index+1+size], 16));
+					ret.put(buffer[0..len].idup);
 					index += size;
 				}
-
-				switch (data[index])
-				{
-				case '"':
-					ret.put('"');
-					break;
-				case '\\':
-					ret.put('\\');
-					break;
-				case 'b':
-					ret.put('\b');
-					break;
-				case 't':
-					ret.put('\t');
-					break;
-				case 'n':
-					ret.put('\n');
-					break;
-				case 'f':
-					ret.put('\f');
-					break;
-				case 'r':
-					ret.put('\r');
-					break;
-				case 'u':
-					readUnicode!4();
-					break;
-				case 'U':
-					readUnicode!8();
-					break;
-				default:
-					static if (multiline)
-					{
-						index++;
-						if (clear())
-						{
-							// remove whitespace characters until next valid character
-							index--;
-							break;
+				switch(data[index]) {
+					case '"': ret.put('"'); break;
+					case '\\': ret.put('\\'); break;
+					case 'b': ret.put('\b'); break;
+					case 't': ret.put('\t'); break;
+					case 'n': ret.put('\n'); break;
+					case 'f': ret.put('\f'); break;
+					case 'r': ret.put('\r'); break;
+					case 'u': readUnicode!4(); break;
+					case 'U': readUnicode!8(); break;
+					default:
+						static if(multiline) {
+							index++;
+							if(clear()) {
+								// remove whitespace characters until next valid character
+								index--;
+								break;
+							}
 						}
-					}
-					enforceParser(false, "Invalid escape sequence: '\\" ~ (index < data.length
-							? [data[index]] : "EOF") ~ "'");
+						enforceParser(false, "Invalid escape sequence: '\\" ~ (index < data.length ? [data[index]] : "EOF") ~ "'");
 				}
 				backslash = false;
-			}
-			else
-			{
-				if (data[index] == '\\')
-				{
+			} else {
+				if(data[index] == '\\') {
 					backslash = true;
-				}
-				else if (data[index] == '"')
-				{
+				} else if(data[index] == '"') {
 					// string closed
 					index++;
-					static if (multiline)
-					{
+					static if(multiline) {
 						// control that the string is really closed
-						if (index + 2 <= data.length && data[index .. index + 2] == "\"\"")
-						{
+						if(index + 2 <= data.length && data[index..index+2] == "\"\"") {
 							index += 2;
 							return ret.data.stripFirstLine;
-						}
-						else
-						{
+						} else {
 							ret.put("\"");
 							continue;
 						}
-					}
-					else
-					{
+					} else {
 						return ret.data;
 					}
-				}
-				else
-				{
-					static if (multiline)
-					{
+				} else {
+					static if(multiline) {
 						mixin(doLineConversion);
 					}
 					ret.put(data[index]);
@@ -816,198 +584,133 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 			}
 			index++;
 		}
-		error("Expecting \" (double quote) but found EOF");
-		assert(0);
+		error("Expecting \" (double quote) but found EOF");	assert(0);
 	}
 
-	string readSimpleQuotedString(bool multiline)()
-	{
+	string readSimpleQuotedString(bool multiline)() {
 		Appender!string ret;
-		while (index < data.length)
-		{
-			static if (!multiline)
-			{
+		while(index < data.length) {
+			static if(!multiline) {
 				enforceParser(data[index] != '\n', "Unterminated quoted string");
 			}
-			if (data[index] == '\'')
-			{
+			if(data[index] == '\'') {
 				// closed
 				index++;
-				static if (multiline)
-				{
+				static if(multiline) {
 					// there must be 3 of them
-					if (index + 2 <= data.length && data[index .. index + 2] == "''")
-					{
+					if(index + 2 <= data.length && data[index..index+2] == "''") {
 						index += 2;
 						return ret.data.stripFirstLine;
-					}
-					else
-					{
+					} else {
 						ret.put("'");
 					}
-				}
-				else
-				{
+				} else {
 					return ret.data;
 				}
-			}
-			else
-			{
-				static if (multiline)
-				{
+			} else {
+				static if(multiline) {
 					mixin(doLineConversion);
 				}
 				ret.put(data[index++]);
 			}
 		}
-		error("Expecting ' (single quote) but found EOF");
-		assert(0);
+		error("Expecting ' (single quote) but found EOF"); assert(0);
 	}
 
-	string removeUnderscores(string str, string[] ranges...)
-	{
-		bool checkRange(char c)
-		{
-			foreach (range; ranges)
-			{
-				if (c >= range[0] && c <= range[1])
-					return true;
+	string removeUnderscores(string str, string[] ranges...) {
+		bool checkRange(char c) {
+			foreach(range ; ranges) {
+				if(c >= range[0] && c <= range[1]) return true;
 			}
 			return false;
 		}
-
 		bool underscore = false;
-		for (size_t i = 0; i < str.length; i++)
-		{
-			if (str[i] == '_')
-			{
-				if (underscore || i == 0 || i == str.length - 1
-						|| !checkRange(str[i - 1]) || !checkRange(str[i + 1]))
-					throw new Exception("");
-				str = str[0 .. i] ~ str[i + 1 .. $];
+		for(size_t i=0; i<str.length; i++) {
+			if(str[i] == '_') {
+				if(underscore || i == 0 || i == str.length - 1 || !checkRange(str[i-1]) || !checkRange(str[i+1])) throw new Exception("");
+				str = str[0..i] ~ str[i+1..$];
 				i--;
 				underscore = true;
-			}
-			else
-			{
+			} else {
 				underscore = false;
 			}
 		}
 		return str;
 	}
 
-	TOMLValue readSpecial()
-	{
+	TOMLValue readSpecial() {
 		immutable start = index;
-		while (index < data.length && !"\t\r\n,]}#".canFind(data[index]))
-			index++;
-		string ret = data[start .. index].stripRight(' ');
+		while(index < data.length && !"\t\r\n,]}#".canFind(data[index])) index++;
+		string ret = data[start..index].stripRight(' ');
 		enforceParser(ret.length > 0, "Invalid empty value");
-		switch (ret)
-		{
-		case "true":
-			return TOMLValue(true);
-		case "false":
-			return TOMLValue(false);
-		case "inf":
-		case "+inf":
-			return TOMLValue(double.infinity);
-		case "-inf":
-			return TOMLValue(-double.infinity);
-		case "nan":
-		case "+nan":
-			return TOMLValue(double.nan);
-		case "-nan":
-			return TOMLValue(-double.nan);
-		default:
-			immutable original = ret;
-			try
-			{
-				if (ret.length >= 10 && ret[4] == '-' && ret[7] == '-')
-				{
-					// date or datetime
-					if (ret.length >= 19 && (ret[10] == 'T' || ret[10] == ' ')
-							&& ret[13] == ':' && ret[16] == ':')
-					{
-						// datetime
-						if (ret[10] == ' ')
-							ret = ret[0 .. 10] ~ 'T' ~ ret[11 .. $];
-						if (ret[19 .. $].canFind("-") || ret[$ - 1] == 'Z')
-						{
-							// has timezone
-							return TOMLValue(SysTime.fromISOExtString(ret));
+		switch(ret) {
+			case "true":
+				return TOMLValue(true);
+			case "false":
+				return TOMLValue(false);
+			case "inf":
+			case "+inf":
+				return TOMLValue(double.infinity);
+			case "-inf":
+				return TOMLValue(-double.infinity);
+			case "nan":
+			case "+nan":
+				return TOMLValue(double.nan);
+			case "-nan":
+				return TOMLValue(-double.nan);
+			default:
+				immutable original = ret;
+				try {
+					if(ret.length >= 10 && ret[4] == '-' && ret[7] == '-') {
+						// date or datetime
+						if(ret.length >= 19 && (ret[10] == 'T' || ret[10] == ' ') && ret[13] == ':' && ret[16] == ':') {
+							// datetime
+							if(ret[10] == ' ') ret = ret[0..10] ~ 'T' ~ ret[11..$];
+							if(ret[19..$].canFind("-") || ret[$-1] == 'Z') {
+								// has timezone
+								return TOMLValue(SysTime.fromISOExtString(ret));
+							} else {
+								// is space allowed instead of T?
+								return TOMLValue(DateTime.fromISOExtString(ret));
+							}
+						} else {
+							return TOMLValue(Date.fromISOExtString(ret));
 						}
-						else
-						{
-							// is space allowed instead of T?
-							return TOMLValue(DateTime.fromISOExtString(ret));
+					} else if(ret.length >= 8 && ret[2] == ':' && ret[5] == ':') {
+						return TOMLValue(TimeOfDay.fromISOExtString(ret));
+					}
+					if(ret.length > 2 && ret[0] == '0') {
+						switch(ret[1]) {
+							case 'x': return TOMLValue(to!long(removeUnderscores(ret[2..$], "09", "AZ", "az"), 16));
+							case 'o': return TOMLValue(to!long(removeUnderscores(ret[2..$], "08"), 8));
+							case 'b': return TOMLValue(to!long(removeUnderscores(ret[2..$], "01"), 2));
+							default: break;
 						}
 					}
-					else
-					{
-						return TOMLValue(Date.fromISOExtString(ret));
+					if(ret.canFind('.') || ret.canFind('e') || ret.canFind('E')) {
+						return TOMLValue(to!double(removeUnderscores(ret, "09")));
+					} else {
+						if(ret[0] != '0' || ret.length == 1) return TOMLValue(to!long(removeUnderscores(ret, "09")));
 					}
-				}
-				else if (ret.length >= 8 && ret[2] == ':' && ret[5] == ':')
-				{
-					return TOMLValue(TimeOfDay.fromISOExtString(ret));
-				}
-				if (ret.length > 2 && ret[0] == '0')
-				{
-					switch (ret[1])
-					{
-					case 'x':
-						return TOMLValue(to!long(removeUnderscores(ret[2 .. $],
-								"09", "AZ", "az"), 16));
-					case 'o':
-						return TOMLValue(to!long(removeUnderscores(ret[2 .. $], "08"), 8));
-					case 'b':
-						return TOMLValue(to!long(removeUnderscores(ret[2 .. $], "01"), 2));
-					default:
-						break;
-					}
-				}
-				if (ret.canFind('.') || ret.canFind('e') || ret.canFind('E'))
-				{
-					return TOMLValue(to!double(removeUnderscores(ret, "09")));
-				}
-				else
-				{
-					if (ret[0] != '0' || ret.length == 1)
-						return TOMLValue(to!long(removeUnderscores(ret, "09")));
-				}
-			}
-			catch (Exception)
-			{
-			}
-			// not a valid value at this point
-			if (options & TOMLOptions.unquotedStrings)
-				return TOMLValue(original);
-			else
-				error("Invalid type: '" ~ original ~ "'");
-			assert(0);
+				} catch(Exception) {}
+				// not a valid value at this point
+				if(options & TOMLOptions.unquotedStrings) return TOMLValue(original);
+				else error("Invalid type: '" ~ original ~ "'"); assert(0);
 		}
 	}
-
-	string readKey()
-	{
+	
+	string readKey() {
 		enforceParser(index < data.length, "Key declaration expected but found EOF");
 		string ret;
-		if (data[index] == '"')
-		{
+		if(data[index] == '"') {
 			index++;
 			ret = readQuotedString!false();
-		}
-		else if (data[index] == '\'')
-		{
+		} else if(data[index] == '\'') {
 			index++;
 			ret = readSimpleQuotedString!false();
-		}
-		else
-		{
+		} else {
 			Appender!string appender;
-			while (index < data.length && isValidKeyChar(data[index]))
-			{
+			while(index < data.length && isValidKeyChar(data[index])) {
 				appender.put(data[index++]);
 			}
 			ret = appender.data;
@@ -1015,200 +718,145 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 		}
 		return ret;
 	}
-
-	string[] readKeys()
-	{
+	
+	string[] readKeys() {
 		string[] keys;
 		index--;
-		do
-		{
+		do {
 			index++;
 			clear!false();
 			keys ~= readKey();
 			clear!false();
-		}
-		while (index < data.length && data[index] == '.');
+		} while(index < data.length && data[index] == '.');
 		enforceParser(keys.length != 0, "Key cannot be empty");
 		return keys;
 	}
 
-	TOMLValue readValue()
-	{
-		if (index < data.length)
-		{
-			switch (data[index++])
-			{
-			case '"':
-				if (index + 2 <= data.length && data[index .. index + 2] == "\"\"")
-				{
-					index += 2;
-					return TOMLValue(readQuotedString!true());
-				}
-				else
-				{
-					return TOMLValue(readQuotedString!false());
-				}
-			case '\'':
-				if (index + 2 <= data.length && data[index .. index + 2] == "''")
-				{
-					index += 2;
-					return TOMLValue(readSimpleQuotedString!true());
-				}
-				else
-				{
-					return TOMLValue(readSimpleQuotedString!false());
-				}
-			case '[':
-				clear();
-				TOMLValue[] array;
-				bool comma = true;
-				while (data[index] != ']')
-				{ //TODO check range error
-					enforceParser(comma, "Elements of the array must be separated with a comma");
-					array ~= readValue();
-					clear!false(); // spaces allowed between elements and commas
-					if (data[index] == ',')
-					{ //TODO check range error
-						index++;
-						comma = true;
+	TOMLValue readValue() {
+		if(index < data.length) {
+			switch(data[index++]) {
+				case '"':
+					if(index + 2 <= data.length && data[index..index+2] == "\"\"") {
+						index += 2;
+						return TOMLValue(readQuotedString!true());
+					} else {
+						return TOMLValue(readQuotedString!false());
 					}
-					else
-					{
-						comma = false;
+				case '\'':
+					if(index + 2 <= data.length && data[index..index+2] == "''") {
+						index += 2;
+						return TOMLValue(readSimpleQuotedString!true());
+					} else {
+						return TOMLValue(readSimpleQuotedString!false());
 					}
-					clear(); // spaces and newlines allowed between elements
-				}
-				index++;
-				return TOMLValue(array);
-			case '{':
-				clear!false();
-				TOMLValue[string] table;
-				bool comma = true;
-				while (data[index] != '}')
-				{ //TODO check range error
-					enforceParser(comma, "Elements of the table must be separated with a comma");
-					auto keys = readKeys();
-					enforceParser(clear!false() && data[index++] == '='
-							&& clear!false(), "Expected value after key declaration");
-					setImpl(&table, keys, keys, readValue());
-					enforceParser(clear!false(),
-							"Expected ',' or '}' but found " ~ (index < data.length ? "EOL" : "EOF"));
-					if (data[index] == ',')
-					{
-						index++;
-						comma = true;
+				case '[':
+					clear();
+					TOMLValue[] array;
+					bool comma = true;
+					while(data[index] != ']') { //TODO check range error
+						enforceParser(comma, "Elements of the array must be separated with a comma");
+						array ~= readValue();
+						clear!false(); // spaces allowed between elements and commas
+						if(data[index] == ',') { //TODO check range error
+							index++;
+							comma = true;
+						} else {
+							comma = false;
+						}
+						clear(); // spaces and newlines allowed between elements
 					}
-					else
-					{
-						comma = false;
-					}
+					index++;
+					return TOMLValue(array);
+				case '{':
 					clear!false();
-				}
-				index++;
-				return TOMLValue(table);
-			default:
-				index--;
-				break;
+					TOMLValue[string] table;
+					bool comma = true;
+					while(data[index] != '}') { //TODO check range error
+						enforceParser(comma, "Elements of the table must be separated with a comma");
+						auto keys = readKeys();
+						enforceParser(clear!false() && data[index++] == '=' && clear!false(), "Expected value after key declaration");
+						setImpl(&table, keys, keys, readValue());
+						enforceParser(clear!false(), "Expected ',' or '}' but found " ~ (index < data.length ? "EOL" : "EOF"));
+						if(data[index] == ',') {
+							index++;
+							comma = true;
+						} else {
+							comma = false;
+						}
+						clear!false();
+					}
+					index++;
+					return TOMLValue(table);
+				default:
+					index--;
+					break;
 			}
 		}
 		return readSpecial();
 	}
 
-	void readKeyValue(string[] keys)
-	{
-		if (clear())
-		{
+	void readKeyValue(string[] keys) {
+		if(clear()) {
 			enforceParser(data[index++] == '=', "Expected '=' after key declaration");
-			if (clear!false())
-			{
+			if(clear!false()) {
 				set(keys, readValue());
 				// there must be nothing after the key/value declaration except comments and whitespaces
-				if (clear!false())
-					enforceParser(data[index] == '\n',
-							"Invalid characters after value declaration: " ~ data[index]);
-			}
-			else
-			{
+				if(clear!false()) enforceParser(data[index] == '\n', "Invalid characters after value declaration: " ~ data[index]);
+			} else {
 				//TODO throw exception (missing value)
 			}
-		}
-		else
-		{
+		} else {
 			//TODO throw exception (missing value)
 		}
 	}
+	
+	void next() {
 
-	void next()
-	{
-
-		if (data[index] == '[')
-		{
+		if(data[index] == '[') {
 			current = &_ret; // reset base
 			index++;
 			bool array = false;
-			if (index < data.length && data[index] == '[')
-			{
+			if(index < data.length && data[index] == '[') {
 				index++;
 				array = true;
 			}
 			string[] keys = readKeys();
-			enforceParser(index < data.length && data[index++] == ']',
-					"Invalid " ~ (array ? "array" : "table") ~ " key declaration");
-			if (array)
-				enforceParser(index < data.length && data[index++] == ']',
-						"Invalid array key declaration");
-			if (!array)
-			{
+			enforceParser(index < data.length && data[index++] == ']', "Invalid " ~ (array ? "array" : "table") ~ " key declaration");
+			if(array) enforceParser(index < data.length && data[index++] == ']', "Invalid array key declaration");
+			if(!array) {
 				//TODO only enforce if every key is a table
-				enforceParser(!tableNames.canFind(keys),
-						"Table name has already been directly defined");
+				enforceParser(!tableNames.canFind(keys), "Table name has already been directly defined");
 				tableNames ~= keys;
 			}
-			void update(string key, bool allowArray = true)
-			{
-				if (key !in *current)
-					set([key], TOMLValue(TOML_TYPE.TABLE));
+			void update(string key, bool allowArray=true) {
+				if(key !in *current) set([key], TOMLValue(TOML_TYPE.TABLE));
 				auto ret = (*current)[key];
-				if (ret.type == TOML_TYPE.TABLE)
-					current = &((*current)[key].table());
-				else if (allowArray && ret.type == TOML_TYPE.ARRAY)
-					current = &((*current)[key].array[$ - 1].table());
-				else
-					error("Invalid type");
+				if(ret.type == TOML_TYPE.TABLE) current = &((*current)[key].table());
+				else if(allowArray && ret.type == TOML_TYPE.ARRAY) current = &((*current)[key].array[$-1].table());
+				else error("Invalid type");
 			}
-
-			foreach (immutable key; keys[0 .. $ - 1])
-			{
+			foreach(immutable key ; keys[0..$-1]) {
 				update(key);
 			}
-			if (array)
-			{
-				auto exist = keys[$ - 1] in *current;
-				if (exist)
-				{
+			if(array) {
+				auto exist = keys[$-1] in *current;
+				if(exist) {
 					//TODO must be an array
 					(*exist).array ~= TOMLValue(TOML_TYPE.TABLE);
+				} else {
+					set([keys[$-1]], TOMLValue([TOMLValue(TOML_TYPE.TABLE)]));
 				}
-				else
-				{
-					set([keys[$ - 1]], TOMLValue([TOMLValue(TOML_TYPE.TABLE)]));
-				}
-				current = &((*current)[keys[$ - 1]].array[$ - 1].table());
+				current = &((*current)[keys[$-1]].array[$-1].table());
+			} else {
+				update(keys[$-1], false);
 			}
-			else
-			{
-				update(keys[$ - 1], false);
-			}
-		}
-		else
-		{
+		} else {
 			readKeyValue(readKeys());
 		}
 
 	}
 
-	while (clear())
-	{
+	while(clear()) {
 		next();
 	}
 
@@ -1216,19 +864,14 @@ TOMLDocument parseTOML(string data, TOMLOptions options = TOMLOptions.none)
 
 }
 
-private @property string stripFirstLine(string data)
-{
+private @property string stripFirstLine(string data) {
 	size_t i = 0;
-	while (i < data.length && data[i] != '\n')
-		i++;
-	if (data[0 .. i].strip.length == 0)
-		return data[i + 1 .. $];
-	else
-		return data;
+	while(i < data.length && data[i] != '\n') i++;
+	if(data[0..i].strip.length == 0) return data[i+1..$];
+	else return data;
 }
 
-version (Windows)
-{
+version(Windows) {
 	// convert posix's line ending to windows'
 	private enum doLineConversion = q{
 		if(data[index] == '\n' && index != 0 && data[index-1] != '\r') {
@@ -1237,9 +880,7 @@ version (Windows)
 			continue;
 		}
 	};
-}
-else
-{
+} else {
 	// convert windows' line ending to posix's
 	private enum doLineConversion = q{
 		if(data[index] == '\r' && index + 1 < data.length && data[index+1] == '\n') {
@@ -1250,8 +891,7 @@ else
 	};
 }
 
-unittest
-{
+unittest {
 
 	TOMLDocument doc;
 
@@ -1313,8 +953,7 @@ unittest
 	assert(doc["key"].type == TOML_TYPE.STRING);
 	assert(doc["key"].str == "value");
 
-	foreach (k, v; doc)
-	{
+	foreach (k, v; doc) {
 		assert(k == "key");
 		assert(v.type == TOML_TYPE.STRING);
 		assert(v.str == "value");
@@ -1383,10 +1022,8 @@ unittest
 	doc = parseTOML(`str1 = """
 Roses are red
 Violets are blue"""`);
-	version (Posix)
-		assert(doc["str1"] == "Roses are red\nViolets are blue");
-	else
-		assert(doc["str1"] == "Roses are red\r\nViolets are blue");
+	version(Posix) assert(doc["str1"] == "Roses are red\nViolets are blue");
+	else assert(doc["str1"] == "Roses are red\r\nViolets are blue");
 
 	doc = parseTOML(`
 		# The following strings are byte-for-byte equivalent:
@@ -1431,8 +1068,7 @@ trimmed in raw strings.
    is preserved.
 '''`);
 	assert(doc["regex2"] == `I [dw]on't need \d{2} apples`);
-	assert(doc["lines"] == "The first newline is" ~ newline ~ "trimmed in raw strings."
-			~ newline ~ "   All other whitespace" ~ newline ~ "   is preserved." ~ newline);
+	assert(doc["lines"] == "The first newline is" ~ newline ~ "trimmed in raw strings." ~ newline ~ "   All other whitespace" ~ newline ~ "   is preserved." ~ newline);
 
 	// -------
 	// Integer
@@ -1652,14 +1288,8 @@ trimmed in raw strings.
 		key2 = 456
 	`);
 	assert(doc["table-1"].type == TOML_TYPE.TABLE);
-	assert(doc["table-1"] == [
-			"key1": TOMLValue("some string"),
-			"key2": TOMLValue(123)
-			]);
-	assert(doc["table-2"] == [
-			"key1": TOMLValue("another string"),
-			"key2": TOMLValue(456)
-			]);
+	assert(doc["table-1"] == ["key1": TOMLValue("some string"), "key2": TOMLValue(123)]);
+	assert(doc["table-2"] == ["key1": TOMLValue("another string"), "key2": TOMLValue(456)]);
 
 	doc = parseTOML(`
 		[dog."tater.man"]
@@ -1696,7 +1326,8 @@ trimmed in raw strings.
 	assert(doc["a"]["b"]["c"] == 1);
 	assert(doc["a"]["d"] == 2);
 
-	assertThrown!TOMLException({ parseTOML(`
+	assertThrown!TOMLException({
+		parseTOML(`
 			# DO NOT DO THIS
 				
 			[a]
@@ -1704,9 +1335,11 @@ trimmed in raw strings.
 			
 			[a]
 			c = 2
-		`); }());
+		`);
+	}());
 
-	assertThrown!TOMLException({ parseTOML(`
+	assertThrown!TOMLException({
+		parseTOML(`
 			# DO NOT DO THIS EITHER
 
 			[a]
@@ -1714,7 +1347,8 @@ trimmed in raw strings.
 
 			[a.b]
 			c = 2
-		`); }());
+		`);
+	}());
 
 	assertThrown!TOMLException({ parseTOML(`[]`); }());
 	assertThrown!TOMLException({ parseTOML(`[a.]`); }());
@@ -1739,7 +1373,7 @@ trimmed in raw strings.
 	// ---------------
 	// Array of Tables
 	// ---------------
-
+	
 	doc = parseTOML(`
 		[[products]]
 		name = "Hammer"
@@ -1754,16 +1388,9 @@ trimmed in raw strings.
 	`);
 	assert(doc["products"].type == TOML_TYPE.ARRAY);
 	assert(doc["products"].array.length == 3);
-	assert(doc["products"][0] == [
-			"name": TOMLValue("Hammer"),
-			"sku": TOMLValue(738594937)
-			]);
+	assert(doc["products"][0] == ["name": TOMLValue("Hammer"), "sku": TOMLValue(738594937)]);
 	assert(doc["products"][1] == (TOMLValue[string]).init);
-	assert(doc["products"][2] == [
-			"name": TOMLValue("Nail"),
-			"sku": TOMLValue(284758393),
-			"color": TOMLValue("gray")
-			]);
+	assert(doc["products"][2] == ["name": TOMLValue("Nail"), "sku": TOMLValue(284758393), "color": TOMLValue("gray")]);
 
 	// nested
 	doc = parseTOML(`
@@ -1792,12 +1419,10 @@ trimmed in raw strings.
 	assert(doc["fruit"][0]["physical"] == ["color": "red", "shape": "round"]);
 	assert(doc["fruit"][0]["variety"][0] == ["name": "red delicious"]);
 	assert(doc["fruit"][0]["variety"][1]["name"] == "granny smith");
-	assert(doc["fruit"][1] == [
-			"name": TOMLValue("banana"),
-			"variety": TOMLValue([["name": "plantain"]])
-			]);
+	assert(doc["fruit"][1] == ["name": TOMLValue("banana"), "variety": TOMLValue([["name": "plantain"]])]);
 
-	assertThrown!TOMLException({ parseTOML(`
+	assertThrown!TOMLException({
+		parseTOML(`
 			# INVALID TOML DOC
 			[[fruit]]
 			  name = "apple"
@@ -1808,7 +1433,8 @@ trimmed in raw strings.
 			  # This table conflicts with the previous table
 			  [fruit.variety]
 			    name = "granny smith"
-		`); }());
+		`);
+	}());
 
 	doc = parseTOML(`
 		points = [ { x = 1, y = 2, z = 3 },
@@ -1820,21 +1446,20 @@ trimmed in raw strings.
 	assert(doc["points"][1] == ["x": 7, "y": 8, "z": 9]);
 	assert(doc["points"][2] == ["x": 2, "y": 4, "z": 8]);
 
+
+
 	// additional tests for code coverage
 
 	assert(TOMLValue(42) == 42.0);
 	assert(TOMLValue(42) != "42");
 	assert(TOMLValue("42") != 42);
 
-	try
-	{
+	try {
 		parseTOML(`
 			
 			error = @		
 		`);
-	}
-	catch (TOMLParserException e)
-	{
+	} catch(TOMLParserException e) {
 		assert(e.position.line == 3); // start from line 1
 		assert(e.position.column == 9 + 3); // 3 tabs
 	}
@@ -1856,8 +1481,7 @@ trimmed in raw strings.
 
 	// options
 
-	assert(parseTOML(`raw = this is unquoted`,
-			TOMLOptions.unquotedStrings)["raw"] == "this is unquoted");
+	assert(parseTOML(`raw = this is unquoted`, TOMLOptions.unquotedStrings)["raw"] == "this is unquoted");
 
 	// document
 
@@ -1870,14 +1494,10 @@ trimmed in raw strings.
 	assert(TOMLValue("string") == TOMLValue("string"));
 	assert(TOMLValue(0) == TOMLValue(0));
 	assert(TOMLValue(.0) == TOMLValue(.0));
-	assert(TOMLValue(SysTime.fromISOExtString("1979-05-27T00:32:00-07:00")) == TOMLValue(
-			SysTime.fromISOExtString("1979-05-27T00:32:00-07:00")));
-	assert(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00")) == TOMLValue(
-			DateTime.fromISOExtString("1979-05-27T07:32:00")));
-	assert(TOMLValue(Date.fromISOExtString("1979-05-27")) == TOMLValue(
-			Date.fromISOExtString("1979-05-27")));
-	assert(TOMLValue(TimeOfDay.fromISOExtString("07:32:00")) == TOMLValue(
-			TimeOfDay.fromISOExtString("07:32:00")));
+	assert(TOMLValue(SysTime.fromISOExtString("1979-05-27T00:32:00-07:00")) == TOMLValue(SysTime.fromISOExtString("1979-05-27T00:32:00-07:00")));
+	assert(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00")) == TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00")));
+	assert(TOMLValue(Date.fromISOExtString("1979-05-27")) == TOMLValue(Date.fromISOExtString("1979-05-27")));
+	assert(TOMLValue(TimeOfDay.fromISOExtString("07:32:00")) == TOMLValue(TimeOfDay.fromISOExtString("07:32:00")));
 	assert(TOMLValue([1, 2, 3]) == TOMLValue([1, 2, 3]));
 	assert(TOMLValue(["a": 0, "b": 1]) == TOMLValue(["a": 0, "b": 1]));
 
@@ -1887,24 +1507,20 @@ trimmed in raw strings.
 
 	assert(TOMLValue(true).toString() == "true");
 	assert(TOMLValue("string").toString() == "\"string\"");
-	assert(TOMLValue("\"quoted \\ \b \f \r\n \t string\"")
-			.toString() == "\"\\\"quoted \\\\ \\b \\f \\r\\n \\t string\\\"\"");
+	assert(TOMLValue("\"quoted \\ \b \f \r\n \t string\"").toString() == "\"\\\"quoted \\\\ \\b \\f \\r\\n \\t string\\\"\"");
 	assert(TOMLValue(42).toString() == "42");
 	assert(TOMLValue(99.44).toString() == "99.44");
 	assert(TOMLValue(.0).toString() == "0.0");
 	assert(TOMLValue(1e100).toString() == "1e+100");
-	assert(TOMLValue(SysTime.fromISOExtString("1979-05-27T00:32:00-07:00"))
-			.toString() == "1979-05-27T00:32:00-07:00");
-	assert(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00"))
-			.toString() == "1979-05-27T07:32:00");
+	assert(TOMLValue(SysTime.fromISOExtString("1979-05-27T00:32:00-07:00")).toString() == "1979-05-27T00:32:00-07:00");
+	assert(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00")).toString() == "1979-05-27T07:32:00");
 	assert(TOMLValue(Date.fromISOExtString("1979-05-27")).toString() == "1979-05-27");
 	assert(TOMLValue(TimeOfDay.fromISOExtString("07:32:00.999999")).toString() == "07:32:00.999999");
 	assert(TOMLValue([1, 2, 3]).toString() == "[1, 2, 3]");
 	immutable table = TOMLValue(["a": 0, "b": 1]).toString();
 	assert(table == "{ a = 0, b = 1 }" || table == "{ b = 1, a = 0 }");
 
-	foreach (key, value; TOMLValue(["0": 0, "1": 1]))
-	{
+	foreach(key, value; TOMLValue(["0": 0, "1": 1])) {
 		assert(value == key.to!int);
 	}
 
@@ -1920,11 +1536,9 @@ trimmed in raw strings.
 /**
  * Exception thrown on generic TOML errors.
  */
-class TOMLException : Exception
-{
+class TOMLException : Exception {
 
-	public this(string message, string file = __FILE__, size_t line = __LINE__)
-	{
+	public this(string message, string file=__FILE__, size_t line=__LINE__) {
 		super(message, file, line);
 	}
 
@@ -1933,14 +1547,11 @@ class TOMLException : Exception
 /**
  * Exception thrown during the parsing of TOML document.
  */
-class TOMLParserException : TOMLException
-{
+class TOMLParserException : TOMLException {
 
 	private Tuple!(size_t, "line", size_t, "column") _position;
 
-	public this(string message, size_t line, size_t column, string file = __FILE__,
-			size_t _line = __LINE__)
-	{
+	public this(string message, size_t line, size_t column, string file=__FILE__, size_t _line=__LINE__) {
 		super(message ~ " (" ~ to!string(line) ~ ":" ~ to!string(column) ~ ")", file, _line);
 		this._position.line = line;
 		this._position.column = column;
@@ -1950,8 +1561,7 @@ class TOMLParserException : TOMLException
 	 * Gets the position (line and column) where the parsing expection
 	 * has occured.
 	 */
-	public pure nothrow @property @safe @nogc auto position()
-	{
+	public pure nothrow @property @safe @nogc auto position() {
 		return this._position;
 	}
 

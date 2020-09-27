@@ -1,0 +1,15 @@
+{
+	"name": "names",
+	"sourceFiles": ["../common.d"],
+	"configurations": [
+		{
+			"name": "library"
+		},
+		{
+			"name": "unittest",
+			"dependencies": {
+				"silly": {"path": "../../"}
+			}
+		}
+	]
+}

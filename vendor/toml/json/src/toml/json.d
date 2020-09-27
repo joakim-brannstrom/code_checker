@@ -20,54 +20,39 @@ import toml.toml : TOMLDocument, TOMLValue, TOML_TYPE, TOMLException;
  * Converts a TOMLValue to a JSONValue.
  * Note: datetimes are converted to strings.
  */
-JSONValue toJSON(TOMLValue toml)
-{
-	final switch (toml.type) with (TOML_TYPE)
-	{
-	case STRING:
-		return JSONValue(toml.str);
-	case INTEGER:
-		return JSONValue(toml.integer);
-	case FLOAT:
-		return JSONValue(toml.floating);
-	case OFFSET_DATETIME:
-		return JSONValue(toml.offsetDatetime.toISOExtString());
-	case LOCAL_DATETIME:
-		return JSONValue(toml.localDatetime.toISOExtString());
-	case LOCAL_DATE:
-		return JSONValue(toml.localDate.toISOExtString());
-	case LOCAL_TIME:
-		return JSONValue(toml.localTime.toISOExtString());
-	case ARRAY:
-		JSONValue[] ret;
-		foreach (value; toml.array)
-		{
-			ret ~= toJSON(value);
-		}
-		return JSONValue(ret);
-	case TABLE:
-		JSONValue[string] ret;
-		foreach (key, value; toml.table)
-		{
-			ret[key] = toJSON(value);
-		}
-		return JSONValue(ret);
-	case TRUE:
-		return JSONValue(true);
-	case FALSE:
-		return JSONValue(false);
+JSONValue toJSON(TOMLValue toml) {
+	final switch(toml.type) with(TOML_TYPE) {
+		case STRING: return JSONValue(toml.str);
+		case INTEGER: return JSONValue(toml.integer);
+		case FLOAT: return JSONValue(toml.floating);
+		case OFFSET_DATETIME: return JSONValue(toml.offsetDatetime.toISOExtString());
+		case LOCAL_DATETIME: return JSONValue(toml.localDatetime.toISOExtString());
+		case LOCAL_DATE: return JSONValue(toml.localDate.toISOExtString());
+		case LOCAL_TIME: return JSONValue(toml.localTime.toISOExtString());
+		case ARRAY:
+			JSONValue[] ret;
+			foreach(value ; toml.array) {
+				ret ~= toJSON(value);
+			}
+			return JSONValue(ret);
+		case TABLE:
+			JSONValue[string] ret;
+			foreach(key, value; toml.table) {
+				ret[key] = toJSON(value);
+			}
+			return JSONValue(ret);
+		case TRUE: return JSONValue(true);
+		case FALSE: return JSONValue(false);
 	}
 }
 
 /// ditto
-JSONValue toJSON(TOMLDocument doc)
-{
+JSONValue toJSON(TOMLDocument doc) {
 	return toJSON(TOMLValue(doc.table));
 }
 
 ///
-unittest
-{
+unittest {
 
 	import std.datetime : SysTime, Date;
 	import toml.datetime : DateTime, TimeOfDay;
@@ -75,18 +60,15 @@ unittest
 	assert(toJSON(TOMLValue("string")).str == "string");
 	assert(toJSON(TOMLValue(42)) == JSONValue(42));
 	assert(toJSON(TOMLValue(.1)) == JSONValue(.1));
-	assert(toJSON(TOMLValue(SysTime.fromISOExtString("1979-05-27T07:32:00Z")))
-			.str == "1979-05-27T07:32:00Z");
-	assert(toJSON(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00")))
-			.str == "1979-05-27T07:32:00");
+	assert(toJSON(TOMLValue(SysTime.fromISOExtString("1979-05-27T07:32:00Z"))).str == "1979-05-27T07:32:00Z");
+	assert(toJSON(TOMLValue(DateTime.fromISOExtString("1979-05-27T07:32:00"))).str == "1979-05-27T07:32:00");
 	assert(toJSON(TOMLValue(Date.fromISOExtString("1979-05-27"))).str == "1979-05-27");
 	assert(toJSON(TOMLValue(TimeOfDay.fromISOExtString("07:32:00"))).str == "07:32:00");
 	assert(toJSON(TOMLValue([1, 2, 3])) == JSONValue([1, 2, 3]));
-	assert(toJSON(TOMLDocument(["a" : TOMLValue(0), "b" : TOMLValue(1)])) == JSONValue(["a"
-			: 0, "b" : 1]));
+	assert(toJSON(TOMLDocument(["a": TOMLValue(0), "b": TOMLValue(1)])) == JSONValue(["a": 0, "b": 1]));
 	assert(toJSON(TOMLValue(true)).type == JSON_TYPE.TRUE);
 	assert(toJSON(TOMLValue(false)).type == JSON_TYPE.FALSE);
-
+	
 }
 
 /**
@@ -96,54 +78,43 @@ unittest
  * 		TOMLExcpetion if a floating point value is not finite
  * 		TOMLException if the json value is null
  */
-TOMLValue toTOML(JSONValue json)
-{
-	final switch (json.type) with (JSON_TYPE)
-	{
-	case NULL:
-		throw new TOMLException("JSONValue is null");
-	case TRUE:
-		return TOMLValue(true);
-	case FALSE:
-		return TOMLValue(false);
-	case STRING:
-		return TOMLValue(json.str);
-	case INTEGER:
-		return TOMLValue(json.integer);
-	case UINTEGER:
-		return TOMLValue(cast(long) json.uinteger);
-	case FLOAT:
-		return TOMLValue(json.floating);
-	case ARRAY:
-		TOMLValue[] ret;
-		foreach (value; json.array)
-		{
-			ret ~= toTOML(value);
-		}
-		return TOMLValue(ret);
-	case OBJECT:
-		TOMLValue[string] ret;
-		foreach (key, value; json.object)
-		{
-			ret[key] = toTOML(value);
-		}
-		return TOMLValue(ret);
+TOMLValue toTOML(JSONValue json) {
+	final switch(json.type) with(JSON_TYPE) {
+		case NULL: throw new TOMLException("JSONValue is null");
+		case TRUE: return TOMLValue(true);
+		case FALSE: return TOMLValue(false);
+		case STRING: return TOMLValue(json.str);
+		case INTEGER: return TOMLValue(json.integer);
+		case UINTEGER: return TOMLValue(cast(long)json.uinteger);
+		case FLOAT: return TOMLValue(json.floating);
+		case ARRAY: return TOMLValue(toTOMLArray(json));
+		case OBJECT: return TOMLValue(toTOMLObject(json));
 	}
 }
 
-///
-unittest
-{
+private TOMLValue[] toTOMLArray(JSONValue json) {
+	TOMLValue[] ret;
+	foreach(value ; json.array) {
+		ret ~= toTOML(value);
+	}
+	return ret;
+}
 
-	try
-	{
+private TOMLValue[string] toTOMLObject(JSONValue json) {
+	TOMLValue[string] ret;
+	foreach(key, value; json.object) {
+		ret[key] = toTOML(value);
+	}
+	return ret;
+}
+
+///
+unittest {
+
+	try {
 		// null
-		toTOML(JSONValue.init);
-		assert(0);
-	}
-	catch (TOMLException)
-	{
-	}
+		toTOML(JSONValue.init); assert(0);
+	} catch(TOMLException) {}
 
 	assert(toTOML(JSONValue(true)).type == TOML_TYPE.TRUE);
 	assert(toTOML(JSONValue(false)) == false);
@@ -152,6 +123,6 @@ unittest
 	assert(toTOML(JSONValue(ulong.max)) == -1);
 	assert(toTOML(JSONValue(.1)) == .1);
 	assert(toTOML(JSONValue([1, 2, 3])) == [1, 2, 3]);
-	assert(toTOML(JSONValue(["a" : 1, "b" : 2])) == ["a" : 1, "b" : 2]);
+	assert(toTOML(JSONValue(["a": 1, "b": 2])) == ["a": 1, "b": 2]);
 
 }
