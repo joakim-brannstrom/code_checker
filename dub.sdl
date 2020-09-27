@@ -9,9 +9,11 @@ targetPath "build"
 subPackage "./vendor/colorlog"
 subPackage "./vendor/toml"
 subPackage "./vendor/unit-threaded"
+subPackage "./vendor/mylib"
 
 dependency "code_checker:colorlog" version="*"
 dependency "code_checker:toml" version="*"
+dependency "code_checker:my" version="*"
 
 configuration "application" {
     targetType "executable"
