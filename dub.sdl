@@ -9,6 +9,7 @@ targetPath "build"
 subPackage "./vendor/colorlog"
 subPackage "./vendor/toml"
 subPackage "./vendor/unit-threaded"
+subPackage "./vendor/mylib/vendor/sumtype"
 subPackage "./vendor/mylib"
 
 dependency "code_checker:colorlog" version="*"

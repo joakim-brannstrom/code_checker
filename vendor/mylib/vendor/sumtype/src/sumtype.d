@@ -533,8 +533,40 @@ public:
 	bool opEquals(this This, Rhs)(auto ref Rhs rhs)
 		if (isSumType!Rhs && is(This.Types == Rhs.Types))
 	{
+		import std.meta: ApplyLeft;
+		import std.traits: CopyTypeQualifiers;
+
+		alias ThisTypes = Map!(ApplyLeft!(CopyTypeQualifiers, This), This.Types);
+		alias RhsTypes = Map!(ApplyLeft!(CopyTypeQualifiers, Rhs), Rhs.Types);
+
 		return AliasSeq!(this, rhs).match!((ref value, ref rhsValue) {
-			static if (is(typeof(value) == typeof(rhsValue))) {
+			/* Deduce tags from types of values.
+			 *
+			 * If a SumType has duplicate members--that is, two or more members
+			 * with the same type but different tags--this will always choose
+			 * the tag of the first one. This can happen is if a type qualifier
+			 * applied to a SumType causes the types of two members to merge;
+			 * for example, `const(SumType!(int, const(int)))` has two members
+			 * of type `const(int)`.
+			 *
+			 * Duplicate members are considered equivalent, since they are
+			 * impossible to distinguish by pattern matching.
+			 */
+			enum thisTid = IndexOf!(typeof(value), ThisTypes);
+			enum rhsTid = IndexOf!(typeof(rhsValue), RhsTypes);
+
+			enum sameTag = thisTid == rhsTid;
+			enum sameType = is(typeof(value) == typeof(rhsValue));
+
+			/* Checking for equal tags allows differently-qualified SumTypes
+			 * to be compared, as long as the values support it.
+			 *
+			 * If either This or Rhs has duplicate members, then those members
+			 * should be compared even if their tags do not match. Otherwise,
+			 * if there are no duplicate members, sameType implies sameTag,
+			 * so checking it is at worst redundant.
+			 */
+			static if (sameTag || sameType) {
 				return value == rhsValue;
 			} else {
 				return false;
@@ -665,6 +697,22 @@ public:
 	assert(x != z);
 	assert(x != w);
 	assert(x != v);
+
+}
+
+// Equality of differently-qualified SumTypes
+version(D_BetterC) {} else
+@safe unittest {
+	alias SumA = SumType!(int, float);
+	alias SumB = SumType!(const(int[]), int[]);
+	alias SumC = SumType!(int[], const(int[]));
+
+	int[] ma = [1, 2, 3];
+	const(int[]) ca = [1, 2, 3];
+
+	assert(const(SumA)(123) == SumA(123));
+	assert(const(SumB)(ma[]) == SumB(ca[]));
+	assert(const(SumC)(ma[]) == SumC(ca[]));
 }
 
 // Imported types
@@ -1270,7 +1318,7 @@ template match(handlers...)
 	 * Params:
 	 *   args = One or more [SumType] objects.
 	 */
-	auto match(SumTypes...)(auto ref SumTypes args)
+	auto ref match(SumTypes...)(auto ref SumTypes args)
 		if (allSatisfy!(isSumType, SumTypes) && args.length > 0)
 	{
 		return matchImpl!(Yes.exhaustive, handlers)(args);
@@ -1408,7 +1456,7 @@ template tryMatch(handlers...)
 	 * Params:
 	 *   args = One or more [SumType] objects.
 	 */
-	auto tryMatch(SumTypes...)(auto ref SumTypes args)
+	auto ref tryMatch(SumTypes...)(auto ref SumTypes args)
 		if (allSatisfy!(isSumType, SumTypes) && args.length > 0)
 	{
 		return matchImpl!(No.exhaustive, handlers)(args);
@@ -1465,34 +1513,38 @@ private template Iota(size_t n)
 }
 
 @safe unittest {
-	assert(Iota!0 == AliasSeq!());
+	assert(is(Iota!0 == AliasSeq!()));
 	assert(Iota!1 == AliasSeq!(0));
 	assert(Iota!3 == AliasSeq!(0, 1, 2));
 }
 
 private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 {
-	auto matchImpl(SumTypes...)(auto ref SumTypes args)
+	auto ref matchImpl(SumTypes...)(auto ref SumTypes args)
 		if (allSatisfy!(isSumType, SumTypes) && args.length > 0)
 	{
-		/* The stride that the i-th argument's tag is multiplied by when
+		/* The stride that the dim-th argument's tag is multiplied by when
 		 * converting TagTuples to and from case indices ("caseIds").
 		 *
-		 * Named by analogy to the stride that the i-th index into a
+		 * Named by analogy to the stride that the dim-th index into a
 		 * multidimensional static array is multiplied by to calculate the
 		 * offset of a specific element.
 		 */
-		static size_t stride(size_t i)()
+		static size_t stride(size_t dim)()
 		{
 			import core.checkedint: mulu;
 
 			size_t result = 1;
 			bool overflow = false;
 
-			static foreach (S; SumTypes[0 .. i]) {
+			static foreach (S; SumTypes[0 .. dim]) {
 				result = mulu(result, S.Types.length, overflow);
 			}
 
+			/* The largest number matchImpl uses, numCases, is calculated with
+			 * stride!(SumTypes.length), so as long as this overflow check
+			 * passes, we don't need to check for overflow anywhere else.
+			 */
 			assert(!overflow);
 			return result;
 		}
@@ -1574,31 +1626,31 @@ private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 		 * will instead be interpreted as a sequence of zero-argument function
 		 * *calls*, with optional parentheses omitted.
 		 */
-		template getValues(size_t caseId)
+		template values(size_t caseId)
 		{
 			enum tags = TagTuple.fromCaseId(caseId);
 
-			auto ref getValue(size_t i)()
+			ref getValue(size_t i)()
 			{
 				enum tid = tags[i];
 				alias T = SumTypes[i].Types[tid];
 				return args[i].get!T;
 			}
 
-			alias getValues = Map!(getValue, Iota!(tags.length));
+			alias values = Map!(getValue, Iota!(tags.length));
 		}
 
 		/* An AliasSeq of the types of the member values returned by the
-		 * functions in `getValues!caseId`.
+		 * functions in `values!caseId`.
 		 *
 		 * Note that these are the actual (that is, qualified) types of the
 		 * member values, which may not be the same as the types listed in
 		 * the arguments' `.Types` properties.
 		 *
-		 * typeof(getValues!caseId) won't work because it gives the types
+		 * typeof(values!caseId) won't work because it gives the types
 		 * of the functions, not the return values (even with @property).
 		 */
-		template getTypes(size_t caseId)
+		template valueTypes(size_t caseId)
 		{
 			enum tags = TagTuple.fromCaseId(caseId);
 
@@ -1609,7 +1661,7 @@ private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 				alias getType = typeof(args[i].get!T());
 			}
 
-			alias getTypes = Map!(getType, Iota!(tags.length));
+			alias valueTypes = Map!(getType, Iota!(tags.length));
 		}
 
 		/* The total number of cases is
@@ -1622,9 +1674,6 @@ private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 		 *
 		 * Conveniently, this is equal to stride!(SumTypes.length), so we can
 		 * use that function to compute it.
-		 *
-		 * This is the largest number that matchImpl computes, so if it doesn't
-		 * overflow, we don't have to check anywhere else.
 		 */
 		enum numCases = stride!(SumTypes.length);
 
@@ -1644,7 +1693,7 @@ private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 
 			static foreach (caseId; 0 .. numCases) {
 				static foreach (hid, handler; handlers) {
-					static if (canMatch!(handler, getTypes!caseId)) {
+					static if (canMatch!(handler, valueTypes!caseId)) {
 						if (matches[caseId] == noMatch) {
 							matches[caseId] = hid;
 						}
@@ -1682,14 +1731,14 @@ private template matchImpl(Flag!"exhaustive" exhaustive, handlers...)
 			static foreach (caseId; 0 .. numCases) {
 				case caseId:
 					static if (matches[caseId] != noMatch) {
-						return mixin(handlerName!(matches[caseId]))(getValues!caseId);
+						return mixin(handlerName!(matches[caseId]))(values!caseId);
 					} else {
 						static if(exhaustive) {
 							static assert(false,
-								"No matching handler for types `" ~ getTypes!caseId.stringof ~ "`");
+								"No matching handler for types `" ~ valueTypes!caseId.stringof ~ "`");
 						} else {
 							throw new MatchException(
-								"No matching handler for types `" ~ getTypes!caseId.stringof ~ "`");
+								"No matching handler for types `" ~ valueTypes!caseId.stringof ~ "`");
 						}
 					}
 			}

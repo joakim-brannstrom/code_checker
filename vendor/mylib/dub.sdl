@@ -4,7 +4,7 @@ authors "Joakim Brännström"
 copyright "Copyright © 2019, Joakim Brännström"
 license "BSL-1.0"
 
-dependency "sumtype" version="~>0.9.4" optional=false default=true
+dependency "code_checker:sumtype" version="*" optional=false default=true
 
 // if you are on a closed network with no internet access you can use the local
 // copy of sumtype and unit-threaded by adding them as local packages.

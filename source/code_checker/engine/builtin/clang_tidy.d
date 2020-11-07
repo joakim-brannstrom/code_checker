@@ -47,7 +47,8 @@ class ClangTidy : BaseFixture {
         import std.file : exists;
         import std.range : put, only;
         import std.format : format;
-        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
+        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
+            diagnosticSeverity;
 
         auto app = appender!(string[])();
         app.put(env.conf.clangTidy.binary);
@@ -64,13 +65,12 @@ class ClangTidy : BaseFixture {
 
         ["-header-filter", env.conf.clangTidy.headerFilter].copy(app);
 
+        auto checks = env.conf.clangTidy.checks;
         // inactivate those that are below the configured severity level.
-        // dfmt off
-        env.conf.clangTidy.checks ~=
-            filterSeverity!(a => a < env.conf.staticCode.severity)
-            .map!(a => format("-%s", a))
-            .array;
-        // dfmt on
+        if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
+            checks = only(["-*"], filterSeverity!(a => a >= env.conf.staticCode.severity).array).joiner.filter!(
+                    a => a != "*").array;
+        }
 
         if (exists(ClangTidyConstants.confFile)) {
             logger.infof("Using clang-tidy settings from the local '%s'",
@@ -80,8 +80,7 @@ class ClangTidy : BaseFixture {
 
             auto c = appender!string();
             c.put(`{Checks: "`);
-            only(env.conf.clangTidy.checks, env.conf.clangTidy.checkExtensions).joiner.joiner(",")
-                .copy(c);
+            only(checks, env.conf.clangTidy.checkExtensions).joiner.joiner(",").copy(c);
             c.put(`",`);
             c.put("CheckOptions: [");
             env.conf.clangTidy.options.joiner(",").copy(c);
