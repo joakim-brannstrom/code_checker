@@ -8,9 +8,18 @@ This file contains an analyzer that uses clang-tidy.
 module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
+import std.algorithm : copy, map, joiner, filter;
+import std.array : appender, array;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
+import std.file : exists;
+import std.format : format;
+import std.path : buildPath;
+import std.process : spawnProcess, wait;
+import std.range : put, only, enumerate;
 import std.typecons : Tuple;
+
+import colorlog;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.file_filter;
@@ -42,11 +51,6 @@ class ClangTidy : BaseFixture {
 
     /// Setup the environment for analyze.
     override void setup() {
-        import std.algorithm;
-        import std.array : appender, array;
-        import std.file : exists;
-        import std.range : put, only;
-        import std.format : format;
         import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
             diagnosticSeverity;
 
@@ -197,17 +201,16 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
                             cmd.get.absoluteFile));
-            continue;
+        } else {
+            cond.expected++;
+
+            immutable(TidyWork)* w = () @trusted {
+                return cast(immutable) new TidyWork(tidyArgs, cmd.get.absoluteFile,
+                        !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter);
+            }();
+            auto t = task!taskTidy(thisTid, w);
+            pool.put(t);
         }
-
-        cond.expected++;
-
-        immutable(TidyWork)* w = () @trusted {
-            return cast(immutable) new TidyWork(tidyArgs, cmd.get.absoluteFile,
-                    !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter);
-        }();
-        auto t = task!taskTidy(thisTid, w);
-        pool.put(t);
     }
 
     while (cond.isWaitingForReplies) {
@@ -225,12 +228,6 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
 /// Run clang-tidy with to fix the code.
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
-    import std.algorithm : copy, map;
-    import std.array : array;
-    import std.format : format;
-    import std.path : buildPath;
-    import std.process : spawnProcess, wait;
-    import std.range : enumerate;
     import code_checker.compile_db : UserFileRange, CompileCommandFilter;
     import code_checker.engine.logger : Logger;
 
@@ -259,24 +256,21 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
 
     auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
     auto cmds = UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
-            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes).array;
+            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes).filter!(
+            a => !a.isNull)
+        .map!(a => a.get)
+        .array;
     const max_nr = cmds.length;
     foreach (idx, cmd; cmds.enumerate) {
-        if (cmd.isNull) {
-            result_.status = Status.failed;
-            result_.score -= 1000;
-            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
-            continue;
-        } else if (!file_filter.match(cmd.get.absoluteFile)) {
+        if (!file_filter.match(cmd.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            cmd.get.absoluteFile));
-            continue;
+                            cmd.absoluteFile));
+        } else {
+            logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.absoluteFile);
+            executeTidy(cmd.absoluteFile);
         }
-
-        logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.get.absoluteFile);
-        executeTidy(cmd.get.absoluteFile);
     }
 }
 

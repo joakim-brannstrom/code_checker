@@ -65,7 +65,7 @@ struct AbsolutePath {
     }
 
     this(Path p) {
-        auto p_expand = () @trusted{ return p.expandTilde; }();
+        auto p_expand = () @trusted { return p.expandTilde; }();
         // the second buildNormalizedPath is needed to correctly resolve "."
         // otherwise it is resolved to /foo/bar/.
         payload = buildNormalizedPath(p_expand).toRealPath;
@@ -73,8 +73,8 @@ struct AbsolutePath {
 
     /// Build the normalised path from workdir.
     this(FileName p, DirName workdir) {
-        auto p_expand = () @trusted{ return p.expandTilde; }();
-        auto workdir_expand = () @trusted{ return workdir.expandTilde; }();
+        auto p_expand = () @trusted { return p.expandTilde; }();
+        auto workdir_expand = () @trusted { return workdir.expandTilde; }();
         // the second buildNormalizedPath is needed to correctly resolve "."
         // otherwise it is resolved to /foo/bar/.
         payload = buildNormalizedPath(workdir_expand, p_expand).toRealPath;
