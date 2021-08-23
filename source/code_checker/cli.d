@@ -99,6 +99,9 @@ struct ConfigCompileDb {
 
     /// Flags the user wants to be automatically removed from the compile_commands.json.
     CompileCommandFilter flagFilter;
+
+    /// If files should be deduplicated thus only unique files are analyzed.
+    bool dedupFiles;
 }
 
 /// Settings for the compiler
@@ -381,6 +384,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["compile_commands.skip_compiler_args"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.flagFilter.skipCompilerArgs = cast(int) v.integer;
+    };
+    callbacks["compile_commands.dedup"] = (ref Config c, ref TOMLValue v) {
+        c.compileDb.dedupFiles = v == true;
     };
 
     callbacks["clang_tidy.binary"] = (ref Config c, ref TOMLValue v) {
