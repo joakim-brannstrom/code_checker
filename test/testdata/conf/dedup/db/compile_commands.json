@@ -1,0 +1,14 @@
+[
+    {
+        "directory": ".",
+        "arguments": ["g++", "-c", "empty.cpp", "-o", "empty1.o"],
+        "file": "empty.cpp",
+        "output": "empty1.o"
+    },
+    {
+        "directory": ".",
+        "arguments": ["g++", "-c", "empty.cpp", "-o", "empty2.o"],
+        "file": "empty.cpp",
+        "output": "empty2.o"
+    }
+]

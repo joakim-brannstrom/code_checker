@@ -1,0 +1,11 @@
+[defaults]
+severity = "style"
+
+[compile_commands]
+# search for compile_commands.json in this paths
+search_paths = ["./db/compile_commands.json"]
+# default is true
+dedup = false
+
+[clang_tidy]
+header_filter = ".*"

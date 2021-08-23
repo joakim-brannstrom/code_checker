@@ -76,6 +76,9 @@ search_paths = ["./compile_commands.json"]
 # compiler arguments to skip from the beginning. Needed when the first argument is NOT a compiler but rather a wrapper
 # skip_compiler_args = 0
 
+# only analyze a file once.
+dedup = true
+
 [clang_tidy]
 # clang-tidy binary to use
 # binary = "clang-tidy"
