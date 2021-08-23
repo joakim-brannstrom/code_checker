@@ -13,7 +13,7 @@ import std.typecons : Flag, Yes, No;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB;
+import compile_db : CompileCommandDB;
 import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 int main(string[] args) {

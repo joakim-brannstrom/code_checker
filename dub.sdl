@@ -9,7 +9,8 @@ targetPath "build"
 dependency "colorlog" version="~>0.0.7"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
 dependency "unit-threaded" version="~>1.0.15" default=true
-dependency "my" version="~>0.0.32" default=true
+dependency "my" version="~>0.0.33" default=true
+dependency "compile_db" version="~>0.0.2" default=true
 
 //subPackage "./vendor/colorlog"
 //subPackage "./vendor/toml"

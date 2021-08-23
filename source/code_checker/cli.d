@@ -83,7 +83,7 @@ struct ConfigIwyu {
 
 /// Configuration data for the compile_commands.json
 struct ConfigCompileDb {
-    import code_checker.compile_db : CompileCommandFilter;
+    import compile_db : CompileCommandFilter;
 
     /// Command to generate the compile_commands.json
     string generateDb;
@@ -103,7 +103,7 @@ struct ConfigCompileDb {
 
 /// Settings for the compiler
 struct Compiler {
-    import code_checker.compile_db : SystemCompiler = Compiler;
+    import compile_db : SystemCompiler = Compiler;
 
     /// Additional flags the user wants to add besides those that are in the compile_commands.json.
     string[] extraFlags;
@@ -163,7 +163,7 @@ struct Config {
     static Config make(AbsolutePath workDir, AbsolutePath confFile) @safe {
         import std.file : thisExePath;
         import std.process : environment;
-        import code_checker.compile_db : defaultCompilerFlagFilter, CompileCommandFilter;
+        import compile_db : defaultCompilerFlagFilter, CompileCommandFilter;
 
         Config c;
         c.workDir = workDir;
@@ -375,7 +375,7 @@ void loadConfig(ref Config rval, string configFile) @trusted {
         c.staticCode.fileExcludeFilter = v.array.map!"a.str".array;
     };
     callbacks["compile_commands.filter"] = (ref Config c, ref TOMLValue v) {
-        import code_checker.compile_db : FilterClangFlag;
+        import compile_db : FilterClangFlag;
 
         c.compileDb.flagFilter.filter = v.array.map!(a => FilterClangFlag(a.str)).array;
     };

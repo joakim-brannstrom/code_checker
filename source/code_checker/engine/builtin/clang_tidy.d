@@ -132,7 +132,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     import std.concurrency : Tid, thisTid, receiveTimeout;
     import std.format : format;
     import std.parallelism : task, TaskPool;
-    import code_checker.compile_db : UserFileRange, parseFlag, CompileCommandFilter, SearchResult;
+    import code_checker.engine.compile_db;
     import code_checker.engine.logger : Logger;
 
     bool logged_failure;
@@ -190,23 +190,24 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     ExpectedReplyCounter cond;
 
     auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
-    foreach (cmd; UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
-            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes)) {
-        if (cmd.isNull) {
+    auto fixedDb = toRange(env);
+
+    foreach (p; fixedDb) {
+        if (!exists(p.cmd.absoluteFile.toString)) {
             result_.status = Status.failed;
             result_.score -= 100;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             break;
-        } else if (!file_filter.match(cmd.get.absoluteFile)) {
+        } else if (!file_filter.match(p.cmd.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            cmd.get.absoluteFile));
+                            p.cmd.absoluteFile));
         } else {
             cond.expected++;
 
             immutable(TidyWork)* w = () @trusted {
-                return cast(immutable) new TidyWork(tidyArgs, cmd.get.absoluteFile,
+                return cast(immutable) new TidyWork(tidyArgs, p.cmd.absoluteFile,
                         !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter);
             }();
             auto t = task!taskTidy(thisTid, w);
@@ -229,10 +230,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
 /// Run clang-tidy with to fix the code.
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
-    import code_checker.compile_db : UserFileRange, CompileCommandFilter;
     import code_checker.engine.logger : Logger;
+    import code_checker.engine.compile_db;
 
-    AbsolutePath[] files;
     auto logg = Logger(env.conf.logg.dir);
 
     if (env.conf.logg.toFile) {
@@ -256,21 +256,18 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     }
 
     auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
-    auto cmds = UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
-            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes).filter!(
-            a => !a.isNull)
-        .map!(a => a.get)
-        .array;
-    const max_nr = cmds.length;
-    foreach (idx, cmd; cmds.enumerate) {
-        if (!file_filter.match(cmd.absoluteFile)) {
+    auto fixedDb = toRange(env);
+
+    const max_nr = fixedDb.length;
+    foreach (idx, cmd; fixedDb.enumerate) {
+        if (!file_filter.match(cmd.cmd.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
                 result_.msg ~= Msg(MsgSeverity.trace,
                         format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            cmd.absoluteFile));
+                            cmd.cmd.absoluteFile));
         } else {
-            logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.absoluteFile);
-            executeTidy(cmd.absoluteFile);
+            logger.infof("File %s/%s %s", idx + 1, max_nr, cmd.cmd.absoluteFile);
+            executeTidy(cmd.cmd.absoluteFile);
         }
     }
 }
