@@ -1,0 +1,31 @@
+{
+	"authors": [
+		"Joakim Brännström"
+	],
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "library"
+		}
+	],
+	"copyright": "Copyright © 2019, Joakim Brännström",
+	"dependencies": {
+		"my": {
+			"default": true,
+			"optional": true,
+			"version": "~>0.0.33"
+		}
+	},
+	"description": "parse compile_commands.json",
+	"importPaths": [
+		"source/"
+	],
+	"license": "MPL-2",
+	"name": "compile_db",
+	"sourcePaths": [
+		"source/"
+	],
+	"targetPath": "build",
+	"targetType": "library",
+	"version": "0.0.2"
+}

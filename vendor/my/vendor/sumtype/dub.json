@@ -1,21 +1,37 @@
 {
-	"name": "sumtype",
 	"authors": [
-		"Paul Backus",
-		"Atila Neves"
+		"Paul Backus"
 	],
-	"description": "A sum type with pattern matching",
-	"copyright": "Copyright © 2018, Paul Backus",
-	"license": "BSL-1.0",
-
-	"toolchainRequirements": {
-		"frontend": ">=2.088.0"
-	},
-
 	"buildTypes": {
 		"unittest-dip1000": {
-			"buildOptions": ["unittests", "debugMode", "debugInfo"],
-			"dflags": ["-preview=dip1000"]
+			"buildOptions": [
+				"debugMode",
+				"debugInfo",
+				"unittests"
+			],
+			"dflags": [
+				"-preview=dip1000"
+			]
 		}
-	}
+	},
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "library"
+		}
+	],
+	"copyright": "Copyright © 2018, Paul Backus",
+	"description": "A sum type with pattern matching",
+	"importPaths": [
+		"src/"
+	],
+	"license": "BSL-1.0",
+	"name": "sumtype",
+	"sourcePaths": [
+		"src/"
+	],
+	"toolchainRequirements": {
+		"frontend": ">=2.94.0"
+	},
+	"version": "1.1.2"
 }

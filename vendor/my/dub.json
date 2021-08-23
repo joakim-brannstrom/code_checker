@@ -1,0 +1,50 @@
+{
+	"authors": [
+		"Joakim Brännström"
+	],
+	"configurations": [
+		{
+			"dflags": [
+				"-preview=dip1000",
+				"-preview=dip25"
+			],
+			"name": "default",
+			"targetType": "library"
+		},
+		{
+			"name": "nodip",
+			"targetType": "library"
+		},
+		{
+			"dependencies": {
+				"silly": "~>1.0.2"
+			},
+			"dflags-dmd": [
+				"-preview=dip1000",
+				"-preview=dip25",
+				"-verrors=context"
+			],
+			"dflags-ldc": [
+				"--verrors-context"
+			],
+			"name": "unittest",
+			"targetType": "library"
+		}
+	],
+	"copyright": "Copyright © 2019, Joakim Brännström",
+	"dependencies": {
+		"sumtype": "~>1.1.2"
+	},
+	"description": "A library collection of algorithms and data structures for personal use",
+	"importPaths": [
+		"source/"
+	],
+	"license": "BSL-1.0",
+	"name": "my",
+	"sourcePaths": [
+		"source/"
+	],
+	"targetPath": "build",
+	"targetType": "library",
+	"version": "0.0.33"
+}
