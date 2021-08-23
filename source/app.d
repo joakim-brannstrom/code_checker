@@ -13,8 +13,8 @@ import std.typecons : Flag, Yes, No;
 import logger = std.experimental.logger;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB;
-import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
+import compile_db : CompileCommandDB;
+import code_checker.types : AbsolutePath, Path;
 
 int main(string[] args) {
     import std.file : thisExePath, exists;
