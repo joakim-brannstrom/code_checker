@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/performance
+performance.so
+performance.dylib
+performance.dll
+performance.a
+performance.lib
+performance-test-*
+*.exe
+*.o
+*.obj
+*.lst

@@ -1,0 +1,23 @@
+{
+	"authors": [
+		"Anton Fediushin"
+	],
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "sourceLibrary"
+		}
+	],
+	"copyright": "Copyright © 2018-2019, Anton Fediushin",
+	"description": "Better test runner for D",
+	"importPaths": [
+		"."
+	],
+	"license": "ISC",
+	"name": "silly",
+	"sourceFiles": [
+		"silly.d"
+	],
+	"targetType": "sourceLibrary",
+	"version": "1.0.2"
+}

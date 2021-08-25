@@ -1,0 +1,149 @@
+{
+	"-ddoxFilterArgs": [
+		"--unittest-examples",
+		"--min-protection=Protected"
+	],
+	"-ddoxTool": "scod",
+	"authors": [
+		"Atila Neves"
+	],
+	"configurations": [
+		{
+			"dflags": [
+				"-preview=dip25",
+				"-preview=dip1000"
+			],
+			"name": "library",
+			"targetType": "library"
+		},
+		{
+			"name": "nodips",
+			"targetType": "library"
+		},
+		{
+			"dflags": [
+				"-preview=dip25",
+				"-preview=dip1000",
+				"-preview=dip1008"
+			],
+			"importPaths": [
+				"source"
+			],
+			"mainSourceFile": "example/example_pass.d",
+			"name": "unittest",
+			"sourcePaths": [
+				"source",
+				"gen/source",
+				"tests/unit_threaded",
+				"tests/examples/pass"
+			],
+			"targetName": "ut_pass",
+			"targetType": "executable",
+			"versions": [
+				"testing_unit_threaded"
+			]
+		},
+		{
+			"dflags": [
+				"-preview=dip25",
+				"-preview=dip1000",
+				"-preview=dip1008"
+			],
+			"mainSourceFile": "example/example_pass.d",
+			"name": "unittest-unthreaded",
+			"sourcePaths": [
+				"source",
+				"gen/source",
+				"tests/unit_threaded",
+				"tests/examples/pass"
+			],
+			"targetName": "ut_pass",
+			"targetType": "executable",
+			"versions": [
+				"testing_unit_threaded",
+				"unitUnthreaded"
+			]
+		},
+		{
+			"dflags": [
+				"-preview=dip25",
+				"-preview=dip1000",
+				"-preview=dip1008"
+			],
+			"mainSourceFile": "example/example_pass.d",
+			"name": "unittest-light",
+			"sourcePaths": [
+				"source",
+				"gen/source",
+				"tests/unit_threaded",
+				"tests/examples/pass"
+			],
+			"targetName": "ut_pass",
+			"targetType": "executable",
+			"versions": [
+				"testing_unit_threaded",
+				"unitThreadedLight",
+				"unitUnthreaded"
+			]
+		},
+		{
+			"mainSourceFile": "example/example_fail.d",
+			"name": "unittest-fail",
+			"sourcePaths": [
+				"tests/examples/pass",
+				"tests/examples/fail/"
+			],
+			"targetName": "ut_fail",
+			"targetType": "executable",
+			"versions": [
+				"testing_unit_threaded"
+			]
+		},
+		{
+			"importPaths": [
+				"gen/source"
+			],
+			"mainSourceFile": "gen/gen_ut_main.d",
+			"name": "gen_ut_main",
+			"sourcePaths": [
+				"gen/source"
+			],
+			"targetName": "gen_ut_main",
+			"targetType": "executable"
+		}
+	],
+	"copyright": "Copyright © 2013, Atila Neves",
+	"dependencies": {
+		"unit-threaded:assertions": ">=0.0.0",
+		"unit-threaded:exception": ">=0.0.0",
+		"unit-threaded:from": ">=0.0.0",
+		"unit-threaded:integration": ">=0.0.0",
+		"unit-threaded:mocks": ">=0.0.0",
+		"unit-threaded:property": ">=0.0.0",
+		"unit-threaded:runner": ">=0.0.0"
+	},
+	"description": "Advanced multi-threaded unit testing framework with minimal to no boilerplate using built-in unittest blocks",
+	"homepage": "https://github.com/atilaneves/unit-threaded",
+	"importPaths": [
+		"source/"
+	],
+	"license": "BSD 3-clause",
+	"name": "unit-threaded",
+	"sourcePaths": [
+		"source/"
+	],
+	"subPackages": [
+		"./subpackages/from",
+		"./subpackages/exception",
+		"./subpackages/assertions",
+		"./subpackages/runner",
+		"./subpackages/mocks",
+		"./subpackages/integration",
+		"./subpackages/property"
+	],
+	"targetType": "library",
+	"toolchainRequirements": {
+		"frontend": ">=2.89.0"
+	},
+	"version": "2.0.3"
+}

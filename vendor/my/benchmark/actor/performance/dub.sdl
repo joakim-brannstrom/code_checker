@@ -1,0 +1,8 @@
+name "performance"
+description "Test performance of the actor system"
+authors "Joakim Brannstrom"
+copyright "Copyright © 2021, Joakim Brannstrom"
+license "BSL-1.0"
+
+subPackage "../../.."
+dependency "performance:my" version="*"

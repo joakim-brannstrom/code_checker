@@ -13,69 +13,56 @@
 module toml.datetime;
 
 import std.conv : to;
-import std.datetime : Duration, dur, DateTimeD = DateTime, Date,
-	TimeOfDayD = TimeOfDay;
+import std.datetime : Duration, dur, DateTimeD = DateTime, Date, TimeOfDayD = TimeOfDay;
 
-struct DateTime
-{
+struct DateTime {
 
 	public Date date;
 	public TimeOfDay timeOfDay;
 
-	public inout @property DateTimeD dateTime()
-	{
+	public inout @property DateTimeD dateTime() {
 		return DateTimeD(this.date, this.timeOfDay.timeOfDay);
 	}
 
 	alias dateTime this;
 
-	public static pure DateTime fromISOExtString(string str)
-	{
+	public static pure DateTime fromISOExtString(string str) {
 		Duration frac;
-		if (str.length > 19 && str[19] == '.')
-		{
-			frac = dur!"msecs"(to!ulong(str[20 .. $]));
-			str = str[0 .. 19];
+		if(str.length > 19 && str[19] == '.') {
+			frac = dur!"msecs"(to!ulong(str[20..$]));
+			str = str[0..19];
 		}
 		auto dt = DateTimeD.fromISOExtString(str);
 		return DateTime(dt.date, TimeOfDay(dt.timeOfDay, frac));
 	}
 
-	public inout string toISOExtString()
-	{
+	public inout string toISOExtString() {
 		return this.date.toISOExtString() ~ "T" ~ this.timeOfDay.toString();
 	}
 
 }
 
-struct TimeOfDay
-{
+struct TimeOfDay {
 
 	public TimeOfDayD timeOfDay;
 	public Duration fracSecs;
 
 	alias timeOfDay this;
 
-	public static pure TimeOfDay fromISOExtString(string str)
-	{
+	public static pure TimeOfDay fromISOExtString(string str) {
 		Duration frac;
-		if (str.length > 8 && str[8] == '.')
-		{
-			frac = dur!"msecs"(to!ulong(str[9 .. $]));
-			str = str[0 .. 8];
+		if(str.length > 8 && str[8] == '.') {
+			frac = dur!"msecs"(to!ulong(str[9..$]));
+			str = str[0..8];
 		}
 		return TimeOfDay(TimeOfDayD.fromISOExtString(str), frac);
 	}
 
-	public inout string toISOExtString()
-	{
+	public inout string toISOExtString() {
 		immutable msecs = this.fracSecs.total!"msecs";
-		if (msecs != 0)
-		{
+		if(msecs != 0) {
 			return this.timeOfDay.toISOExtString() ~ "." ~ to!string(msecs);
-		}
-		else
-		{
+		} else {
 			return this.timeOfDay.toISOExtString();
 		}
 	}

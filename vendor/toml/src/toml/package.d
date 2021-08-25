@@ -15,5 +15,4 @@ module toml;
 public import std.datetime : SysTime, Date;
 
 public import toml.datetime : DateTime, TimeOfDay;
-public import toml.toml : TOML_TYPE, TOMLDocument, TOMLValue, parseTOML,
-	TOMLException, TOMLParserException;
+public import toml.toml : TOML_TYPE, TOMLDocument, TOMLValue, parseTOML, TOMLException, TOMLParserException;
