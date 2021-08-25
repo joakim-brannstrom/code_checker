@@ -8,10 +8,5 @@
         "directory": ".",
         "arguments": ["g++", "-c", "empty.cpp", "-o", "empty.o"],
         "file": "error_in_file.cpp"
-    },
-    {
-        "directory": ".",
-        "arguments": ["g++", "-c", "empty.cpp", "-o", "empty.o"],
-        "file": "error_in_header.cpp"
     }
 ]

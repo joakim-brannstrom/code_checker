@@ -74,11 +74,12 @@ private:
 
 void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @safe {
     import std.algorithm : copy, map, joiner;
-    import std.array : appender;
+    import std.array : appender, array;
     import std.concurrency : thisTid, receiveTimeout;
+    import std.file : exists;
     import std.format : format;
     import std.parallelism : task, TaskPool;
-    import code_checker.compile_db : UserFileRange;
+    import code_checker.engine.compile_db;
     import code_checker.engine.logger : Logger;
 
     bool logged_failure;
@@ -104,7 +105,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
 
             if (env.conf.logg.toFile) {
                 try {
-                    const logFile = Path(res.file.payload ~ ".iwyu").AbsolutePath;
+                    const logFile = Path(res.file.toString ~ ".iwyu").AbsolutePath;
                     logg.put(logFile, [res.output]);
                 } catch (Exception e) {
                     logger.warning(e.msg).collectException;
@@ -135,13 +136,14 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
     ExpectedReplyCounter cond;
 
     auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
-    foreach (cmd; UserFileRange(env.compileDb, env.files, env.conf.compiler.extraFlags,
-            env.conf.compileDb.flagFilter, env.conf.compiler.useCompilerSystemIncludes)) {
-        if (cmd.isNull) {
+    auto fixedDb = toRange(env);
+
+    foreach (cmd; fixedDb) {
+        if (!exists(cmd.cmd.absoluteFile.toString)) {
             result_.score -= 1000;
             result_.msg ~= Msg(MsgSeverity.failReason, "iwyu where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             continue;
-        } else if (!file_filter.match(cmd.get.absoluteFile)) {
+        } else if (!file_filter.match(cmd.cmd.absoluteFile)) {
             continue;
         }
 
@@ -150,11 +152,11 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         immutable(IwyuWork)* w = () @trusted {
             auto args = appender!(string[])();
             iwyuArgs.copy(args);
-            cmd.get.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
-            cmd.get.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
-            args.put(cmd.get.absoluteFile);
+            cmd.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
+            cmd.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
+            args.put(cmd.cmd.absoluteFile);
 
-            return cast(immutable) new IwyuWork(args.data, cmd.get.absoluteFile);
+            return cast(immutable) new IwyuWork(args.data, cmd.cmd.absoluteFile);
         }();
 
         auto t = task!taskIwyu(thisTid, w);

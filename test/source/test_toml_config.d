@@ -77,7 +77,7 @@ unittest {
     res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
-        if (l.canFind(`compiler: ./fake_cc.d flags: [] includes: [] system-includes: ["/foo/bar"]`))
+        if (l.canFind(`Compiler:./fake_cc.d flags: -isystem /foo/bar`))
             return;
     }
 
@@ -136,4 +136,25 @@ unittest {
 
     ".*mremove-dummy=foobar.*".regexNotIn(
             File(ta.inSandboxPath("compile_commands.json")).byLineCopy.array);
+}
+
+@("shall dedup files for analyze")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "conf", "dedup"), ta.sandboxPath);
+    mkdir(ta.inSandboxPath("db"));
+    dirContentCopy(buildPath(testData, "conf", "dedup", "db"), ta.inSandboxPath("db"));
+
+    auto res = ta.exec([
+            appPath, "--verbose", "trace", "-c", "code_checker.toml"
+            ]);
+    res.status.shouldEqual(0);
+
+    int cnt;
+    foreach (l; res.output.splitLines) {
+        if (l.canFind(`run: clang-tidy`))
+            cnt++;
+    }
+
+    cnt.shouldEqual(2);
 }

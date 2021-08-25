@@ -7,14 +7,17 @@ Normal appliation mode.
 */
 module app_normal;
 
-import std.algorithm : among;
-import std.exception : collectException;
 import logger = std.experimental.logger;
+import std.algorithm : among;
+import std.array : empty;
+import std.exception : collectException;
+
+import my.path;
+
+import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
+    CompileCommandFilter, defaultCompilerFilter;
 
 import code_checker.cli : Config;
-import code_checker.compile_db : CompileCommandDB, toCompileCommandDB,
-    DbCompiler = Compiler, CompileCommandFilter, defaultCompilerFilter;
-import code_checker.types : AbsolutePath, Path, AbsoluteFileName;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -170,7 +173,7 @@ struct NormalFSM {
         import std.algorithm : map;
         import std.array : appender, array;
         import std.stdio : File;
-        import code_checker.compile_db : fromArgCompileDb;
+        import compile_db : fromArgCompileDb;
 
         logger.trace("Creating a unified compile_commands.json");
 
@@ -191,7 +194,7 @@ struct NormalFSM {
         import std.algorithm : map;
         import std.array : array;
         import code_checker.engine;
-        import code_checker.compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
+        import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
 
         Environment env;
         env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
@@ -254,51 +257,62 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
     import std.format : formattedWrite;
     import std.path : stripExtension;
     import std.range : put;
-    import code_checker.compile_db;
+    import compile_db;
 
     logger.trace(flag_filter);
 
-    void writeEntry(T)(ref T e) {
+    void writeEntry(T)(T e) {
         import std.exception : assumeUnique;
         import std.utf : byChar;
         import std.json : JSONValue;
 
         auto raw_flags = () @safe {
             auto app = appender!(string[]);
-            auto pflags = e.parseFlag(flag_filter, user_compiler);
-            app.put(pflags.compiler);
-            pflags.completeFlags.copy(app);
+            //auto pflags = e.parseFlag(flag_filter);
+            app.put(e.flags.compiler);
+            e.flags.completeFlags.copy(app);
             // add back dummy -c otherwise clang-tidy do not work.
             // clang-tidy says "Passed" on everything.
-            [null, "-c", cast(string) e.absoluteFile].copy(app);
+            ["-c", e.cmd.absoluteFile.toString].copy(app);
             // correctly quotes interior strings as JSON requires.
             return JSONValue(app.data).toString;
         }();
 
-        formattedWrite(app, `"directory": "%s",`, cast(string) e.directory);
+        formattedWrite(app, `"directory": "%s",`, cast(string) e.cmd.directory);
         formattedWrite(app, `"arguments": %s,`, raw_flags);
 
-        if (e.output.hasValue)
-            formattedWrite(app, `"output": "%s",`, cast(string) e.absoluteOutput);
-        formattedWrite(app, `"file": "%s"`, cast(string) e.absoluteFile);
+        if (!e.cmd.output.empty)
+            formattedWrite(app, `"output": "%s",`, cast(string) e.cmd.absoluteOutput);
+        formattedWrite(app, `"file": "%s"`, cast(string) e.cmd.absoluteFile);
     }
 
-    if (db.length == 0) {
+    logger.info("database ", db);
+
+    if (db.empty)
         return;
-    }
+    auto entries = ParsedCompileCommandRange.make(db.fileRange.parse(flag_filter)
+            .addCompiler(user_compiler).replaceCompiler(user_compiler).addSystemIncludes.array)
+        .array;
+    if (entries.empty)
+        return;
 
     formattedWrite(app, "[");
 
-    foreach (ref e; db[0 .. $ - 1]) {
+    bool isFirst = true;
+    foreach (e; entries) {
+        logger.trace(e);
+
+        if (isFirst) {
+            isFirst = false;
+        } else {
+            put(app, ",");
+            put(app, newline);
+        }
+
         formattedWrite(app, "{");
         writeEntry(e);
-        formattedWrite(app, "},");
-        put(app, newline);
+        formattedWrite(app, "}");
     }
-
-    formattedWrite(app, "{");
-    writeEntry(db[$ - 1]);
-    formattedWrite(app, "}");
 
     formattedWrite(app, "]");
 }

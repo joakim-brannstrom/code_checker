@@ -6,11 +6,14 @@ license "BSL-1.0"
 
 targetPath "build"
 
-subPackage "../vendor/unit-threaded"
-subPackage "../vendor/toml"
+dependency "unit-threaded" version="~>1.0.15" default=true
+dependency "toml" version="~>1.0.0-rc.3"  default=true
 
-dependency "code_checker_integration_test:unit-threaded" version="*"
-dependency "code_checker_integration_test:toml" version="*"
+//subPackage "../vendor/unit-threaded"
+//subPackage "../vendor/toml"
+//
+//dependency "code_checker_integration_test:unit-threaded" version="*"
+//dependency "code_checker_integration_test:toml" version="*"
 
 configuration "unittest" {
     targetType "executable"
