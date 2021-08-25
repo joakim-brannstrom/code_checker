@@ -32,10 +32,11 @@ unittest {
     dirContentCopy(buildPath(testData, "cpp", "use_a_mapping_file_for_iwyu"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-    res.status.shouldEqual(0);
 
-    auto lines = res.output.splitLines.array;
+    foreach (l; res.output.splitLines) {
+        if (l.canFind(`--mapping_file=foo.imp`))
+            return;
+    }
 
-    `Analyzers reported Passed`.regexIn(lines);
-    `You scored 0 points`.regexIn(lines);
+    assert(0);
 }

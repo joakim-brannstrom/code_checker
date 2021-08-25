@@ -77,7 +77,7 @@ unittest {
     res.status.shouldEqual(0);
 
     foreach (l; res.output.splitLines) {
-        if (l.canFind(`compiler: ./fake_cc.d flags: [] includes: [] system-includes: ["/foo/bar"]`))
+        if (l.canFind(`Compiler:./fake_cc.d flags: -isystem /foo/bar`))
             return;
     }
 

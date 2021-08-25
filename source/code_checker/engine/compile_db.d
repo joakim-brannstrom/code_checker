@@ -11,7 +11,7 @@ import code_checker.engine.types : Environment;
 import compile_db : ParsedCompileCommandRange;
 
 ParsedCompileCommandRange toRange(Environment env) @safe {
-    import std.algorithm : filter, cache, map;
+    import std.algorithm : filter, map;
     import std.array : array;
     import my.path;
     import my.set;
@@ -46,9 +46,14 @@ ParsedCompileCommandRange toRange(Environment env) @safe {
         return (CompileCommand a) => true;
     }();
 
+    auto files = env.compileDb
+        .fileRange
+        .filter!userFileFilter
+        .filter!uniqueFilter
+        .array;
+
     // dfmt off
-    return ParsedCompileCommandRange.make(
-        env.compileDb.fileRange.filter!userFileFilter.filter!uniqueFilter.cache
+    return ParsedCompileCommandRange.make(files
         .parse(env.conf.compileDb.flagFilter)
         .addSystemIncludes.prependFlags(env.conf.compiler.extraFlags)
         .array);

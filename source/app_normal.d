@@ -273,7 +273,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
             e.flags.completeFlags.copy(app);
             // add back dummy -c otherwise clang-tidy do not work.
             // clang-tidy says "Passed" on everything.
-            [null, "-c", cast(string) e.cmd.absoluteFile].copy(app);
+            ["-c", e.cmd.absoluteFile.toString].copy(app);
             // correctly quotes interior strings as JSON requires.
             return JSONValue(app.data).toString;
         }();
@@ -286,26 +286,33 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
         formattedWrite(app, `"file": "%s"`, cast(string) e.cmd.absoluteFile);
     }
 
+    logger.info("database ", db);
+
     if (db.empty)
         return;
     auto entries = ParsedCompileCommandRange.make(db.fileRange.parse(flag_filter)
-            .addCompiler(user_compiler).array).array;
+            .addCompiler(user_compiler).replaceCompiler(user_compiler).addSystemIncludes.array)
+        .array;
     if (entries.empty)
         return;
 
     formattedWrite(app, "[");
 
-    // TODO: why are all except the last db used?
-    foreach (e; entries[0 .. $ - 1]) {
+    bool isFirst = true;
+    foreach (e; entries) {
+        logger.trace(e);
+
+        if (isFirst) {
+            isFirst = false;
+        } else {
+            put(app, ",");
+            put(app, newline);
+        }
+
         formattedWrite(app, "{");
         writeEntry(e);
-        formattedWrite(app, "},");
-        put(app, newline);
+        formattedWrite(app, "}");
     }
-
-    formattedWrite(app, "{");
-    writeEntry(entries[$ - 1]);
-    formattedWrite(app, "}");
 
     formattedWrite(app, "]");
 }
