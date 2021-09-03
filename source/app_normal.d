@@ -286,7 +286,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
         formattedWrite(app, `"file": "%s"`, cast(string) e.cmd.absoluteFile);
     }
 
-    logger.info("database ", db);
+    logger.trace("database ", db);
 
     if (db.empty)
         return;
