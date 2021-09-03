@@ -72,8 +72,9 @@ class ClangTidy : BaseFixture {
         auto checks = env.conf.clangTidy.checks;
         // inactivate those that are below the configured severity level.
         if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
-            checks = only(["-*"], filterSeverity!(a => a >= env.conf.staticCode.severity).array).joiner.filter!(
-                    a => a != "*").array;
+            checks = only(["-*"],
+                    filterSeverity!(a => a >= env.conf.staticCode.severity).array, checks).joiner.filter!(a => a != "*")
+                .array;
         }
 
         if (exists(ClangTidyConstants.confFile)) {
