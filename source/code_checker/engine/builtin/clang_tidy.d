@@ -87,7 +87,8 @@ class ClangTidy : BaseFixture {
             only(checks, env.conf.clangTidy.checkExtensions).joiner.joiner(",").copy(c);
             c.put(`",`);
             c.put("CheckOptions: [");
-            env.conf.clangTidy.options.joiner(",").copy(c);
+            only(env.conf.clangTidy.options, env.conf.clangTidy.optionExtensions).joiner.joiner(",")
+                .copy(c);
             c.put("]");
             c.put("}");
 

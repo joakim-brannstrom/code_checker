@@ -53,6 +53,9 @@ struct ConfigClangTidy {
     /// Arguments to be baked into the checks parameter
     string[] options;
 
+    /// Used as a compliment to options. options is set in the global while optionExtensions is set locally.
+    string[] optionExtensions;
+
     /// Argument to the be passed on to clang-tidy's --header-filter paramter as-is
     string headerFilter;
 
@@ -403,6 +406,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.options = v.array.map!(a => a.str).array;
+    };
+    callbacks["clang_tidy.option_extensions"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.optionExtensions = v.array.map!(a => a.str).array;
     };
 
     callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
