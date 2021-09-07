@@ -18,10 +18,12 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
-import std.conv : to;
+import std.conv : text, to;
 import std.exception : enforce;
-import std.string : format, toStringz;
+import std.string : format, fromStringz, toStringz;
 import std.typecons : Nullable;
+
+import core.stdc.stdlib : free;
 
 /// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
 version (SqliteEnableUnlockNotify) version = _UnlockNotify;
@@ -87,12 +89,12 @@ private:
         ~this() nothrow
         {
             debug ensureNotInGC!Database(filename);
-            ptrFree(updateHook);
-            ptrFree(commitHook);
-            ptrFree(rollbackHook);
-            ptrFree(progressHandler);
-            ptrFree(traceCallback);
-            ptrFree(profileCallback);
+            free(updateHook);
+            free(commitHook);
+            free(rollbackHook);
+            free(progressHandler);
+            free(traceCallback);
+            free(profileCallback);
 
             if (!handle)
                 return;
@@ -178,7 +180,7 @@ public:
     {
         assert(p.handle);
         immutable ret = sqlite3_db_readonly(p.handle, database.toStringz);
-        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
+        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database), ret));
         return ret == 1;
     }
 
@@ -349,7 +351,7 @@ public:
     {
         assert(p.handle);
         auto result = sqlite3_db_config(p.handle, code, args);
-        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result)));
+        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result), result));
     }
 
     /++
@@ -358,8 +360,9 @@ public:
     void enableLoadExtensions(bool enable = true)
     {
         assert(p.handle);
-        enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
-            new SqliteException("Could not enable loading extensions."));
+        immutable ret = sqlite3_enable_load_extension(p.handle, enable);
+        enforce(ret == SQLITE_OK,
+            new SqliteException("Could not enable loading extensions.", ret));
     }
 
     /++
@@ -374,9 +377,14 @@ public:
     void loadExtension(string path, string entryPoint = null)
     {
         assert(p.handle);
-        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
+        char* p_err;
+        scope (failure)
+            sqlite3_free(p_err);
+
+        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, &p_err);
         enforce(ret == SQLITE_OK, new SqliteException(
-                "Could not load extension: %s:%s".format(entryPoint, path)));
+                "Could not load extension: %s:%s (%s)".format(entryPoint, path,
+                p_err !is null ? fromStringz(p_err) : "No additional info"), ret));
     }
 
     /++
@@ -544,7 +552,7 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1,
-              SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
+              SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &free));
     }
     ///
     unittest
@@ -702,7 +710,7 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
-            cast(void*) ctx, null, &x_step, &x_final, &ptrFree));
+            cast(void*) ctx, null, &x_step, &x_final, &free));
     }
     ///
     unittest // Aggregate creation
@@ -806,10 +814,10 @@ public:
         assert(p.handle);
         auto dgw = delegateWrap(fun, name);
         auto result = sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
-            delegateWrap(fun, name), &x_compare, &ptrFree);
+            delegateWrap(fun, name), &x_compare, &free);
         if (result != SQLITE_OK)
         {
-            ptrFree(dgw);
+            free(dgw);
             throw new SqliteException(errmsg(p.handle), result);
         }
     }
@@ -853,7 +861,7 @@ public:
             dg.dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
-        ptrFree(p.updateHook);
+        free(p.updateHook);
         p.updateHook = delegateWrap(updateHook);
         assert(p.handle);
         sqlite3_update_hook(p.handle, &callback, p.updateHook);
@@ -879,7 +887,7 @@ public:
             return dlg();
         }
 
-        ptrFree(p.commitHook);
+        free(p.commitHook);
         p.commitHook = delegateWrap(commitHook);
         assert(p.handle);
         sqlite3_commit_hook(p.handle, &callback, p.commitHook);
@@ -902,7 +910,7 @@ public:
             dlg();
         }
 
-        ptrFree(p.rollbackHook);
+        free(p.rollbackHook);
         p.rollbackHook = delegateWrap(rollbackHook);
         assert(p.handle);
         sqlite3_rollback_hook(p.handle, &callback, p.rollbackHook);
@@ -932,7 +940,7 @@ public:
             return dlg();
         }
 
-        ptrFree(p.progressHandler);
+        free(p.progressHandler);
         p.progressHandler = delegateWrap(progressHandler);
         assert(p.handle);
         sqlite3_progress_handler(p.handle, pace, &callback, p.progressHandler);
@@ -941,7 +949,7 @@ public:
     /++
     Registers a delegate of type `TraceCallbackDelegate` as the trace callback.
 
-    Any previously set trace callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
@@ -958,7 +966,7 @@ public:
             dlg(str.to!string);
         }
 
-        ptrFree(p.traceCallback);
+        free(p.traceCallback);
         p.traceCallback = delegateWrap(traceCallback);
         assert(p.handle);
         sqlite3_trace(p.handle, &callback, p.traceCallback);
@@ -967,7 +975,7 @@ public:
     /++
     Registers a delegate of type `ProfileCallbackDelegate` as the profile callback.
 
-    Any previously set profile callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
@@ -985,7 +993,7 @@ public:
             dlg(str.to!string, time);
         }
 
-        ptrFree(p.profileCallback);
+        free(p.profileCallback);
         p.profileCallback = delegateWrap(profileCallback);
         assert(p.handle);
         sqlite3_profile(p.handle, &callback, p.profileCallback);
@@ -1176,7 +1184,7 @@ version (_UnlockNotify)
             /// Unlocks the handler, state is one of SQLITE_LOCKED or SQLITE_OK
             void emit(int res) nothrow
             in { assert(res == SQLITE_LOCKED || res == SQLITE_OK); }
-            body
+            do
             {
                 try
                 {
@@ -1200,7 +1208,7 @@ version (_UnlockNotify)
             /// Result after wait is finished
             @property int result() const
             out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
-            body { return res; }
+            do { return res; }
         }
     }
     else
@@ -1230,7 +1238,7 @@ version (_UnlockNotify)
             /// Constructor
             this(Duration max = 1000.msecs)
             in { assert(max > Duration.zero); }
-            body
+            do
             {
                 maxDuration = max;
             }
@@ -1263,7 +1271,7 @@ version (_UnlockNotify)
             /// Result after wait is finished
             @property int result() const
             out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
-            body
+            do
             {
                 return res;
             }
@@ -1317,7 +1325,7 @@ Exception thrown when SQLite functions return an error.
 class SqliteException : Exception
 {
     /++
-    The _code of the error that raised the exception, or 0 if this _code is not known.
+    The _code of the error that raised the exception
     +/
     int code;
 
@@ -1328,6 +1336,7 @@ class SqliteException : Exception
 
     private this(string msg, string sql, int code,
                  string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow @nogc
     {
         this.sql = sql;
         this.code = code;
@@ -1337,13 +1346,8 @@ class SqliteException : Exception
 package(d2sqlite3):
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+         @safe pure nothrow
     {
-        this("error %d: %s".format(code, msg), sql, code, file, line, next);
-    }
-
-    this(string msg, string sql = null,
-         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-    {
-        this(msg, sql, 0, file, line, next);
+        this(text("error ", code, ": ", msg), sql, code, file, line, next);
     }
 }

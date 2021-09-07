@@ -1,0 +1,72 @@
+# Github worflow to test this library on all platforms,
+# build the documentation, and upload it to Github pages.
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  main:
+    name: Run
+    strategy:
+      # Disable `fail-fast` because we want the whole test suite to run even if one
+      # of the nigthly is broken
+      fail-fast: false
+      matrix:
+# TODO: FIXME. Requires fixes to the dub.sdl to work on Windows
+#        os: [ ubuntu-18.04, macOS-10.15, windows-2019 ]
+        os: [ ubuntu-18.04, macOS-10.15 ]
+        # Oldest supported FE is 2.090.1 because we need `GC.inFinalizer`
+        # https://dlang.org/changelog/2.090.0.html
+        dc: [ ldc-master, ldc-latest, ldc-1.21.0, dmd-master, dmd-latest, dmd-2.090.1 ]
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+
+    - uses: actions/checkout@v2
+    - name: Prepare compiler
+      uses: dlang-community/setup-dlang@v1
+      with:
+          compiler: ${{ matrix.dc }}
+
+    # Install os-specific packages
+    # Those will show up in the list of steps, but be grayed out,
+    # hence the usage of the `[OSX]` tag
+    - name: '[OSX] Install dependencies & setup environment'
+      if: runner.os == 'macOS'
+      run: |
+        echo "LIBRARY_PATH=${LD_LIBRARY_PATH-}:/usr/local/lib/" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=/usr/local/opt/sqlite/lib/pkgconfig" >> $GITHUB_ENV
+
+    - name: '[Linux] Install dependencies & setup environment'
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsqlite3-dev
+
+    - name: '[Windows] Install dependencies & setup environment'
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        echo "LIB=${{ github.workspace }}\lib\win64\;$LIB" >> $GITHUB_ENV
+
+    # Add whatever debugging information can be useful in the long run here
+    - name: Print system information
+      shell: bash
+      run: |
+        ${DC} --version
+        dub --version
+
+    # Build and run the tests
+    - name: '[POSIX] Build & test'
+      if: runner.os != 'Windows'
+      #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
+      run: dub test -c ci
+
+    - name: '[Windows] Build & test'
+      if: runner.os == 'Windows'
+      #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        dub test -c ci

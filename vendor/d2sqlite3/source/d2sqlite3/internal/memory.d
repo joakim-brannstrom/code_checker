@@ -45,46 +45,38 @@ WrappedDelegate!T* delegateUnwrap(T)(void* ptr) nothrow
     return cast(WrappedDelegate!T*) ptr;
 }
 
-extern(C) void ptrFree(void* ptr) nothrow
-{
-    free(ptr);
-}
-
 // Anchors and returns a pointer to D memory, so that it will not
 // be moved or collected. For use with releaseMem.
-void* anchorMem(void* ptr)
+inout(void)* anchorMem(inout(void)* ptr)
 {
     GC.addRoot(ptr);
-    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    // Cast to work around https://issues.dlang.org/show_bug.cgi?id=21484
+    GC.setAttr(cast(void*) ptr, GC.BlkAttr.NO_MOVE);
     return ptr;
 }
 
 // Passed to sqlite3_xxx_blob64/sqlite3_xxx_text64 to unanchor memory.
-extern(C) void releaseMem(void* ptr)
+extern(C) void releaseMem(const void* ptr)
 {
-    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    // Cast to work around https://issues.dlang.org/show_bug.cgi?id=21484
+    GC.setAttr(cast(void*) ptr, GC.BlkAttr.NO_MOVE);
     GC.removeRoot(ptr);
 }
 
 // Adapted from https://p0nce.github.io/d-idioms/#GC-proof-resource-class
 void ensureNotInGC(T)(string info = null) nothrow
 {
-    import core.exception : InvalidMemoryOperationError;
-    try
-    {
-        import core.memory : GC;
-        cast(void) GC.malloc(1);
+    import core.memory : GC;
+    import core.stdc.stdio : fprintf, stderr;
+    import core.stdc.stdlib : exit;
+
+    if (!GC.inFinalizer)
         return;
-    }
-    catch(InvalidMemoryOperationError e)
-    {
-        import core.stdc.stdio : fprintf, stderr;
-        import core.stdc.stdlib : exit;
-        fprintf(stderr,
-                "Error: clean-up of %s incorrectly depends on destructors called by the GC.\n",
-                T.stringof.ptr);
-        if (info)
-            fprintf(stderr, "Info: %s\n", info.ptr);
-        assert(false);
-    }
+
+    fprintf(stderr,
+            "Error: clean-up of %s incorrectly depends on destructors called by the GC.\n",
+            T.stringof.ptr);
+    if (info)
+        fprintf(stderr, "Info: %s\n", info.ptr);
+    assert(false);
 }
