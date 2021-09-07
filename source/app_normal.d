@@ -18,6 +18,7 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter;
 
 import code_checker.cli : Config;
+import code_checker.database : Database;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -37,6 +38,7 @@ private:
 struct NormalFSM {
     enum State {
         init_,
+        openDb,
         /// change the working directory of the whole program
         changeWorkDir,
         /// check if a DB exists at the workdir location. Affects cleanup.
@@ -62,13 +64,15 @@ struct NormalFSM {
 
     State st;
     Config conf;
-    CompileCommandDB db;
+    CompileCommandDB compileDb;
     /// If the compile_commands.json that is written to the file system should be deleted when code_checker is done.
     bool removeCompileDb;
     /// Root directory from which the program where initially started.
     AbsolutePath root;
     /// Exit status of used to indicate the success to the user.
     int exitStatus;
+
+    Database db;
 
     this(Config conf) {
         this.conf = conf;
@@ -101,6 +105,9 @@ struct NormalFSM {
 
         final switch (curr) {
         case State.init_:
+            next_ = State.openDb;
+            break;
+        case State.openDb:
             next_ = State.changeWorkDir;
             break;
         case State.changeWorkDir:
@@ -138,6 +145,16 @@ struct NormalFSM {
         }
 
         return next_;
+    }
+
+    void act_openDb() {
+        import code_checker.database;
+
+        try {
+            db = Database.make(conf.database);
+        } catch (Exception e) {
+            logger.warning(e.msg);
+        }
     }
 
     void act_changeWorkDir() {
@@ -179,8 +196,9 @@ struct NormalFSM {
 
         auto compile_db = appender!string();
         try {
-            this.db = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup).array);
-            unifyCompileDb(db, conf.compiler.useCompilerSystemIncludes,
+            this.compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup)
+                    .array);
+            unifyCompileDb(compileDb, conf.compiler.useCompilerSystemIncludes,
                     compile_db, conf.compileDb.flagFilter);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
@@ -198,7 +216,7 @@ struct NormalFSM {
 
         Environment env;
         env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
-        env.compileDb = this.db;
+        env.compileDb = this.compileDb;
         env.files = () {
             if (conf.analyzeFiles.length == 0)
                 return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile).array;

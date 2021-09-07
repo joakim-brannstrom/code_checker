@@ -20,12 +20,12 @@ import std.range : put, only, enumerate;
 import std.typecons : Tuple;
 
 import colorlog;
+import my.path : AbsolutePath;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
-import code_checker.types;
 
 @safe:
 

@@ -36,7 +36,7 @@ interface BaseFixture {
 
 /// Environment data useful for an anylser.
 struct Environment {
-    import code_checker.types : AbsolutePath;
+    import my.path : AbsolutePath;
     import compile_db : CompileCommandDB, CompileCommandFilter;
 
     Config conf;

@@ -12,9 +12,10 @@ import std.exception : collectException;
 import std.typecons : Flag, Yes, No;
 import logger = std.experimental.logger;
 
-import code_checker.cli : Config;
 import compile_db : CompileCommandDB;
-import code_checker.types : AbsolutePath, Path;
+import my.path : AbsolutePath, Path;
+
+import code_checker.cli : Config;
 
 int main(string[] args) {
     import std.file : thisExePath, exists;

@@ -13,11 +13,12 @@ import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
 import std.typecons : Tuple;
 
+import my.path : AbsolutePath, Path;
+
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
-import code_checker.types;
 
 @safe:
 

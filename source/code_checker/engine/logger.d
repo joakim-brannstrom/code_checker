@@ -7,7 +7,7 @@ This module contains functionality for logging analyzer results to files.
 */
 module code_checker.engine.logger;
 
-import code_checker.types : AbsolutePath;
+import my.path : AbsolutePath;
 
 @safe:
 
