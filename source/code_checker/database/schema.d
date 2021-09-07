@@ -236,9 +236,6 @@ struct FilesTbl {
     string path;
     long checksum;
 
-    @ColumnName("timestamp")
-    SysTime timeStamp;
-
     /// True if the file is a root.
     bool root;
 }

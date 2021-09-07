@@ -22,8 +22,8 @@ unittest {
 unittest {
     auto ta = makeTestArea;
     // action
-    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
-            buildPath(testData, "cpp", "name_style", compileCommandsFile));
+    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db", buildPath(testData, "cpp",
+            "name_style", compileCommandsFile), "-c", buildPath(testData, "all_checks.toml"));
 
     // assert
     res.status.shouldNotEqual(0);

@@ -1,0 +1,8 @@
+[defaults]
+severity = "style"
+
+[compile_commands]
+search_paths = ["./compile_commands.json"]
+
+[clang_tidy]
+header_filter = ".*"

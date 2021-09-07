@@ -16,6 +16,8 @@ module code_checker.change;
 import logger = std.experimental.logger;
 
 import my.path;
+import my.optional;
+import compile_db;
 
 import code_checker.database : Database;
 import code_checker.utility : toAbsoluteRoot;
@@ -78,4 +80,40 @@ bool[Path] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
     logger.trace("Dependency analyze: ", rval);
 
     return rval;
+}
+
+/// Convert to an absolute path by finding the first match among the compiler flags
+Optional!AbsolutePath toAbsolutePath(Path file, AbsolutePath workDir,
+        ParseFlags.Include[] includes, SystemIncludePath[] systemIncludes) @trusted nothrow {
+    import std.algorithm : map, filter;
+    import std.file : exists;
+    import std.path : buildPath;
+
+    Optional!AbsolutePath lookup(string dir) nothrow {
+        const p = buildPath(dir, file);
+        try {
+            if (exists(p))
+                return some(AbsolutePath(p));
+        } catch (Exception e) {
+        }
+        return none!AbsolutePath;
+    }
+
+    {
+        auto a = lookup(workDir.toString);
+        if (a.hasValue)
+            return a;
+    }
+
+    foreach (a; includes.map!(a => lookup(a.payload))
+            .filter!(a => a.hasValue)) {
+        return a;
+    }
+
+    foreach (a; systemIncludes.map!(a => lookup(a.value))
+            .filter!(a => a.hasValue)) {
+        return a;
+    }
+
+    return none!AbsolutePath;
 }

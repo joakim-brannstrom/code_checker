@@ -15,10 +15,11 @@ import std.exception : collectException;
 import my.path;
 
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
-    CompileCommandFilter, defaultCompilerFilter;
+    CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
 import code_checker.cli : Config;
 import code_checker.database : Database;
+import code_checker.engine : Environment;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -194,12 +195,13 @@ struct NormalFSM {
 
         logger.trace("Creating a unified compile_commands.json");
 
-        auto compile_db = appender!string();
         try {
             this.compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup)
                     .array);
+
+            auto compile_db = appender!string();
             unifyCompileDb(compileDb, conf.compiler.useCompilerSystemIncludes,
-                    compile_db, conf.compileDb.flagFilter);
+                    conf.compileDb.flagFilter, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
@@ -213,21 +215,53 @@ struct NormalFSM {
         import std.array : array;
         import code_checker.engine;
         import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
+        import code_checker.change : dependencyAnalyze;
+
+        auto changed = () {
+            bool[AbsolutePath] rval;
+
+            try {
+                foreach (v; dependencyAnalyze(db, AbsolutePath(".")).byKeyValue) {
+                    rval[v.key.AbsolutePath] = v.value;
+                }
+            } catch (Exception e) {
+            }
+            return rval;
+        }();
 
         Environment env;
         env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
         env.compileDb = this.compileDb;
         env.files = () {
-            if (conf.analyzeFiles.length == 0)
-                return env.files = env.compileDb.map!(a => cast(string) a.absoluteFile).array;
-            else
+            if (!conf.analyzeFiles.empty)
                 return conf.analyzeFiles.map!(a => cast(string) a).array;
+
+            string[] rval;
+            foreach (dbFile; env.compileDb) {
+                if (auto v = dbFile.absoluteFile in changed) {
+                    if (*v)
+                        rval ~= dbFile.absoluteFile.toString;
+                } else {
+                    rval ~= dbFile.absoluteFile.toString;
+                }
+            }
+            return rval;
         }();
 
         env.conf = conf;
 
-        auto reg = makeRegistry;
-        exitStatus = execute(env, conf.staticCode.analyzers, reg) == Status.passed ? 0 : 1;
+        if (!env.files.empty) {
+            auto reg = makeRegistry;
+            exitStatus = execute(env, conf.staticCode.analyzers, reg) == Status.passed ? 0 : 1;
+        }
+
+        if (exitStatus == 0) {
+            try {
+                saveDependencies(db, env, AbsolutePath("."));
+            } catch (Exception e) {
+                logger.warning(e.msg);
+            }
+        }
     }
 
     void act_cleanup() {
@@ -268,7 +302,7 @@ struct NormalFSM {
 
 /// Unify multiple compilation databases to one json file.
 void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
-        ref AppT app, CompileCommandFilter flag_filter) {
+        CompileCommandFilter flag_filter, ref AppT app) {
     import std.algorithm : map, joiner, filter, copy;
     import std.array : array, appender;
     import std.ascii : newline;
@@ -351,12 +385,79 @@ unittest {
     auto db = test_compile_db.toCompileCommandDB(Path("."));
     // act
     auto unified = appender!string();
-    unifyCompileDb(db, DbCompiler.init, unified,
-            CompileCommandFilter(defaultCompilerFilter.filter.dup, 0));
+    unifyCompileDb(db, DbCompiler.init,
+            CompileCommandFilter(defaultCompilerFilter.filter.dup, 0), unified);
     // assert
     try {
         unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;
     } catch (UnitTestException e) {
         unified.data.shouldEqual("a trick to print the unified string when the test fail");
     }
+}
+
+struct FileIncludes {
+    import compile_db : ParseFlags, SystemIncludePath;
+
+    ParseFlags.Include[] includes;
+    SystemIncludePath[] systemIncludes;
+}
+
+void saveDependencies(ref Database db, Environment env, AbsolutePath root) {
+    import std.algorithm : map;
+    import std.path : relativePath;
+    import std.array : array;
+    import code_checker.engine.compile_db : toRange;
+    import code_checker.database : DepFile;
+
+    Path toRelativeRoot(AbsolutePath f) {
+        return Path(relativePath(f, root));
+    }
+
+    auto checksum(AbsolutePath f) {
+        import my.hash : checksum, makeChecksum64, Checksum64;
+
+        try {
+            return checksum!makeChecksum64(f);
+        } catch (Exception e) {
+            logger.trace(e.msg);
+        }
+        return Checksum64(0);
+    }
+
+    foreach (pcmd; toRange(env)) {
+        db.fileApi.put(toRelativeRoot(pcmd.cmd.absoluteFile),
+                checksum(pcmd.cmd.absoluteFile), true);
+        auto deps = depScan(pcmd, root).map!(a => DepFile(toRelativeRoot(a), checksum(a))).array;
+        db.dependencyApi.set(toRelativeRoot(pcmd.cmd.absoluteFile), deps);
+    }
+}
+
+AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
+    import std.algorithm : map, filter, copy;
+    import std.array : appender;
+    import std.stdio : File;
+    import std.string : strip, startsWith, split;
+    import my.optional;
+    import code_checker.change : toAbsolutePath;
+
+    auto app = appender!(AbsolutePath[])();
+
+    try {
+        File(pcmd.cmd.absoluteFile).byLine
+            .map!(a => a.strip)
+            .filter!(a => a.startsWith("#include"))
+            .map!(a => a.split)
+            .filter!(a => a.length >= 2)
+            .map!(a => a[1])
+            .filter!(a => a.length >= 3)
+            .map!(a => strip(a.idup)[1 .. $ - 1].Path)
+            .map!(a => toAbsolutePath(a, root, pcmd.flags.includes, pcmd.flags.systemIncludes))
+            .filter!(a => a.hasValue)
+            .map!(a => a.orElse(AbsolutePath.init))
+            .copy(app);
+    } catch (Exception e) {
+        logger.trace(e.msg);
+    }
+
+    return app.data;
 }

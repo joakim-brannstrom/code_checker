@@ -18,3 +18,16 @@ unittest {
     // assert
     res.status.shouldNotEqual(0);
 }
+
+@("shall save dependencies in database")
+unittest {
+    auto ta = makeTestArea;
+
+    dirContentCopy(buildPath(testData, "cpp", "dep_scan"), ta.sandboxPath);
+
+    // action
+    auto res = ta.exec(appPath, "--verbose", "trace", "--keep-db", "-c", "code_checker.toml");
+
+    // assert
+    res.status.shouldEqual(0);
+}

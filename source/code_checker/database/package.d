@@ -54,6 +54,16 @@ struct DbFile {
     private Miniorm* db;
     private Database* wrapperDb;
 
+    void put(const Path p, Checksum64 cs, bool isRoot) @trusted {
+        static immutable sql = format!"INSERT OR IGNORE INTO %s (path, checksum, root)
+            VALUES (:path, :checksum, :root)"(filesTable);
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p.toString);
+        stmt.get.bind(":checksum", cast(long) cs.c0);
+        stmt.get.bind(":root", isRoot);
+        stmt.get.execute;
+    }
+
     /// Returns: the file path that the id correspond to.
     Nullable!Path getFile(const FileId id) @trusted {
         static immutable sql = format("SELECT path FROM %s WHERE id = :id", filesTable);
