@@ -20,12 +20,12 @@ import std.range : put, only, enumerate;
 import std.typecons : Tuple;
 
 import colorlog;
+import my.path : AbsolutePath;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
-import code_checker.types;
 
 @safe:
 
@@ -155,6 +155,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         result_.supp += res.suppressedWarnings;
 
         if (res.clangTidyStatus != 0) {
+            result_.failed ~= res.file;
             res.print;
 
             if (env.conf.logg.toFile) {

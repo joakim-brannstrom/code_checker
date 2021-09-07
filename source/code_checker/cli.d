@@ -16,7 +16,7 @@ import std.exception : collectException, ifThrown;
 import std.path : buildPath, dirName;
 import std.typecons : Tuple, Flag;
 
-import code_checker.types : AbsolutePath, Path;
+import my.path : AbsolutePath, Path;
 
 @safe:
 
@@ -154,6 +154,8 @@ struct Config {
     /// Configuration file as specified by the user or the default one.
     AbsolutePath confFile;
 
+    AbsolutePath database;
+
     ConfigClangTidy clangTidy;
     ConfigCompileDb compileDb;
     ConfigIwyu iwyu;
@@ -235,14 +237,15 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
-        string[] analyzers;
-        string[] analyze_files;
-        string[] compile_dbs;
-        string[] src_filter;
+        bool init_conf;
         string config_file = ".code_checker.toml";
+        string database = "code_checker.sqlite3";
         string logdir = ".";
         string workdir;
-        bool init_conf;
+        string[] analyze_files;
+        string[] analyzers;
+        string[] compile_dbs;
+        string[] src_filter;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
@@ -252,6 +255,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
             "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
             "c|config", "load configuration (default: .code_checker.toml)", &config_file,
+            "db|database", "Database path", &database,
             "f|file", "if set then analyze only these files (default: all)", &analyze_files,
             "init", "create an initial config to use", &init_conf,
             "init-template", "base the initial config on the named template (default: default)", &conf.baseConfName,
@@ -283,6 +287,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         if (conf.logg.toFile)
             conf.logg.dir = Path(logdir).AbsolutePath;
+
+        conf.database = AbsolutePath(database);
 
         // dfmt off
         conf.compileDb.dbs = conf

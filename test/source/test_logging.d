@@ -13,7 +13,8 @@ unittest {
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
-            appPath, "--verbose", "trace", "--log", "--compile-db",
+            appPath, "--verbose", "trace", "--log", "-c",
+            buildPath(testData, "all_checks.toml"), "--compile-db",
             buildPath(testData, "log", "compile_commands.json").absolutePath
             ]).status.shouldEqual(1);
 
@@ -27,7 +28,8 @@ unittest {
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
-            appPath, "--log", "--logdir", "log", "--compile-db",
+            appPath, "--log", "--logdir", "log", "-c",
+            buildPath(testData, "all_checks.toml"), "--compile-db",
             buildPath(testData, "log", "compile_commands.json").absolutePath
             ]).status.shouldEqual(1);
 
@@ -44,8 +46,9 @@ unittest {
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
-            appPath, "--verbose", "trace", "--clang-tidy-fix", "--log", "log",
-            "--logdir", "log"
+            appPath, "--verbose", "trace", "--clang-tidy-fix", "-c",
+            buildPath(testData, "all_checks.toml"), "--log", "log", "--logdir",
+            "log"
             ]).status.shouldEqual(1);
 
     dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(

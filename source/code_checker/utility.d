@@ -7,6 +7,8 @@ module code_checker.utility;
 
 import logger = std.experimental.logger;
 
+import my.path;
+
 /// Replace words in a configuration string with the appropriate values.
 auto replaceConfigWords(T)(T range) {
     import std.algorithm : map;
@@ -27,4 +29,10 @@ auto warnIfFileDoNotExist(T)(T range) {
         logger.tracef("File '%s' do not exist", a);
         return false;
     });
+}
+
+AbsolutePath toAbsoluteRoot(Path root, Path p) {
+    import std.path : buildPath;
+
+    return AbsolutePath(buildPath(root, p));
 }
