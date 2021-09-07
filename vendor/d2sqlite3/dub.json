@@ -1,0 +1,80 @@
+{
+	"authors": [
+		"Nicolas Sicard",
+		"Other contributors: see Github repo"
+	],
+	"configurations": [
+		{
+			"excludedSourceFiles": [
+				"source/tests.d"
+			],
+			"libs": [
+				"sqlite3"
+			],
+			"name": "with-lib",
+			"systemDependencies": "SQLite version >= 3.8.7",
+			"targetType": "library"
+		},
+		{
+			"excludedSourceFiles": [
+				"source/tests.d"
+			],
+			"name": "without-lib",
+			"targetType": "library"
+		},
+		{
+			"copyFiles-windows-x86": [
+				"lib/win32/sqlite3.dll",
+				"lib/win32/sqlite3.lib"
+			],
+			"copyFiles-windows-x86_64": [
+				"lib/win64/sqlite3.dll",
+				"lib/win64/sqlite3.lib"
+			],
+			"excludedSourceFiles": [
+				"source/tests.d"
+			],
+			"libs-linux-gdc": [
+				"dl"
+			],
+			"libs-windows": [
+				"sqlite3"
+			],
+			"name": "all-included",
+			"preBuildCommands-posix": [
+				"make -C $PACKAGE_DIR -f sqlite3.mak"
+			],
+			"sourceFiles-posix": [
+				"sqlite3.o"
+			],
+			"targetType": "library"
+		},
+		{
+			"name": "travis",
+			"preBuildCommands-posix": [
+				"make -C $PACKAGE_DIR -f sqlite3.mak"
+			],
+			"sourceFiles-posix": [
+				"sqlite3.o"
+			],
+			"targetType": "library",
+			"versions": [
+				"SqliteEnableColumnMetadata",
+				"SqliteEnableUnlockNotify"
+			]
+		}
+	],
+	"copyright": "Copyright 2011-18 Nicolas Sicard",
+	"description": "A thin wrapper around SQLite 3",
+	"homepage": "https://github.com/biozic/d2sqlite3",
+	"importPaths": [
+		"source/"
+	],
+	"license": "BSL-1.0",
+	"name": "d2sqlite3",
+	"sourcePaths": [
+		"source/"
+	],
+	"targetType": "library",
+	"version": "0.18.3"
+}

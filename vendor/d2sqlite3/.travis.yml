@@ -1,0 +1,10 @@
+language: d
+sudo: false
+
+matrix:
+  include:
+    - d: dmd
+    - d: ldc
+    # - d: gdc # disabled temporarily
+
+script: ./travis.sh
