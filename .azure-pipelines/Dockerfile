@@ -1,5 +1,4 @@
-# ubuntu_bionic_base
-FROM ubuntu:bionic
+FROM ubuntu:focal
 
 # Dependencies:
 RUN apt-get update && \
@@ -13,7 +12,8 @@ RUN apt-get -y --no-install-recommends install \
         curl \
         xz-utils \
         iwyu \
-        gnupg
+        gnupg \
+        libsqlite3-dev
 
 WORKDIR /opt
 

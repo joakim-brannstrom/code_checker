@@ -5,7 +5,8 @@ RUN apt-get update && \
     apt-get -y --no-install-recommends install \
         ca-certificates \
         iwyu \
-        clang-tidy
+        clang-tidy \
+        libsqlite3-dev
 
 WORKDIR /opt
 
