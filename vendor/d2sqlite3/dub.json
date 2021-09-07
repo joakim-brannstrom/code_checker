@@ -50,7 +50,7 @@
 			"targetType": "library"
 		},
 		{
-			"name": "travis",
+			"name": "ci",
 			"preBuildCommands-posix": [
 				"make -C $PACKAGE_DIR -f sqlite3.mak"
 			],
@@ -62,11 +62,19 @@
 				"SqliteEnableColumnMetadata",
 				"SqliteEnableUnlockNotify"
 			]
+		},
+		{
+			"libs": [
+				"sqlite3"
+			],
+			"name": "unittest",
+			"systemDependencies": "SQLite version >= 3.8.7",
+			"targetType": "library"
 		}
 	],
 	"copyright": "Copyright 2011-18 Nicolas Sicard",
 	"description": "A thin wrapper around SQLite 3",
-	"homepage": "https://github.com/biozic/d2sqlite3",
+	"homepage": "https://github.com/dlang-community/d2sqlite3",
 	"importPaths": [
 		"source/"
 	],
@@ -76,5 +84,5 @@
 		"source/"
 	],
 	"targetType": "library",
-	"version": "0.18.3"
+	"version": "1.0.0"
 }

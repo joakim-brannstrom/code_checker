@@ -71,7 +71,8 @@ private:
 
     version (_UnlockNotify)
     {
-        auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+        auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte,
+                                         sqlite3_stmt **ppStmt, const char **pzTail)
         {
             int rc;
             while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
@@ -116,7 +117,7 @@ public:
     /++
     Gets the SQLite internal _handle of the statement.
     +/
-    sqlite3_stmt* handle() @property nothrow
+    inout(sqlite3_stmt)* handle() inout @safe pure nothrow @nogc
     {
         return p.handle;
     }
@@ -134,7 +135,7 @@ public:
     /++
     Tells whether the statement is empty (no SQL statement).
     +/
-    bool empty() @property nothrow
+    bool empty() const @safe pure nothrow @nogc
     {
         return p.handle is null;
     }
@@ -157,101 +158,65 @@ public:
         or a Nullable!T where T is any of the previous types.
     +/
     void bind(T)(int index, T value)
-        if (is(T == typeof(null)) || is(T == void*))
     in
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
     }
-    body
+    do
     {
         assert(p.handle);
-        checkResult(sqlite3_bind_null(p.handle, index));
-    }
 
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isIntegral!T || isSomeChar!T || isBoolean!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isFloatingPoint!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isSomeString!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        string str = value.to!string;
-        auto ptr = anchorMem(cast(void*) str.ptr);
-        checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isStaticArray!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isDynamicArray!T && !isSomeString!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        auto arr = cast(void[]) value;
-        checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (is(T == Nullable!U, U...))
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        if (value.isNull)
-        {
-            assert(p.handle);
+        static if (is(T == typeof(null)) || is(T == void*))
             checkResult(sqlite3_bind_null(p.handle, index));
+
+        // Handle nullable before user-provided hook as we don't want to write
+        // `Nullable.null` when the value `isNull`.
+        else static if (is(T == Nullable!U, U...))
+        {
+            if (value.isNull)
+                checkResult(sqlite3_bind_null(p.handle, index));
+            else
+                this.bind(index, value.get);
+        }
+
+        // Check for user-defined hook
+        else static if (is(typeof(value.toString((in char[]) {}))))
+        {
+            string str = format("%s", value);
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+        else static if (is(typeof(value.toString()) : string))
+        {
+            string str = value.toString();
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+
+        else static if (isIntegral!T || isSomeChar!T || isBoolean!T)
+            checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
+        else static if (isFloatingPoint!T)
+            checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
+        else static if (isSomeString!T)
+        {
+            string str = value.to!string;
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+        else static if (isStaticArray!T)
+            checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr,
+                                            value.sizeof, SQLITE_TRANSIENT));
+        else static if (isDynamicArray!T)
+        {
+            const void[] arr = value;
+            checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr),
+                                            arr.length, &releaseMem));
         }
         else
-            bind(index, value.get);
+            static assert(0, "Don't know how to bind an instance of type: " ~ T.stringof);
     }
 
     /++
@@ -274,7 +239,7 @@ public:
     {
         assert(name.length);
     }
-    body
+    do
     {
         assert(p.handle);
         auto index = sqlite3_bind_parameter_index(p.handle, name.toStringz);
@@ -290,7 +255,7 @@ public:
     {
         assert(Args.length == this.parameterCount, "parameter count mismatch");
     }
-    body
+    do
     {
         foreach (index, _; Args)
             bind(index + 1, args[index]);
@@ -377,7 +342,7 @@ public:
         static if (__traits(compiles, obj.length))
             assert(obj.length == this.parameterCount, "parameter count mismatch");
     }
-    body
+    do
     {
         static if (__traits(compiles, { foreach (string k, ref v; obj) {} }))
         {
@@ -412,7 +377,7 @@ public:
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
     }
-    body
+    do
     {
         assert(p.handle);
         return sqlite3_bind_parameter_name(p.handle, index).to!string;
@@ -429,7 +394,7 @@ public:
     {
         assert(name.length);
     }
-    body
+    do
     {
         assert(p.handle);
         return sqlite3_bind_parameter_index(p.handle, name.toStringz);
