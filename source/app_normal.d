@@ -260,6 +260,7 @@ struct NormalFSM {
 
         try {
             saveDependencies(db, env, AbsolutePath("."), tres.failed);
+            removeDroppedFiles(db, env, AbsolutePath("."));
         } catch (Exception e) {
             logger.warning(e.msg);
         }
@@ -465,4 +466,16 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
     }
 
     return app.data;
+}
+
+void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
+    import std.algorithm : map;
+    import std.path : buildPath, relativePath;
+    import my.set;
+
+    auto current = env.compileDb.map!(a => a.absoluteFile.relativePath(root).Path).toSet;
+    auto dbFiles = db.fileApi.getFiles.toSet;
+    foreach (removed; dbFiles.setDifference(current).toRange) {
+        db.fileApi.removeFile(removed);
+    }
 }
