@@ -5,9 +5,11 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.types;
 
-@safe:
+public import my.path : AbsolutePath;
 
 public import code_checker.cli : Config;
+
+@safe:
 
 /** The base fixture that an analyzer implement
  */
@@ -145,6 +147,9 @@ struct Result {
 
     /// Warnings suppressed by the user.
     Suppressed supp;
+
+    /// Files that failed an analyze.
+    AbsolutePath[] failed;
 }
 
 /// The result of all analyzers.
@@ -160,6 +165,9 @@ struct TotalResult {
 
     /// Warnings suppressed by the user.
     Suppressed supp;
+
+    /// Files that failed an analyze.
+    AbsolutePath[] failed;
 }
 
 /// Classification of warnings. Used by the user to filter on.

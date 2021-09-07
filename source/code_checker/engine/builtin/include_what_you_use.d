@@ -102,6 +102,7 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
             result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
 
         if (!allIsOk) {
+            result_.failed ~= res.file;
             res.print;
 
             if (env.conf.logg.toFile) {

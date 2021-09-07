@@ -44,12 +44,12 @@ struct Registry {
         }
     }
 
-    /// Range over the analysers. !
+    /// Range over the analysers.
     auto range() {
         import std.array : array;
         import std.algorithm : map, joiner, filter;
 
-        const order = [Type.staticCode, Type.dynamic];
+        static immutable order = [Type.staticCode, Type.dynamic];
 
         auto getAnalysers(Type t) {
             if (auto v = t in analysers)
@@ -68,7 +68,7 @@ struct Registry {
  *
  * Returns: The total status of running the analyzers.
  */
-Status execute(Environment env, string[] analysers, ref Registry reg) @trusted {
+TotalResult execute(Environment env, string[] analysers, ref Registry reg) @trusted {
     import std.algorithm;
     import std.range;
 
@@ -88,6 +88,7 @@ Status execute(Environment env, string[] analysers, ref Registry reg) @trusted {
             tres.supp = Suppressed(tres.supp + res.supp);
             tres.sugg ~= res.msg.array.filter!(a => a.severity == MsgSeverity.improveSuggestion)
                 .array;
+            tres.failed ~= res.failed;
 
             logger.trace(res);
             logger.trace(tres);
@@ -109,7 +110,7 @@ Status execute(Environment env, string[] analysers, ref Registry reg) @trusted {
     }
 
     log(tres);
-    return tres.status;
+    return tres;
 }
 
 Result executeOneAnalyzer(BaseFixture a) nothrow @trusted {

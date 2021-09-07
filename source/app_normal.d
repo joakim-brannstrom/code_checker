@@ -216,6 +216,7 @@ struct NormalFSM {
         import code_checker.engine;
         import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
         import code_checker.change : dependencyAnalyze;
+        import code_checker.engine.types : TotalResult;
 
         auto changed = () {
             bool[AbsolutePath] rval;
@@ -250,17 +251,17 @@ struct NormalFSM {
 
         env.conf = conf;
 
+        TotalResult tres;
         if (!env.files.empty) {
             auto reg = makeRegistry;
-            exitStatus = execute(env, conf.staticCode.analyzers, reg) == Status.passed ? 0 : 1;
+            tres = execute(env, conf.staticCode.analyzers, reg);
+            exitStatus = tres.status == Status.passed ? 0 : 1;
         }
 
-        if (exitStatus == 0) {
-            try {
-                saveDependencies(db, env, AbsolutePath("."));
-            } catch (Exception e) {
-                logger.warning(e.msg);
-            }
+        try {
+            saveDependencies(db, env, AbsolutePath("."), tres.failed);
+        } catch (Exception e) {
+            logger.warning(e.msg);
         }
     }
 
@@ -402,12 +403,16 @@ struct FileIncludes {
     SystemIncludePath[] systemIncludes;
 }
 
-void saveDependencies(ref Database db, Environment env, AbsolutePath root) {
-    import std.algorithm : map;
+void saveDependencies(ref Database db, Environment env, AbsolutePath root,
+        AbsolutePath[] failedFiles) {
+    import std.algorithm : map, filter;
     import std.path : relativePath;
     import std.array : array;
+    import my.set;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
+
+    auto failed = toSet(failedFiles);
 
     Path toRelativeRoot(AbsolutePath f) {
         return Path(relativePath(f, root));
@@ -424,7 +429,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root) {
         return Checksum64(0);
     }
 
-    foreach (pcmd; toRange(env)) {
+    foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile !in failed)) {
         db.fileApi.put(toRelativeRoot(pcmd.cmd.absoluteFile),
                 checksum(pcmd.cmd.absoluteFile), true);
         auto deps = depScan(pcmd, root).map!(a => DepFile(toRelativeRoot(a), checksum(a))).array;

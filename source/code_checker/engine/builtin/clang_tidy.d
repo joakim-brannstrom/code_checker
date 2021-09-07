@@ -155,6 +155,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         result_.supp += res.suppressedWarnings;
 
         if (res.clangTidyStatus != 0) {
+            result_.failed ~= res.file;
             res.print;
 
             if (env.conf.logg.toFile) {
