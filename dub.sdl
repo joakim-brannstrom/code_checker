@@ -11,7 +11,7 @@ dependency "toml" version="~>1.0.0-rc.3"  default=true
 dependency "unit-threaded" version="~>2.0.3" default=true
 dependency "my" version="~>0.0.33" default=true
 dependency "compile_db" version="~>0.0.2" default=true
-dependency "miniorm" version="~>0.0.4" default=true
+dependency "miniorm" version="~>0.0.5" default=true
 
 //subPackage "./vendor/colorlog"
 //subPackage "./vendor/toml"
