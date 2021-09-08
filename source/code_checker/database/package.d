@@ -41,6 +41,10 @@ struct Database {
         return Database(initializeDB(db));
     }
 
+    scope auto transaction() @trusted {
+        return db.transaction;
+    }
+
     DbDependency dependencyApi() return @safe {
         return typeof(return)(&db, &this);
     }
