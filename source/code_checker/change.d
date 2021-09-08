@@ -25,7 +25,7 @@ import code_checker.utility : toAbsoluteRoot;
 /** Returns: the root files that need to be re-analyzed because either them or
  * their dependency has changed.
  */
-bool[Path] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
+bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
     import std.algorithm : map, cache, filter;
     import std.typecons : tuple;
     import std.path : buildPath;
@@ -36,7 +36,7 @@ bool[Path] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
 
     // pessimistic. Add all as needing to be analyzed.
     foreach (a; db.fileApi.getRootFiles.map!(a => db.fileApi.getFile(a).get)) {
-        rval[a] = false;
+        rval[buildPath(rootDir, a).AbsolutePath] = false;
     }
 
     try {
@@ -71,7 +71,7 @@ bool[Path] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
                 .cache
                 .filter!(a => isChanged(a))
                 .map!(a => a.root)) {
-            rval[f] = true;
+            rval[buildPath(rootDir, f).AbsolutePath] = true;
         }
     } catch (Exception e) {
         logger.warning(e.msg);
