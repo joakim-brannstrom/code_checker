@@ -259,6 +259,9 @@ struct NormalFSM {
         }
 
         try {
+            auto trans = db.transaction;
+            scope (success)
+                trans.commit;
             saveDependencies(db, env, AbsolutePath("."), tres.failed);
             removeDroppedFiles(db, env, AbsolutePath("."));
         } catch (Exception e) {
