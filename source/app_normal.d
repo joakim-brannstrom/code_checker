@@ -261,9 +261,10 @@ struct NormalFSM {
         try {
             auto trans = db.transaction;
             scope (success)
-                trans.commit;
-            saveDependencies(db, env, AbsolutePath("."), tres.failed);
-            removeDroppedFiles(db, env, AbsolutePath("."));
+                () { db.dependencyApi.cleanup; trans.commit; }();
+            saveDependencies(db, env, root, tres.failed);
+            removeDroppedFiles(db, env, root);
+            db.dependencyApi.cleanup;
         } catch (Exception e) {
             logger.warning(e.msg);
         }
@@ -400,27 +401,24 @@ unittest {
     }
 }
 
-struct FileIncludes {
-    import compile_db : ParseFlags, SystemIncludePath;
+Path toIncludePath(AbsolutePath f, AbsolutePath root) {
+    import std.algorithm : startsWith;
+    import std.path : relativePath, buildNormalizedPath;
 
-    ParseFlags.Include[] includes;
-    SystemIncludePath[] systemIncludes;
+    if (f.toString.startsWith(root.toString))
+        return relativePath(f, root).Path;
+    return f;
 }
 
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         AbsolutePath[] failedFiles) {
     import std.algorithm : map, filter;
-    import std.path : relativePath;
     import std.array : array;
     import my.set;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
 
     auto failed = toSet(failedFiles);
-
-    Path toRelativeRoot(AbsolutePath f) {
-        return Path(relativePath(f, root));
-    }
 
     auto checksum(AbsolutePath f) {
         import my.hash : checksum, makeChecksum64, Checksum64;
@@ -434,10 +432,11 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     }
 
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile !in failed)) {
-        db.fileApi.put(toRelativeRoot(pcmd.cmd.absoluteFile),
+        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
                 checksum(pcmd.cmd.absoluteFile), true);
-        auto deps = depScan(pcmd, root).map!(a => DepFile(toRelativeRoot(a), checksum(a))).array;
-        db.dependencyApi.set(toRelativeRoot(pcmd.cmd.absoluteFile), deps);
+        auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
+                root), checksum(a))).array;
+        db.dependencyApi.set(toIncludePath(pcmd.cmd.absoluteFile, root), deps);
     }
 }
 
@@ -460,7 +459,8 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
             .map!(a => a[1])
             .filter!(a => a.length >= 3)
             .map!(a => strip(a.idup)[1 .. $ - 1].Path)
-            .map!(a => toAbsolutePath(a, root, pcmd.flags.includes, pcmd.flags.systemIncludes))
+            .map!(a => toAbsolutePath(a, pcmd.cmd.absoluteFile.dirName.AbsolutePath,
+                    pcmd.flags.includes, pcmd.flags.systemIncludes))
             .filter!(a => a.hasValue)
             .map!(a => a.orElse(AbsolutePath.init))
             .copy(app);
@@ -473,10 +473,9 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     import std.algorithm : map;
-    import std.path : buildPath, relativePath;
     import my.set;
 
-    auto current = env.compileDb.map!(a => a.absoluteFile.relativePath(root).Path).toSet;
+    auto current = env.compileDb.map!(a => a.absoluteFile.toIncludePath(root)).toSet;
     auto dbFiles = db.fileApi.getFiles.toSet;
     foreach (removed; dbFiles.setDifference(current).toRange) {
         db.fileApi.removeFile(removed);
