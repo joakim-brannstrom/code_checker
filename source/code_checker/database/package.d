@@ -59,7 +59,7 @@ struct DbFile {
     private Database* wrapperDb;
 
     void put(const Path p, Checksum64 cs, bool isRoot) @trusted {
-        static immutable sql = format!"INSERT OR IGNORE INTO %s (path, checksum, root)
+        static immutable sql = format!"INSERT OR REPLACE INTO %s (path, checksum, root)
             VALUES (:path, :checksum, :root)"(filesTable);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
@@ -148,7 +148,7 @@ struct DbDependency {
 
     /// The root must already exist or the whole operation will fail with an sql error.
     void set(const Path path, const DepFile[] deps) @trusted {
-        static immutable insertDepSql = format!"INSERT OR IGNORE INTO %1$s (file,checksum)
+        static immutable insertDepSql = format!"INSERT OR REPLACE INTO %1$s (file,checksum)
             VALUES(:file,:cs)
             ON CONFLICT (file) DO UPDATE SET checksum=:cs WHERE file=:file"(
                 depFileTable);
@@ -168,7 +168,7 @@ struct DbDependency {
                 ids.put(id.orElse(0L));
         }
 
-        static immutable addRelSql = format!"INSERT OR IGNORE INTO %1$s (dep_id,file_id) VALUES(:did, :fid)"(
+        static immutable addRelSql = format!"INSERT OR REPLACE INTO %1$s (dep_id,file_id) VALUES(:did, :fid)"(
                 depRootTable);
         stmt = db.prepare(addRelSql);
         const fid = () {
