@@ -83,8 +83,8 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
 }
 
 /// Convert to an absolute path by finding the first match among the compiler flags
-Optional!AbsolutePath toAbsolutePath(Path file, AbsolutePath workDir,
-        ParseFlags.Include[] includes, SystemIncludePath[] systemIncludes) @trusted nothrow {
+Optional!AbsolutePath toAbsolutePath(Path file, AbsolutePath parentDir,
+        AbsolutePath workDir, ParseFlags.Include[] includes, SystemIncludePath[] systemIncludes) @trusted nothrow {
     import std.algorithm : map, filter;
     import std.file : exists;
     import std.path : buildPath;
@@ -97,6 +97,12 @@ Optional!AbsolutePath toAbsolutePath(Path file, AbsolutePath workDir,
         } catch (Exception e) {
         }
         return none!AbsolutePath;
+    }
+
+    {
+        auto a = lookup(parentDir.toString);
+        if (a.hasValue)
+            return a;
     }
 
     {
