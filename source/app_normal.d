@@ -442,33 +442,48 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
 
 AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
     import std.algorithm : map, filter, copy;
-    import std.array : appender;
     import std.stdio : File;
     import std.string : strip, startsWith, split;
     import my.optional;
+    import my.container.vector;
+    import my.set;
     import code_checker.change : toAbsolutePath;
 
-    auto app = appender!(AbsolutePath[])();
+    Set!AbsolutePath found;
+    Vector!AbsolutePath que;
+    que.put(pcmd.cmd.absoluteFile);
 
-    try {
-        File(pcmd.cmd.absoluteFile).byLine
-            .map!(a => a.strip)
-            .filter!(a => a.startsWith("#include"))
-            .map!(a => a.split)
-            .filter!(a => a.length >= 2)
-            .map!(a => a[1])
-            .filter!(a => a.length >= 3)
-            .map!(a => strip(a.idup)[1 .. $ - 1].Path)
-            .map!(a => toAbsolutePath(a, pcmd.cmd.absoluteFile.dirName.AbsolutePath,
-                    pcmd.cmd.directory, pcmd.flags.includes, pcmd.flags.systemIncludes))
-            .filter!(a => a.hasValue)
-            .map!(a => a.orElse(AbsolutePath.init))
-            .copy(app);
-    } catch (Exception e) {
-        logger.trace(e.msg);
+    void updateQueue(AbsolutePath p) {
+        if (p !in found)
+            que.put(p);
     }
 
-    return app.data;
+    while (!que.empty) {
+        auto curr = que.back;
+        que.popBack;
+
+        try {
+            foreach (d; File(curr).byLine
+                    .map!(a => a.strip)
+                    .filter!(a => a.startsWith("#include"))
+                    .map!(a => a.split)
+                    .filter!(a => a.length >= 2)
+                    .map!(a => a[1])
+                    .filter!(a => a.length >= 3)
+                    .map!(a => strip(a.idup)[1 .. $ - 1].Path)
+                    .map!(a => toAbsolutePath(a, pcmd.cmd.absoluteFile.dirName.AbsolutePath,
+                        pcmd.cmd.directory, pcmd.flags.includes, pcmd.flags.systemIncludes))
+                    .filter!(a => a.hasValue)
+                    .map!(a => a.orElse(AbsolutePath.init))) {
+                updateQueue(d);
+                found.add(d);
+            }
+        } catch (Exception e) {
+            logger.trace(e.msg);
+        }
+    }
+
+    return found.toArray;
 }
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
