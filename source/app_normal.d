@@ -460,7 +460,7 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
             .filter!(a => a.length >= 3)
             .map!(a => strip(a.idup)[1 .. $ - 1].Path)
             .map!(a => toAbsolutePath(a, pcmd.cmd.absoluteFile.dirName.AbsolutePath,
-                    pcmd.flags.includes, pcmd.flags.systemIncludes))
+                    pcmd.cmd.directory, pcmd.flags.includes, pcmd.flags.systemIncludes))
             .filter!(a => a.hasValue)
             .map!(a => a.orElse(AbsolutePath.init))
             .copy(app);
