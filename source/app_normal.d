@@ -414,6 +414,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         AbsolutePath[] failedFiles) {
     import std.algorithm : map, filter;
     import std.array : array;
+    import std.file : timeLastModified;
     import my.set;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
@@ -432,9 +433,10 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     }
 
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile !in failed)) {
-        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root), checksum(pcmd.cmd.absoluteFile));
+        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
+                checksum(pcmd.cmd.absoluteFile), timeLastModified(pcmd.cmd.absoluteFile));
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
-                root), checksum(a))).array;
+                root), checksum(a), timeLastModified(a))).array;
         db.dependencyApi.set(toIncludePath(pcmd.cmd.absoluteFile, root), deps);
     }
 }

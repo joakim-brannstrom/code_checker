@@ -27,8 +27,12 @@ import code_checker.utility : toAbsoluteRoot;
  */
 bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @trusted {
     import std.algorithm : map, cache, filter;
-    import std.typecons : tuple;
+    import std.datetime : dur;
+    import std.file : timeLastModified;
     import std.path : buildPath;
+    import std.typecons : tuple;
+    import std.math : abs;
+    import std.conv : to;
     import my.hash : checksum, makeChecksum64, Checksum64;
     import code_checker.database : FileId, TrackFile;
 
@@ -41,7 +45,6 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
     }
 
     try {
-        auto getFileId = (string p) => db.fileApi.getFileId(p.Path);
         auto getTrackFile = (Path p) => db.fileApi.getFile(p);
         auto getFileFsChecksum = (AbsolutePath p) {
             return checksum!makeChecksum64(p);
@@ -52,11 +55,19 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
             dbDeps[a.file] = a.checksum;
 
         bool isChanged(T)(T f) {
-            if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file)))
+            if ((f.root.timeStamp - timeLastModified(f.root.file)).total!"seconds".abs > 1) {
+                debug logger.trace("timestamp changed ", f.root.file);
                 return true;
+            }
+
+            if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file))) {
+                debug logger.trace("checksum changed of root", f.root.file);
+                return true;
+            }
 
             foreach (a; f.deps.filter!(a => getFileFsChecksum(toAbsoluteRoot(rootDir,
                     a)) != dbDeps[a])) {
+                debug logger.tracef("checksum changed of dependency %s for %s", a, f.root.file);
                 return true;
             }
 
