@@ -432,8 +432,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     }
 
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile !in failed)) {
-        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
-                checksum(pcmd.cmd.absoluteFile), true);
+        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root), checksum(pcmd.cmd.absoluteFile));
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
                 root), checksum(a))).array;
         db.dependencyApi.set(toIncludePath(pcmd.cmd.absoluteFile, root), deps);

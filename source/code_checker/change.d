@@ -30,19 +30,19 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
     import std.typecons : tuple;
     import std.path : buildPath;
     import my.hash : checksum, makeChecksum64, Checksum64;
-    import code_checker.database : FileId;
+    import code_checker.database : FileId, TrackFile;
 
     typeof(return) rval;
 
     // pessimistic. Add all as needing to be analyzed.
     foreach (a; db.fileApi.getRootFiles.map!(a => db.fileApi.getFile(a).get)) {
-        rval[buildPath(rootDir, a).AbsolutePath] = false;
+        auto p = buildPath(rootDir, a.file).AbsolutePath;
+        rval[p] = false;
     }
 
     try {
         auto getFileId = (string p) => db.fileApi.getFileId(p.Path);
-        auto getFileName = (FileId id) => db.fileApi.getFile(id);
-        auto getFileDbChecksum = (string p) => db.fileApi.getFileChecksum(p.Path);
+        auto getTrackFile = (Path p) => db.fileApi.getFile(p);
         auto getFileFsChecksum = (AbsolutePath p) {
             return checksum!makeChecksum64(p);
         };
@@ -52,7 +52,7 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
             dbDeps[a.file] = a.checksum;
 
         bool isChanged(T)(T f) {
-            if (f.rootCs != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root)))
+            if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file)))
                 return true;
 
             foreach (a; f.deps.filter!(a => getFileFsChecksum(toAbsoluteRoot(rootDir,
@@ -66,11 +66,10 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
         foreach (f; db.fileApi
                 .getRootFiles
                 .map!(a => db.fileApi.getFile(a).get)
-                .map!(a => tuple!("root", "rootCs", "deps")(a,
-                    getFileDbChecksum(a), db.dependencyApi.get(a)))
+                .map!(a => tuple!("root", "deps")(a, db.dependencyApi.get(a.file)))
                 .cache
                 .filter!(a => isChanged(a))
-                .map!(a => a.root)) {
+                .map!(a => a.root.file)) {
             rval[buildPath(rootDir, f).AbsolutePath] = true;
         }
     } catch (Exception e) {

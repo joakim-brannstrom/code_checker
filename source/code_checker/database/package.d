@@ -14,6 +14,7 @@ module code_checker.database;
 import logger = std.experimental.logger;
 import std.algorithm : map, joiner, filter;
 import std.array : appender, array, empty;
+import std.datetime : SysTime;
 import std.exception : collectException;
 import std.format : format;
 import std.typecons : Nullable, Flag, No;
@@ -58,25 +59,44 @@ struct DbFile {
     private Miniorm* db;
     private Database* wrapperDb;
 
-    void put(const Path p, Checksum64 cs, bool isRoot) @trusted {
-        static immutable sql = format!"INSERT OR REPLACE INTO %s (path, checksum, root)
-            VALUES (:path, :checksum, :root)"(filesTable);
+    void put(const Path p, Checksum64 cs, SysTime lastModified) @trusted {
+        import std.datetime : Clock;
+
+        static immutable sql = format!"INSERT INTO %s (path, checksum, root, time_stamp)
+            VALUES (:path, :checksum, 1, :ts)
+            ON CONFLICT (path) DO UPDATE SET checksum=:checksum,time_stamp=:ts"(
+                filesTable);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
         stmt.get.bind(":checksum", cast(long) cs.c0);
-        stmt.get.bind(":root", isRoot);
+        stmt.get.bind(":ts", lastModified.toSqliteDateTime);
         stmt.get.execute;
     }
 
     /// Returns: the file path that the id correspond to.
-    Nullable!Path getFile(const FileId id) @trusted {
-        static immutable sql = format("SELECT path FROM %s WHERE id = :id", filesTable);
+    Nullable!TrackFile getFile(const FileId id) @trusted {
+        static immutable sql = format(
+                "SELECT path,checksum,time_stamp FROM %s WHERE id = :id", filesTable);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":id", id.get);
 
         typeof(return) rval;
         foreach (ref r; stmt.get.execute)
-            rval = Path(r.peek!string(0));
+            rval = TrackFile(Path(r.peek!string(0)),
+                    Checksum64(r.peek!long(1)), r.peek!string(2).fromSqLiteDateTime);
+        return rval;
+    }
+
+    Nullable!TrackFile getFile(const Path path) @trusted {
+        static immutable sql = format(
+                "SELECT path,checksum,time_stamp FROM %s WHERE path=:path", filesTable);
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", path);
+
+        typeof(return) rval;
+        foreach (ref r; stmt.get.execute)
+            rval = TrackFile(Path(r.peek!string(0)),
+                    Checksum64(r.peek!long(1)), r.peek!string(2).fromSqLiteDateTime);
         return rval;
     }
 
@@ -148,9 +168,9 @@ struct DbDependency {
 
     /// The root must already exist or the whole operation will fail with an sql error.
     void set(const Path path, const DepFile[] deps) @trusted {
-        static immutable insertDepSql = format!"INSERT OR REPLACE INTO %1$s (file,checksum)
-            VALUES(:file,:cs)
-            ON CONFLICT (file) DO UPDATE SET checksum=:cs WHERE file=:file"(
+        static immutable insertDepSql = format!"INSERT INTO %1$s (file,checksum,time_stamp)
+            VALUES(:file,:cs,:ts)
+            ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file"(
                 depFileTable);
 
         auto stmt = db.prepare(insertDepSql);
@@ -158,6 +178,7 @@ struct DbDependency {
         foreach (a; deps) {
             stmt.get.bind(":file", a.file.toString);
             stmt.get.bind(":cs", cast(long) a.checksum.c0);
+            stmt.get.bind(":ts", a.timeStamp.toSqliteDateTime);
             stmt.get.execute;
             stmt.get.reset;
 
@@ -168,7 +189,7 @@ struct DbDependency {
                 ids.put(id.orElse(0L));
         }
 
-        static immutable addRelSql = format!"INSERT OR REPLACE INTO %1$s (dep_id,file_id) VALUES(:did, :fid)"(
+        static immutable addRelSql = format!"INSERT OR IGNORE INTO %1$s (dep_id,file_id) VALUES(:did, :fid)"(
                 depRootTable);
         stmt = db.prepare(addRelSql);
         const fid = () {
@@ -187,6 +208,12 @@ struct DbDependency {
             stmt.get.execute;
             stmt.get.reset;
         }
+
+        // remove dropped relations
+        stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
+                ids.data));
+        stmt.get.bind(":fid", fid.get);
+        stmt.get.execute;
     }
 
     private Optional!long getId(const Path file) {
@@ -200,7 +227,7 @@ struct DbDependency {
     /// Returns: all dependencies.
     DepFile[] getAll() @trusted {
         return db.run(select!DependencyFileTable)
-            .map!(a => DepFile(Path(a.file), Checksum64(a.checksum))).array;
+            .map!(a => DepFile(Path(a.file), Checksum64(a.checksum), a.timeStamp)).array;
     }
 
     /// Returns: all files that a root is dependent on.
@@ -235,7 +262,14 @@ struct DbDependency {
 struct DepFile {
     Path file;
     Checksum64 checksum;
+    SysTime timeStamp;
 }
 
 /// Primary key in the files table
 alias FileId = NamedType!(long, Tag!"FileId", long.init, Comparable, Hashable, TagStringable);
+
+struct TrackFile {
+    Path file;
+    Checksum64 checksum;
+    SysTime timeStamp;
+}
