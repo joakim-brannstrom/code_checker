@@ -238,6 +238,9 @@ struct FilesTbl {
 
     /// True if the file is a root.
     bool root;
+
+    @ColumnName("time_stamp")
+    SysTime timeStamp;
 }
 
 immutable depFileTable = "dependency_file";
@@ -249,6 +252,9 @@ struct DependencyFileTable {
     long id;
     string file;
     long checksum;
+
+    @ColumnName("time_stamp")
+    SysTime timeStamp;
 }
 
 immutable depRootTable = "rel_dependency_root";
@@ -272,4 +278,10 @@ void upgradeV0(ref Miniorm db) {
 
     db.run(buildSchema!(VersionTbl, FilesTbl, DependencyFileTable, DependencyRootTable));
     updateSchemaVersion(db, tbl.latestSchemaVersion);
+}
+
+void upgradeV1(ref Miniorm db) {
+    db.run("DROP TABLE " ~ depFileTable);
+    db.run("DELETE FROM " ~ depRootTable);
+    db.run(buildSchema!DependencyFileTable);
 }
