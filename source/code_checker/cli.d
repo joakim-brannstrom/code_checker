@@ -91,14 +91,15 @@ struct ConfigCompileDb {
     /// Command to generate the compile_commands.json
     string generateDb;
 
+    /// Dependencies that the generate command have. If it is set then the
+    /// commmand is only executed when they are changed.
+    AbsolutePath[] generateDbDeps;
+
     /// Raw user input via either config or cli
     string[] rawDbs;
 
     /// Either a path to a compilation database or a directory to search for one in.
     AbsolutePath[] dbs;
-
-    /// Do not remove the merged compile_commands.json
-    bool keep;
 
     /// Flags the user wants to be automatically removed from the compile_commands.json.
     CompileCommandFilter flagFilter;
@@ -261,7 +262,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "init-template", "base the initial config on the named template (default: default)", &conf.baseConfName,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
-            "keep-db", "do not remove the merged compile_commands.json when done", &conf.compileDb.keep,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
@@ -382,6 +382,16 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["compile_commands.generate_cmd"] = (ref Config c, ref TOMLValue v) {
         c.compileDb.generateDb = v.str;
+    };
+    callbacks["compile_commands.generate_cmd_deps"] = (ref Config c, ref TOMLValue v) {
+        try {
+            c.compileDb.generateDbDeps = v.array
+                .map!"a.str"
+                .map!(a => AbsolutePath(a))
+                .array;
+        } catch (Exception e) {
+            logger.warning(e.msg);
+        }
     };
     callbacks["compile_commands.exclude"] = (ref Config c, ref TOMLValue v) {
         c.staticCode.fileExcludeFilter = v.array.map!"a.str".array;

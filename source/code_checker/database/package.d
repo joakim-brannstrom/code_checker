@@ -14,7 +14,7 @@ module code_checker.database;
 import logger = std.experimental.logger;
 import std.algorithm : map, joiner, filter;
 import std.array : appender, array, empty;
-import std.datetime : SysTime;
+import std.datetime : SysTime, Duration;
 import std.exception : collectException;
 import std.format : format;
 import std.typecons : Nullable, Flag, No;
@@ -304,14 +304,15 @@ struct DbCompileDbTrack {
             WHERE path=:path"(compileDbTrack);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", path);
-        foreach (ref a; stmt.get.execute)
+        foreach (ref a; stmt.get.execute) {
             return TrackFileByStat(a.peek!string(0).Path,
-                    cast(ulong) a.peek!long(1), a.peek!string(2).fromSqLiteDateTime);
-        throw new Exception(null);
+                    cast(ulong) a.peek!long(1), a.peek!string(2).fromSqLiteDateTime.toLocalTime);
+        }
+        throw new Exception("file is not tracked " ~ path);
     }
 
     /// Remove old entries to avoid infinite growth of the database.
-    void cleanup() {
+    void cleanup(const Duration dropAfter) {
         import std.datetime : Clock, dur;
 
         static immutable sql = format!"DELETE FROM %s
@@ -322,7 +323,7 @@ struct DbCompileDbTrack {
         // two is a magic number that I think is ok. Over two days not that
         // many files should have been added/removed that the database grow to
         // Gbyte in size.
-        stmt.get.bind(":older_then", (Clock.currTime - 2.dur!"days").toSqliteDateTime);
+        stmt.get.bind(":older_then", (Clock.currTime - dropAfter).toSqliteDateTime);
         stmt.get.execute;
     }
 }

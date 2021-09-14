@@ -26,7 +26,7 @@ unittest {
     dirContentCopy(buildPath(testData, "cpp", "dep_scan"), ta.sandboxPath);
 
     // action
-    auto res = ta.exec(appPath, "--verbose", "trace", "--keep-db", "-c", "code_checker.toml");
+    auto res = ta.exec(appPath, "--verbose", "trace", "-c", "code_checker.toml");
 
     // assert
     res.status.shouldEqual(0);

@@ -18,7 +18,7 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
 import code_checker.cli : Config;
-import code_checker.database : Database;
+import code_checker.database : Database, TrackFileByStat;
 import code_checker.engine : Environment;
 
 version (unittest) {
@@ -149,12 +149,18 @@ struct NormalFSM {
     }
 
     void act_openDb() {
+        import std.datetime : dur;
         import code_checker.database;
 
         try {
             db = Database.make(conf.database);
         } catch (Exception e) {
             logger.warning(e.msg);
+        }
+
+        try {
+            db.compileDbTrackApi.cleanup(2.dur!"weeks");
+        } catch (Exception e) {
         }
     }
 
@@ -166,17 +172,22 @@ struct NormalFSM {
             chdir(conf.workDir);
     }
 
-    void act_checkForDb() {
-        import std.file : exists;
-
-        removeCompileDb = !exists(compileCommandsFile) && !conf.compileDb.keep;
-    }
-
     void act_genDb() {
         import std.process : spawnShell, wait;
 
+        bool isUnchanged() nothrow {
+            if (conf.compileDb.generateDbDeps.empty)
+                return false;
+            return !isChanged(db, conf.compileDb.generateDbDeps);
+        }
+
+        if (isUnchanged)
+            return;
+
         auto res = spawnShell(conf.compileDb.generateDb).wait;
-        if (res != 0) {
+        if (res == 0) {
+            updateTrackFileByStat(db, conf.compileDb.generateDbDeps);
+        } else {
             // the user need some helpful feedback for what failed
             logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
             logger.error("Executed the following commands:");
@@ -191,18 +202,30 @@ struct NormalFSM {
         import std.algorithm : map;
         import std.array : appender, array;
         import std.stdio : File;
+        import std.file : exists;
         import compile_db : fromArgCompileDb;
+        import code_checker.database : TrackFileByStat;
+
+        compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.idup).array);
+
+        bool isUnchanged() nothrow {
+            if (!exists(compileCommandsFile))
+                return false;
+            return !isChanged(db, conf.compileDb.dbs);
+        }
+
+        if (isUnchanged)
+            return;
 
         logger.trace("Creating a unified compile_commands.json");
 
         try {
-            this.compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.dup)
-                    .array);
-
             auto compile_db = appender!string();
             unifyCompileDb(compileDb, conf.compiler.useCompilerSystemIncludes,
                     conf.compileDb.flagFilter, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
+
+            updateTrackFileByStat(db, conf.compileDb.dbs);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -232,7 +255,7 @@ struct NormalFSM {
 
         Environment env;
         env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
-        env.compileDb = this.compileDb;
+        env.compileDb = compileDb;
         env.files = () {
             if (!conf.analyzeFiles.empty)
                 return conf.analyzeFiles.map!(a => cast(string) a).array;
@@ -271,10 +294,7 @@ struct NormalFSM {
     }
 
     void act_cleanup() {
-        import std.file : remove, chdir;
-
-        if (removeCompileDb)
-            remove(compileCommandsFile).collectException;
+        import std.file : chdir;
 
         chdir(root);
     }
@@ -495,5 +515,50 @@ void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     auto dbFiles = db.fileApi.getFiles.toSet;
     foreach (removed; dbFiles.setDifference(current).toRange) {
         db.fileApi.removeFile(removed);
+    }
+}
+
+TrackFileByStat getTrackFileByStat(Path p) nothrow {
+    import std.file : timeLastModified, getSize;
+
+    try {
+        auto ts = timeLastModified(p);
+        auto sz = getSize(p);
+        return TrackFileByStat(p, sz, ts);
+    } catch (Exception e) {
+        logger.trace(e.msg).collectException;
+    }
+    return TrackFileByStat(p);
+}
+
+bool isChanged(ref Database db, AbsolutePath[] files) nothrow {
+    import std.math : abs;
+
+    foreach (a; files) {
+        try {
+            logger.trace("checking ", a);
+            const prev = db.compileDbTrackApi.get(a);
+            const curr = getTrackFileByStat(a);
+            const res = prev.size == curr.size
+                && (prev.timeStamp - curr.timeStamp).total!"msecs".abs < 20;
+            logger.tracef("%s is %s (prev:%s curr:%s)", a, res ? "unchaged" : "changed", prev, curr);
+            if (!res)
+                return true;
+        } catch (Exception e) {
+            logger.trace(e.msg).collectException;
+            return true;
+        }
+    }
+    return false;
+}
+
+void updateTrackFileByStat(ref Database db, AbsolutePath[] files) nothrow {
+    foreach (a; files) {
+        try {
+            db.compileDbTrackApi.put(getTrackFileByStat(a));
+            logger.trace("saved track data for ", a);
+        } catch (Exception e) {
+            logger.trace(e.msg).collectException;
+        }
     }
 }
