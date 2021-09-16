@@ -1,11 +1,13 @@
 [defaults]
 # only report issues with a severity >= to this value (style, low, medium, high, critical)
 severity = "style"
-# analysers to run. Available are: ["clang-tidy", "iwyu"]
+
+# analysers to run.
+# Available are: ["clang-tidy", "iwyu"]
 # analyzers = ["clang-tidy"]
 
 [compiler]
-# extra flags to pass on to the compiler
+# extra flags to pass on to the compiler.
 # the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
 extra_flags = [ "-Wall",
     "-Wextra", # resonable and standard
@@ -27,12 +29,17 @@ extra_flags = [ "-Wall",
     "-Wuseless-cast", # warn if you perform a cast to the same type
     "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
  ]
+
 # use this compilers system includes instead of the one used in the compile_commands.json
 # use_compiler_system_includes = "/path/to/c++"
 
 [compile_commands]
 # command to execute to generate compile_commands.json
 # generate_cmd = ""
+
+# if set then generate_cmd is only executed when a dependency change.
+# generate_cmd_deps = ["foo/bar/Makefile", "foo/Makefile"]
+
 # search for compile_commands.json in this paths
 search_paths = ["./compile_commands.json"]
 # files matching any of the regex will not be analyzed
@@ -73,7 +80,9 @@ search_paths = ["./compile_commands.json"]
 # "-M",
 # "-MM",
 # "-###"]
-# compiler arguments to skip from the beginning. Needed when the first argument is NOT a compiler but rather a wrapper
+
+# compiler arguments to skip from the beginning. Needed when the first argument
+# is NOT a compiler but rather a wrapper
 # skip_compiler_args = 0
 
 # only analyze a file once.
@@ -82,10 +91,13 @@ dedup = true
 [clang_tidy]
 # clang-tidy binary to use
 # binary = "clang-tidy"
+
 # arguments to -header-filter
 header_filter = ".*"
+
 # extend the checks configuration
 # check_extensions = []
+
 # checks to use
 checks = ["-*",
 "cppcoreguidelines*",
@@ -110,16 +122,19 @@ checks = ["-*",
 "-hicpp-vararg",
 "-hicpp-no-array-decay"
 ]
+
 # options affecting the checks
 options = []
 
 [iwyu]
 # iwyu (include what you use) binary
 # binary = "iwyu"
+
 # extra flags to pass on to the iwyu command. For example: ["-Xiwyu", "--verbose=3"]
 # flags = []
+
 # gives iwyu one or more mapping file
 # mapping_files = []
+
 # the global mapping files as provided by the tool installation
 # default_mapping_files = []
-

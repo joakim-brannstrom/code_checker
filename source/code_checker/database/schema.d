@@ -270,13 +270,28 @@ struct DependencyRootTable {
     long fileId;
 }
 
+immutable compileDbTrack = "compile_db_track";
+@TableName(compileDbTrack)
+@TableConstraint("unique_ UNIQUE (path)")
+struct CompileDbTrackTable {
+    long id;
+
+    string path;
+
+    long size;
+
+    @ColumnName("time_stamp")
+    SysTime timeStamp;
+}
+
 /** If the database start it version 0, not initialized, then initialize to the
  * latest schema version.
  */
 void upgradeV0(ref Miniorm db) {
     auto tbl = makeUpgradeTable;
 
-    db.run(buildSchema!(VersionTbl, FilesTbl, DependencyFileTable, DependencyRootTable));
+    db.run(buildSchema!(VersionTbl, FilesTbl, DependencyFileTable,
+            DependencyRootTable, CompileDbTrackTable));
     updateSchemaVersion(db, tbl.latestSchemaVersion);
 }
 
@@ -284,4 +299,8 @@ void upgradeV1(ref Miniorm db) {
     db.run("DROP TABLE " ~ depFileTable);
     db.run("DELETE FROM " ~ depRootTable);
     db.run(buildSchema!DependencyFileTable);
+}
+
+void upgradeV2(ref Miniorm db) {
+    db.run(buildSchema!CompileDbTrackTable);
 }

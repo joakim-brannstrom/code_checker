@@ -14,7 +14,7 @@ module code_checker.database;
 import logger = std.experimental.logger;
 import std.algorithm : map, joiner, filter;
 import std.array : appender, array, empty;
-import std.datetime : SysTime;
+import std.datetime : SysTime, Duration;
 import std.exception : collectException;
 import std.format : format;
 import std.typecons : Nullable, Flag, No;
@@ -42,7 +42,7 @@ struct Database {
         return Database(initializeDB(db));
     }
 
-    scope auto transaction() @trusted {
+    auto transaction() @trusted {
         return db.transaction;
     }
 
@@ -53,6 +53,10 @@ struct Database {
     DbFile fileApi() return @safe {
         return typeof(return)(&db, &this);
     }
+
+    DbCompileDbTrack compileDbTrackApi() return @safe {
+        return typeof(return)(&db, &this);
+    }
 }
 
 struct DbFile {
@@ -60,8 +64,6 @@ struct DbFile {
     private Database* wrapperDb;
 
     void put(const Path p, Checksum64 cs, SysTime lastModified) @trusted {
-        import std.datetime : Clock;
-
         static immutable sql = format!"INSERT INTO %s (path, checksum, root, time_stamp)
             VALUES (:path, :checksum, 1, :ts)
             ON CONFLICT (path) DO UPDATE SET checksum=:checksum,time_stamp=:ts"(
@@ -272,4 +274,56 @@ struct TrackFile {
     Path file;
     Checksum64 checksum;
     SysTime timeStamp;
+}
+
+struct TrackFileByStat {
+    Path file;
+    ulong size;
+    SysTime timeStamp;
+}
+
+struct DbCompileDbTrack {
+    private Miniorm* db;
+    private Database* wrapperDb;
+
+    void put(TrackFileByStat f) {
+        static immutable sql = format!"INSERT INTO %s (path,size,time_stamp)
+            VALUES(:path,:sz,:ts)
+            ON CONFLICT (path) DO UPDATE SET size=:sz,time_stamp=:ts"(
+                compileDbTrack);
+
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", f.file.toString);
+        stmt.get.bind(":sz", cast(long) f.size);
+        stmt.get.bind(":ts", f.timeStamp.toSqliteDateTime);
+        stmt.get.execute;
+    }
+
+    TrackFileByStat get(const Path path) {
+        static immutable sql = format!"SELECT path,size,time_stamp FROM %s
+            WHERE path=:path"(compileDbTrack);
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", path);
+        foreach (ref a; stmt.get.execute) {
+            return TrackFileByStat(a.peek!string(0).Path,
+                    cast(ulong) a.peek!long(1), a.peek!string(2).fromSqLiteDateTime.toLocalTime);
+        }
+        throw new Exception("file is not tracked " ~ path);
+    }
+
+    /// Remove old entries to avoid infinite growth of the database.
+    void cleanup(const Duration dropAfter) {
+        import std.datetime : Clock, dur;
+
+        static immutable sql = format!"DELETE FROM %s
+            WHERE datetime(time_stamp) < datetime(:older_then)"(
+                compileDbTrack);
+
+        auto stmt = db.prepare(sql);
+        // two is a magic number that I think is ok. Over two days not that
+        // many files should have been added/removed that the database grow to
+        // Gbyte in size.
+        stmt.get.bind(":older_then", (Clock.currTime - dropAfter).toSqliteDateTime);
+        stmt.get.execute;
+    }
 }

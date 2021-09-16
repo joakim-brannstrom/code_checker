@@ -130,7 +130,7 @@ unittest {
     dirContentCopy(buildPath(testData, "conf", "compiler_filter", "db"), ta.inSandboxPath("db"));
 
     auto res = ta.exec([
-            appPath, "--verbose", "trace", "--keep-db", "-c", "code_checker.toml"
+            appPath, "--verbose", "trace", "-c", "code_checker.toml"
             ]);
     res.status.shouldEqual(0);
 
