@@ -51,17 +51,20 @@ struct Database {
     }
 
     DbFile fileApi() return @safe {
-        return typeof(return)(&db, &this);
+        return typeof(return)(&db);
     }
 
     DbCompileDbTrack compileDbTrackApi() return @safe {
+        return typeof(return)(&db);
+    }
+
+    DbMessage messageApi() return @safe {
         return typeof(return)(&db, &this);
     }
 }
 
 struct DbFile {
     private Miniorm* db;
-    private Database* wrapperDb;
 
     void put(const Path p, Checksum64 cs, SysTime lastModified) @trusted {
         static immutable sql = format!"INSERT INTO %s (path, checksum, root, time_stamp)
@@ -284,7 +287,6 @@ struct TrackFileByStat {
 
 struct DbCompileDbTrack {
     private Miniorm* db;
-    private Database* wrapperDb;
 
     void put(TrackFileByStat f) {
         static immutable sql = format!"INSERT INTO %s (path,size,time_stamp)
@@ -315,15 +317,58 @@ struct DbCompileDbTrack {
     void cleanup(const Duration dropAfter) {
         import std.datetime : Clock, dur;
 
-        static immutable sql = format!"DELETE FROM %s
-            WHERE datetime(time_stamp) < datetime(:older_then)"(
-                compileDbTrack);
+        static immutable sql = format!"DELETE FROM " ~ compileDbTrack ~ "
+            WHERE datetime(time_stamp) < datetime(:older_then)";
 
         auto stmt = db.prepare(sql);
         // two is a magic number that I think is ok. Over two days not that
         // many files should have been added/removed that the database grow to
         // Gbyte in size.
         stmt.get.bind(":older_then", (Clock.currTime - dropAfter).toSqliteDateTime);
+        stmt.get.execute;
+    }
+}
+
+struct AnalyzeError {
+    const(ubyte)[] msg;
+}
+
+struct DbMessage {
+    private Miniorm* db;
+    private Database* wrapperDb;
+
+    void put(const Path p, AnalyzeError msg) {
+        import std.datetime : Clock;
+
+        static immutable sql = "INSERT INTO " ~ msgTable
+            ~ " (file_id,time_stamp,msg) VALUES(:fid,:ts,:msg)";
+
+        const fid = wrapperDb.fileApi.getFileId(p);
+        if (fid.isNull)
+            throw new Exception("Unable to add msg because file do not exist in DB: " ~ p.toString);
+
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":fid", cast(long) fid.get);
+        stmt.get.bind(":ts", Clock.currTime.toSqliteDateTime);
+        stmt.get.bind(":msg", msg.msg);
+        stmt.get.execute;
+    }
+
+    AnalyzeError[] get(const Path p) {
+        static immutable sql = "SELECT msg FROM " ~ msgTable ~ " t0,"
+            ~ filesTable ~ " t1 " ~ "WHERE t0.file_id = t1.id AND t1.path = :path";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p);
+        auto app = appender!(AnalyzeError[])();
+        foreach (a; stmt.get.execute)
+            app.put(AnalyzeError(a.peek!(const(ubyte)[])(0)));
+        return app.data;
+    }
+
+    void clear(const Path p) {
+        static immutable sql = "DELETE FROM " ~ msgTable ~ " WHERE path=:path";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":bind", p);
         stmt.get.execute;
     }
 }

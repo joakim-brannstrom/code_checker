@@ -284,6 +284,21 @@ struct CompileDbTrackTable {
     SysTime timeStamp;
 }
 
+immutable msgTable = "message";
+@TableName(msgTable)
+@TableForeignKey("file_id", KeyRef("files(id)"), KeyParam("ON DELETE CASCADE"))
+struct MessageTable {
+    long id;
+
+    @ColumnName("file_id")
+    long fileId;
+
+    @ColumnName("time_stamp")
+    SysTime timeStamp;
+
+    const(ubyte)[] msg;
+}
+
 /** If the database start it version 0, not initialized, then initialize to the
  * latest schema version.
  */
@@ -291,7 +306,7 @@ void upgradeV0(ref Miniorm db) {
     auto tbl = makeUpgradeTable;
 
     db.run(buildSchema!(VersionTbl, FilesTbl, DependencyFileTable,
-            DependencyRootTable, CompileDbTrackTable));
+            DependencyRootTable, CompileDbTrackTable, MessageTable));
     updateSchemaVersion(db, tbl.latestSchemaVersion);
 }
 
@@ -303,4 +318,8 @@ void upgradeV1(ref Miniorm db) {
 
 void upgradeV2(ref Miniorm db) {
     db.run(buildSchema!CompileDbTrackTable);
+}
+
+void upgradeV3(ref Miniorm db) {
+    db.run(buildSchema!MessageTable);
 }
