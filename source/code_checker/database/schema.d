@@ -296,11 +296,26 @@ void upgradeV0(ref Miniorm db) {
 }
 
 void upgradeV1(ref Miniorm db) {
+    import miniorm : toSqliteDateTime;
+
+    immutable newTbl = "new_" ~ filesTable;
+    db.run(buildSchema!FilesTbl("new_"));
+    auto stmt = db.prepare(format("INSERT INTO %s (id,path,checksum,root,:ts) SELECT * FROM %s",
+            newTbl, filesTable));
+    stmt.get.bind(":ts", Clock.currTime.toSqliteDateTime);
+    stmt.get.execute;
+
+    replaceTbl(db, newTbl, filesTable);
     db.run("DROP TABLE " ~ depFileTable);
     db.run("DELETE FROM " ~ depRootTable);
-    db.run(buildSchema!DependencyFileTable);
+    db.run(buildSchema!(DependencyFileTable, FilesTbl));
 }
 
 void upgradeV2(ref Miniorm db) {
     db.run(buildSchema!CompileDbTrackTable);
+}
+
+void replaceTbl(ref Miniorm db, string src, string dst) {
+    db.run("DROP TABLE " ~ dst);
+    db.run(format("ALTER TABLE %s RENAME TO %s", src, dst));
 }
