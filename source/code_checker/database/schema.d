@@ -300,7 +300,8 @@ void upgradeV1(ref Miniorm db) {
 
     immutable newTbl = "new_" ~ filesTable;
     db.run(buildSchema!FilesTbl("new_"));
-    auto stmt = db.prepare(format("INSERT INTO %s (id,path,checksum,root,:ts) SELECT * FROM %s",
+    auto stmt = db.prepare(format(
+            "INSERT INTO %s (id,path,checksum,root,time_stamp) SELECT id,path,checksum,root,:ts FROM %s",
             newTbl, filesTable));
     stmt.get.bind(":ts", Clock.currTime.toSqliteDateTime);
     stmt.get.execute;
