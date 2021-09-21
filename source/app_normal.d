@@ -67,10 +67,13 @@ struct NormalFSM {
     State st;
     Config conf;
     CompileCommandDB compileDb;
+
     /// If the compile_commands.json that is written to the file system should be deleted when code_checker is done.
     bool removeCompileDb;
+
     /// Root directory from which the program where initially started.
     AbsolutePath root;
+
     /// Exit status of used to indicate the success to the user.
     int exitStatus;
 
@@ -280,15 +283,19 @@ struct NormalFSM {
             auto reg = makeRegistry;
             tres = execute(env, conf.staticCode.analyzers, reg);
             exitStatus = tres.status == Status.passed ? 0 : 1;
-        }
 
-        spinSql!(() {
-            auto trans = db.transaction;
-            saveDependencies(db, env, root, tres.failed);
-            removeDroppedFiles(db, env, root);
-            db.dependencyApi.cleanup;
-            trans.commit;
-        });
+            spinSql!(() {
+                auto trans = db.transaction;
+                try {
+                    saveDependencies(db, env, root, tres.failed);
+                    removeDroppedFiles(db, env, root);
+                    db.dependencyApi.cleanup;
+                } catch (Exception e) {
+                    logger.trace(e.msg);
+                }
+                trans.commit;
+            });
+        }
     }
 
     void act_cleanup() {

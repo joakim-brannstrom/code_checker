@@ -9,7 +9,7 @@ module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
 import std.algorithm : copy, map, joiner, filter;
-import std.array : appender, array;
+import std.array : appender, array, empty;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
 import std.file : exists;
@@ -84,7 +84,8 @@ class ClangTidy : BaseFixture {
                 .array;
         }
 
-        ["--checks", checks.joiner(",").text].copy(app);
+        if (!checks.empty)
+            ["--checks", checks.joiner(",").text].copy(app);
 
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
