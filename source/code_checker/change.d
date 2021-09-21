@@ -33,25 +33,27 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
     import std.typecons : tuple;
     import std.math : abs;
     import std.conv : to;
+    import miniorm : spinSql;
     import my.hash : checksum, makeChecksum64, Checksum64;
     import code_checker.database : FileId, TrackFile;
 
     typeof(return) rval;
 
     // pessimistic. Add all as needing to be analyzed.
-    foreach (a; db.fileApi.getRootFiles.map!(a => db.fileApi.getFile(a).get)) {
+    foreach (a; spinSql!(() => db.fileApi.getRootFiles).map!(
+            a => spinSql!(() => db.fileApi.getFile(a)).get)) {
         auto p = buildPath(rootDir, a.file).AbsolutePath;
         rval[p] = false;
     }
 
     try {
-        auto getTrackFile = (Path p) => db.fileApi.getFile(p);
+        auto getTrackFile = (Path p) => spinSql!(() => db.fileApi.getFile(p));
         auto getFileFsChecksum = (AbsolutePath p) {
             return checksum!makeChecksum64(p);
         };
 
         Checksum64[Path] dbDeps;
-        foreach (a; db.dependencyApi.getAll)
+        foreach (a; spinSql!(() => db.dependencyApi.getAll))
             dbDeps[a.file] = a.checksum;
 
         bool isChanged(T)(T f) {
@@ -74,10 +76,9 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
             return false;
         }
 
-        foreach (f; db.fileApi
-                .getRootFiles
-                .map!(a => db.fileApi.getFile(a).get)
-                .map!(a => tuple!("root", "deps")(a, db.dependencyApi.get(a.file)))
+        foreach (f; spinSql!(() => db.fileApi).getRootFiles
+                .map!(a => spinSql!(() => db.fileApi.getFile(a)).get)
+                .map!(a => tuple!("root", "deps")(a, spinSql!(() => db.dependencyApi.get(a.file))))
                 .cache
                 .filter!(a => isChanged(a))
                 .map!(a => a.root.file)) {

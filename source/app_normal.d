@@ -13,6 +13,7 @@ import std.array : empty;
 import std.exception : collectException;
 
 import my.path;
+import miniorm : spinSql;
 
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
@@ -281,16 +282,13 @@ struct NormalFSM {
             exitStatus = tres.status == Status.passed ? 0 : 1;
         }
 
-        try {
+        spinSql!(() {
             auto trans = db.transaction;
-            scope (success)
-                () { db.dependencyApi.cleanup; trans.commit; }();
             saveDependencies(db, env, root, tres.failed);
             removeDroppedFiles(db, env, root);
             db.dependencyApi.cleanup;
-        } catch (Exception e) {
-            logger.warning(e.msg);
-        }
+            trans.commit;
+        });
     }
 
     void act_cleanup() {
