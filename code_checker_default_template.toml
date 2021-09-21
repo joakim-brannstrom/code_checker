@@ -1,6 +1,7 @@
 [defaults]
 # only report issues with a severity >= to this value (style, low, medium, high, critical)
 severity = "style"
+
 # analysers to run. Available are: ["clang-tidy", "iwyu"]
 # analyzers = ["clang-tidy"]
 
@@ -8,29 +9,34 @@ severity = "style"
 # extra flags to pass on to the compiler
 # the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
 extra_flags = []
+
 # use this compilers system includes instead of the one used in the compile_commands.json
 # use_compiler_system_includes = "/path/to/c++"
 
 [compile_commands]
 # command to execute to generate compile_commands.json
 # generate_cmd = ""
+
+# if set then generate_cmd is only executed when a dependency change.
+# generate_cmd_deps = ["foo/bar/Makefile", "foo/Makefile"]
+
 # search for compile_commands.json in this paths
 search_paths = ["./compile_commands.json"]
+
 # files matching any of the regex will not be analyzed
 # exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
 
 [clang_tidy]
-# clang-tidy binary to use
-# binary = "clang-tidy"
 # arguments to -header-filter
 header_filter = ".*"
+
 # extend the checks configuration
 # check_extensions = []
 
+# extend the system configuration with extra configuration options
+# [clang_tidy.option_extensions]
+# "cert-err61-cpp.CheckThrowTemporaries" = "1"
+
 [iwyu]
-# iwyu (include what you use) binary
-# binary = "iwyu"
 # extra flags to pass on to the iwyu command. For example: ["-Xiwyu", "--verbose=3"]
 # flags = []
-# gives iwyu one or more mapping file
-# mapping_files = []

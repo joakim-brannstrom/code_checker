@@ -43,19 +43,13 @@ struct Environment {
 
     Config conf;
 
-    /// Flags the user wants to be automatically removed from the compile_commands.json.
-    //CompileCommandFilter flagFilter;
-
-    /// Command to generate the compile_commands.json
-    //string genCompileDb;
-
     /// The compile_commands.json that contains all files to analyse.
     AbsolutePath compileDbFile;
 
     /// The compile commands that is used for the analyse.
     CompileCommandDB compileDb;
 
-    /// The files to analyse
+    /// The files to analyse.
     string[] files;
 }
 

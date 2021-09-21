@@ -95,36 +95,11 @@ dedup = true
 # arguments to -header-filter
 header_filter = ".*"
 
+# system configuration to use if .clang-tidy do not exists in work directory.
+# system_config = "{code_checker}/../etc/code_checker/clang_tidy.conf"
+
 # extend the checks configuration
 # check_extensions = []
-
-# checks to use
-checks = ["-*",
-"cppcoreguidelines*",
-"readability-*",
-"modernize*",
-"hicpp*",
-"-readability-implicit-bool-conversion",
-"-readability-named-parameter",
-"-cppcoreguidelines-pro-type-member-init",
-"-modernize-pass-by-value",
-"-modernize-return-braced-init-list",
-"-modernize-use-trailing-return-type",
-"-cppcoreguidelines-owning-memory",
-"-cppcoreguidelines-pro-type-union-access",
-"-cppcoreguidelines-pro-bounds-array-to-pointer-decay",
-"-cppcoreguidelines-pro-bounds-constant-array-index",
-"-cppcoreguidelines-pro-bounds-pointer-arithmetic",
-"-cppcoreguidelines-pro-type-vararg",
-"-cppcoreguidelines-pro-type-reinterpret-cast",
-"-cppcoreguidelines-pro-type-cstyle-cast",
-"-hicpp-no-assembler",
-"-hicpp-vararg",
-"-hicpp-no-array-decay"
-]
-
-# options affecting the checks
-options = []
 
 [iwyu]
 # iwyu (include what you use) binary

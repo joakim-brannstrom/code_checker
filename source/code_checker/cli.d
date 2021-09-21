@@ -16,6 +16,7 @@ import std.exception : collectException, ifThrown;
 import std.path : buildPath, dirName;
 import std.typecons : Tuple, Flag;
 
+import toml : TOMLDocument, TOMLValue;
 import my.path : AbsolutePath, Path;
 
 @safe:
@@ -44,17 +45,14 @@ struct ConfigStaticCode {
 
 /// Configuration options only relevant for clang-tidy.
 struct ConfigClangTidy {
-    /// Checks to toggle on/off
-    string[] checks;
+    /// System configuration to use if .clang-tidy do not exists in work directory.
+    string systemConfig = "{code_checker}/../etc/code_checker/clang_tidy.conf";
 
     /// Checks to toggle on/off. Used as a compliment to checks.
     string[] checkExtensions;
 
-    /// Arguments to be baked into the checks parameter
-    string[] options;
-
     /// Used as a compliment to options. options is set in the global while optionExtensions is set locally.
-    string[] optionExtensions;
+    string[string] optionExtensions;
 
     /// Argument to the be passed on to clang-tidy's --header-filter paramter as-is
     string headerFilter;
@@ -141,6 +139,9 @@ struct Config {
     /// Where the base configurations are stored.
     AbsolutePath baseConfDir;
 
+    /// System configuration.
+    AbsolutePath systemConfDir;
+
     /// Name of the base configuration to merge with the users.
     string baseConfName = "default";
 
@@ -180,6 +181,7 @@ struct Config {
         c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
         c.baseConfDir = environment.get("CODE_CHECKER_DEFAULT",
                 buildPath(thisExePath.dirName, "..")).Path.AbsolutePath;
+        c.systemConfDir = AbsolutePath(c.baseConfDir ~ "etc/code_checker");
 
         return c;
     }
@@ -415,16 +417,21 @@ void loadConfig(ref Config rval, string configFile) @trusted {
         c.clangTidy.headerFilter = v.str;
     };
     callbacks["clang_tidy.checks"] = (ref Config c, ref TOMLValue v) {
-        c.clangTidy.checks = v.array.map!(a => a.str).array;
+        logger.warning("clang_tidy.checks is deprecated. It is replaced by ",
+                c.clangTidy.systemConfig);
     };
     callbacks["clang_tidy.check_extensions"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.checkExtensions = v.array.map!(a => a.str).array;
     };
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
-        c.clangTidy.options = v.array.map!(a => a.str).array;
+        logger.warning("clang_tidy.options is deprecated. It is replaced by ",
+                c.clangTidy.systemConfig);
     };
     callbacks["clang_tidy.option_extensions"] = (ref Config c, ref TOMLValue v) {
-        c.clangTidy.optionExtensions = v.array.map!(a => a.str).array;
+        // dummo to suppress warning about unknown key
+    };
+    callbacks["clang_tidy.system_config"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.systemConfig = v.str;
     };
 
     callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
@@ -464,4 +471,26 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     iterSection(rval, "compiler");
     iterSection(rval, "clang_tidy");
     iterSection(rval, "iwyu");
+
+    if (auto section = "clang_tidy" in doc)
+        rval.clangTidy.optionExtensions = parseDict(*section, "option_extensions");
+}
+
+string[string] parseDict(ref TOMLValue root, string section) @trusted {
+    import toml;
+
+    typeof(return) rval;
+
+    if (section !in root)
+        return rval;
+
+    foreach (k, s; *(section in root)) {
+        try {
+            rval[k] = s.str;
+        } catch (Exception e) {
+            logger.warningf("error in %s: %s", section, e.msg);
+        }
+    }
+
+    return rval;
 }

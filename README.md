@@ -34,7 +34,7 @@ Don't be shy to report any issue that you find.
 
 # Config
 
-The default configuration file that `code_checker` uses s located at
+The default configuration file that `code_checker` use is located at
 `<binary>/../default_code_checker.toml`.  This can be changed via the
 environment variable `CODE_CHECKER_DEFAULT`.
 

@@ -12,8 +12,9 @@ binary = "clang-tidy"
 # arguments to -header-filter
 header_filter = ".*"
 check_extensions = [ "*", "-modernize-*" ]
-checks = [ "*", "-readability-*" ]
-options = [ "{key: cert-err61-cpp.CheckThrowTemporaries, value: \"1\"}" ]
+
+[clang_tidy.option_extensions]
+"cert-err61-cpp.CheckThrowTemporaries" = "1"
 
 [iwyu]
 binary = "iwyu"

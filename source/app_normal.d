@@ -13,6 +13,7 @@ import std.array : empty;
 import std.exception : collectException;
 
 import my.path;
+import miniorm : spinSql;
 
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
@@ -66,10 +67,13 @@ struct NormalFSM {
     State st;
     Config conf;
     CompileCommandDB compileDb;
+
     /// If the compile_commands.json that is written to the file system should be deleted when code_checker is done.
     bool removeCompileDb;
+
     /// Root directory from which the program where initially started.
     AbsolutePath root;
+
     /// Exit status of used to indicate the success to the user.
     int exitStatus;
 
@@ -279,17 +283,18 @@ struct NormalFSM {
             auto reg = makeRegistry;
             tres = execute(env, conf.staticCode.analyzers, reg);
             exitStatus = tres.status == Status.passed ? 0 : 1;
-        }
 
-        try {
-            auto trans = db.transaction;
-            scope (success)
-                () { db.dependencyApi.cleanup; trans.commit; }();
-            saveDependencies(db, env, root, tres.failed);
-            removeDroppedFiles(db, env, root);
-            db.dependencyApi.cleanup;
-        } catch (Exception e) {
-            logger.warning(e.msg);
+            spinSql!(() {
+                auto trans = db.transaction;
+                try {
+                    saveDependencies(db, env, root, tres.failed);
+                    removeDroppedFiles(db, env, root);
+                    db.dependencyApi.cleanup;
+                } catch (Exception e) {
+                    logger.trace(e.msg);
+                }
+                trans.commit;
+            });
         }
     }
 
