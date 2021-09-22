@@ -177,9 +177,12 @@ struct NormalFSM {
     }
 
     void act_genDb() {
+        import std.file : exists;
         import std.process : spawnShell, wait;
 
         bool isUnchanged() nothrow {
+            if (!exists(compileCommandsFile))
+                return false;
             if (conf.compileDb.generateDbDeps.empty)
                 return false;
             return !isChanged(db, conf.compileDb.generateDbDeps);
