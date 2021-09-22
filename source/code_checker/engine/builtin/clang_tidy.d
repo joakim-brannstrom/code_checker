@@ -71,21 +71,12 @@ class ClangTidy : BaseFixture {
             app.put(["--fix-errors"]);
         }
 
+        if (!env.conf.clangTidy.checkExtensions.empty)
+            ["--checks", env.conf.clangTidy.checkExtensions.joiner(",").text].copy(app);
+
         env.conf.compiler.extraFlags.map!(a => ["--extra-arg", a]).joiner.copy(app);
 
         ["--header-filter", env.conf.clangTidy.headerFilter].copy(app);
-
-        auto checks = env.conf.clangTidy.checkExtensions;
-
-        // inactivate those that are below the configured severity level.
-        if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
-            checks = only(checks,
-                    filterSeverity!(a => a < env.conf.staticCode.severity).map!(a => "-" ~ a).array).joiner
-                .array;
-        }
-
-        if (!checks.empty)
-            ["--checks", checks.joiner(",").text].copy(app);
 
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
@@ -416,6 +407,8 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     import std.algorithm : copy;
     import std.file : exists;
     import std.stdio : File;
+    import std.ascii;
+    import std.string;
 
     if (!exists(baseConf)) {
         logger.warning("No default clang-tidy configuration found at ", baseConf);
@@ -426,8 +419,66 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     auto fconfig = File(ClangTidyConstants.confFile, "w");
     fconfig.writeln(ClangTidyConstants.codeCheckerConfigHeader);
 
-    foreach (a; File(baseConf).byChunk(4096))
-        fconfig.rawWrite(a);
+    string[] checks = () {
+        if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
+            return only(checks, filterSeverity!(a => a < env.conf.staticCode.severity)
+                    .map!(a => "-" ~ a).array).joiner.array;
+        }
+    }();
+
+    enum Token {
+        other,
+        checkKey,
+        openCheck,
+        insideCheck,
+        closeCheck,
+        afterCheck
+    }
+
+    Token tok;
+    foreach (l; File(baseConf).byLine) {
+        auto curr = l;
+
+        while (!curr.empty) {
+            final switch (tok) {
+            case Token.other:
+                if (curr.startsWith("Checks:")) {
+                    tok = checkKey;
+                } else {
+                    curr = curr[1 .. $];
+                }
+                break;
+            case Token.checkKey:
+                if (curr[0].among(`"`, `'`))
+                    tok = Token.openCheck;
+                else
+                    curr = curr[1 .. $];
+                break;
+            case Token.openCheck:
+                curr = curr[1 .. $];
+                tok = Token.insideCheck;
+                break;
+            case Token.insideCheck:
+                if (!curr[0].among(`"`, `'`))
+                    tok = Token.closeCheck;
+                else
+                    curr = curr[1 .. $];
+                break;
+            case Token.closeCheck:
+                curr = curr[1 .. $];
+                tok = Token.afterCheck;
+                break;
+            case Token.afterCheck:
+                curr = null;
+                break;
+            }
+
+            if (!checks.empty && tok == Token.closeCheck) {
+            }
+        }
+
+        fconfig.writeln(l);
+    }
     fconfig.writeln;
 
     foreach (kv; conf.clangTidy.optionExtensions.byKeyValue) {
