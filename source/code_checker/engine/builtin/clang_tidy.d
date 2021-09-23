@@ -71,25 +71,21 @@ class ClangTidy : BaseFixture {
             app.put(["--fix-errors"]);
         }
 
+        if (!env.conf.clangTidy.checkExtensions.empty)
+            ["--checks", env.conf.clangTidy.checkExtensions.joiner(",").text].copy(app);
+
         env.conf.compiler.extraFlags.map!(a => ["--extra-arg", a]).joiner.copy(app);
 
         ["--header-filter", env.conf.clangTidy.headerFilter].copy(app);
 
-        auto checks = env.conf.clangTidy.checkExtensions;
-
-        // inactivate those that are below the configured severity level.
-        if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
-            checks = only(["-*"],
-                    filterSeverity!(a => a >= env.conf.staticCode.severity).array, checks).joiner.filter!(a => a != "*")
-                .array;
-        }
-
-        if (!checks.empty)
-            ["--checks", checks.joiner(",").text].copy(app);
-
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
             logger.infof("Using local '%s' config", ClangTidyConstants.confFile);
+
+            if (env.conf.staticCode.severity != typeof(env.conf.staticCode.severity).min) {
+                logger.warningf("--severity do not work when using a local '%s'",
+                        ClangTidyConstants.confFile);
+            }
         } else {
             logger.tracef("Writing to %s using %s", ClangTidyConstants.confFile, systemConf);
             writeClangTidyConfig(systemConf, env.conf);
@@ -413,9 +409,12 @@ bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
 }
 
 void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
-    import std.algorithm : copy;
+    import std.algorithm : copy, among;
     import std.file : exists;
     import std.stdio : File;
+    import std.ascii;
+    import std.string;
+    import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
     if (!exists(baseConf)) {
         logger.warning("No default clang-tidy configuration found at ", baseConf);
@@ -426,9 +425,88 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     auto fconfig = File(ClangTidyConstants.confFile, "w");
     fconfig.writeln(ClangTidyConstants.codeCheckerConfigHeader);
 
-    foreach (a; File(baseConf).byChunk(4096))
-        fconfig.rawWrite(a);
-    fconfig.writeln;
+    string[] checks = () {
+        if (conf.staticCode.severity != typeof(conf.staticCode.severity).min)
+            return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
+        return null;
+    }();
+
+    if (checks.empty) {
+        foreach (d; File(baseConf).byChunk(4096))
+            fconfig.rawWrite(d);
+    } else {
+        enum State {
+            other,
+            checkKey,
+            openCheck,
+            insideCheck,
+            closeCheck,
+            afterCheck
+        }
+
+        State st;
+        foreach (l; File(baseConf).byLine) {
+            auto curr = l;
+
+            if (st == State.afterCheck) {
+                fconfig.writeln(l);
+            } else {
+                while (!curr.empty) {
+                    const auto old = st;
+                    final switch (st) {
+                    case State.other:
+                        if (curr.startsWith("Checks:")) {
+                            st = State.checkKey;
+                        } else {
+                            fconfig.write(curr[0]);
+                            curr = curr[1 .. $];
+                        }
+                        break;
+                    case State.checkKey:
+                        if (curr[0].among('"', '\'')) {
+                            st = State.openCheck;
+                        } else {
+                            fconfig.write(curr[0]);
+                            curr = curr[1 .. $];
+                        }
+                        break;
+                    case State.openCheck:
+                        fconfig.write(curr[0]);
+                        curr = curr[1 .. $];
+                        st = State.insideCheck;
+                        break;
+                    case State.insideCheck:
+                        if (curr[0].among('"', '\'')) {
+                            st = State.closeCheck;
+                        } else {
+                            fconfig.write(curr[0]);
+                            curr = curr[1 .. $];
+                        }
+                        break;
+                    case State.closeCheck:
+                        curr = curr[1 .. $];
+                        st = State.afterCheck;
+                        break;
+                    case State.afterCheck:
+                        fconfig.write(curr[0]);
+                        curr = curr[1 .. $];
+                        break;
+                    }
+
+                    debug logger.tracef(old != st, "%s -> %s : %s", old, st, curr);
+
+                    if (st == State.closeCheck) {
+                        fconfig.writeln(",\\");
+                        fconfig.write(checks.joiner(","));
+                        fconfig.write(curr[0]);
+                    }
+                }
+
+                fconfig.writeln;
+            }
+        }
+        fconfig.writeln;
+    }
 
     foreach (kv; conf.clangTidy.optionExtensions.byKeyValue) {
         fconfig.writeln("   - key:             ", kv.key);
