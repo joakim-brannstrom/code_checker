@@ -59,10 +59,13 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
 
         bool isChanged(T)(T f) nothrow {
             try {
+                /* TODO: temporary inactivate because of clock drift problem etc.
+                 * Activate when clock diff is added.
                 if ((f.root.timeStamp - timeLastModified(f.root.file)).total!"seconds".abs > 1) {
                     debug logger.trace("timestamp changed ", f.root.file);
                     return true;
                 }
+                 */
 
                 if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file))) {
                     debug logger.trace("checksum changed of root", f.root.file);
