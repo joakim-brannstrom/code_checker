@@ -390,7 +390,10 @@ auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
     tidy_args.copy(app);
     fname.copy(app);
 
-    return run(app.data);
+    auto rval = run(app.data);
+    if (rval.status == -11) // retry on segfault
+        return run(app.data);
+    return rval;
 }
 
 bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
