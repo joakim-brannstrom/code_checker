@@ -21,6 +21,7 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
 import code_checker.cli : Config;
 import code_checker.database : Database, TrackFileByStat;
 import code_checker.engine : Environment;
+import code_checker.cache : FileStatCache;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -78,6 +79,8 @@ struct NormalFSM {
     int exitStatus;
 
     Database db;
+
+    FileStatCache fcache;
 
     this(Config conf) {
         this.conf = conf;
@@ -185,7 +188,7 @@ struct NormalFSM {
                 return false;
             if (conf.compileDb.generateDbDeps.empty)
                 return false;
-            return !isChanged(db, conf.compileDb.generateDbDeps);
+            return !isChanged(db, conf.compileDb.generateDbDeps, fcache);
         }
 
         if (isUnchanged)
@@ -193,7 +196,7 @@ struct NormalFSM {
 
         auto res = spawnShell(conf.compileDb.generateDb).wait;
         if (res == 0) {
-            updateTrackFileByStat(db, conf.compileDb.generateDbDeps);
+            updateTrackFileByStat(db, conf.compileDb.generateDbDeps, fcache);
         } else {
             // the user need some helpful feedback for what failed
             logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
@@ -218,7 +221,7 @@ struct NormalFSM {
         bool isUnchanged() nothrow {
             if (!exists(compileCommandsFile))
                 return false;
-            return !isChanged(db, conf.compileDb.dbs);
+            return !isChanged(db, conf.compileDb.dbs, fcache);
         }
 
         if (isUnchanged)
@@ -232,7 +235,7 @@ struct NormalFSM {
                     conf.compileDb.flagFilter, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
 
-            updateTrackFileByStat(db, conf.compileDb.dbs);
+            updateTrackFileByStat(db, conf.compileDb.dbs, fcache);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -526,27 +529,14 @@ void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     }
 }
 
-TrackFileByStat getTrackFileByStat(Path p) nothrow {
-    import std.file : timeLastModified, getSize;
-
-    try {
-        auto ts = timeLastModified(p);
-        auto sz = getSize(p);
-        return TrackFileByStat(p, sz, ts);
-    } catch (Exception e) {
-        logger.trace(e.msg).collectException;
-    }
-    return TrackFileByStat(p);
-}
-
-bool isChanged(ref Database db, AbsolutePath[] files) nothrow {
+bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
     import std.math : abs;
 
     foreach (a; files) {
         try {
             logger.trace("checking ", a);
             const prev = db.compileDbTrackApi.get(a);
-            const curr = getTrackFileByStat(a);
+            const curr = fcache.get(a);
             const res = prev.size == curr.size
                 && (prev.timeStamp - curr.timeStamp).total!"msecs".abs < 20;
             logger.tracef("%s is %s (prev:%s curr:%s)", a, res ? "unchaged" : "changed", prev, curr);
@@ -560,10 +550,10 @@ bool isChanged(ref Database db, AbsolutePath[] files) nothrow {
     return false;
 }
 
-void updateTrackFileByStat(ref Database db, AbsolutePath[] files) nothrow {
+void updateTrackFileByStat(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
     foreach (a; files) {
         try {
-            db.compileDbTrackApi.put(getTrackFileByStat(a));
+            db.compileDbTrackApi.put(fcache.get(a));
             logger.trace("saved track data for ", a);
         } catch (Exception e) {
             logger.trace(e.msg).collectException;
