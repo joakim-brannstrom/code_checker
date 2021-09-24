@@ -10,31 +10,64 @@ import std.exception : collectException;
 
 import my.path;
 
-import code_checker.database : TrackFileByStat;
+import code_checker.database : TrackFileByStat, TrackFile;
 
-struct FileStatCache {
-    TrackFileByStat[AbsolutePath] cache_;
+struct FileStatCache(T, alias query) {
+    T[AbsolutePath] cache_;
 
-    TrackFileByStat get(AbsolutePath p) @safe nothrow {
+    T get(AbsolutePath p) @safe nothrow {
         try {
-            return cache_.require(p, getTrackFileByStat(p));
+            return cache_.require(p, query(p));
         } catch (Exception e) {
         }
-        return TrackFileByStat.init;
+        return T.init;
     }
 }
 
-private:
-
 TrackFileByStat getTrackFileByStat(Path p) @safe nothrow {
+    import std.datetime : Clock;
     import std.file : timeLastModified, getSize;
 
+    auto ts = () {
+        try {
+            return timeLastModified(p);
+        } catch (Exception e) {
+            logger.trace(e.msg).collectException;
+        }
+        return Clock.currTime;
+    }();
+
     try {
-        auto ts = timeLastModified(p);
         auto sz = getSize(p);
         return TrackFileByStat(p, sz, ts);
     } catch (Exception e) {
         logger.trace(e.msg).collectException;
     }
-    return TrackFileByStat(p);
+    return TrackFileByStat(p, 0, ts);
+}
+
+TrackFile getTrackFile(Path p) @trusted nothrow {
+    import std.datetime : Clock;
+    import std.file : timeLastModified;
+    import my.hash : checksum, makeChecksum64, Checksum64;
+
+    auto cs = () {
+        try {
+            return checksum!makeChecksum64(AbsolutePath(p));
+        } catch (Exception e) {
+            logger.trace(e.msg).collectException;
+        }
+        return Checksum64.init;
+    }();
+
+    auto ts = () {
+        try {
+            return timeLastModified(p);
+        } catch (Exception e) {
+            logger.trace(e.msg).collectException;
+        }
+        return Clock.currTime;
+    }();
+
+    return TrackFile(p, cs, ts);
 }

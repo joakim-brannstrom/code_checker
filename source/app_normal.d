@@ -19,9 +19,9 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
 import code_checker.cli : Config;
-import code_checker.database : Database, TrackFileByStat;
+import code_checker.database : Database, TrackFileByStat, TrackFile;
 import code_checker.engine : Environment;
-import code_checker.cache : FileStatCache;
+import code_checker.cache : FileStatCache, getTrackFileByStat, getTrackFile;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -80,7 +80,8 @@ struct NormalFSM {
 
     Database db;
 
-    FileStatCache fcache;
+    FileStatCache!(TrackFileByStat, (AbsolutePath p) => getTrackFileByStat(p)) fcache;
+    FileStatCache!(TrackFile, (AbsolutePath p) => getTrackFile(p)) fcache2;
 
     this(Config conf) {
         this.conf = conf;
@@ -195,6 +196,8 @@ struct NormalFSM {
             return;
 
         auto res = spawnShell(conf.compileDb.generateDb).wait;
+        fcache = typeof(fcache).init; // drop cache because the update cmd may have changed a dependency
+
         if (res == 0) {
             updateTrackFileByStat(db, conf.compileDb.generateDbDeps, fcache);
         } else {
@@ -236,6 +239,7 @@ struct NormalFSM {
             File(compileCommandsFile, "w").write(compile_db.data);
 
             updateTrackFileByStat(db, conf.compileDb.dbs, fcache);
+            fcache = typeof(fcache).init; // drop cache, not needed anymore
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -255,7 +259,7 @@ struct NormalFSM {
             bool[AbsolutePath] rval;
 
             try {
-                foreach (v; dependencyAnalyze(db, AbsolutePath(".")).byKeyValue) {
+                foreach (v; dependencyAnalyze(db, AbsolutePath("."), fcache2).byKeyValue) {
                     rval[v.key.AbsolutePath] = v.value;
                 }
             } catch (Exception e) {
@@ -289,11 +293,14 @@ struct NormalFSM {
             auto reg = makeRegistry;
             tres = execute(env, conf.staticCode.analyzers, reg);
             exitStatus = tres.status == Status.passed ? 0 : 1;
+        }
 
+        if (!tres.success.empty) {
+            logger.trace("Saving result for ", tres.success);
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
-                    saveDependencies(db, env, root, tres.success);
+                    saveDependencies(db, env, root, tres.success, fcache2);
                     removeDroppedFiles(db, env, root);
                     db.dependencyApi.cleanup;
                 } catch (Exception e) {
@@ -439,33 +446,22 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
     return f;
 }
 
-void saveDependencies(ref Database db, Environment env, AbsolutePath root,
-        AbsolutePath[] successFiles) {
+void saveDependencies(CacheT)(ref Database db, Environment env, AbsolutePath root,
+        AbsolutePath[] successFiles, ref CacheT fcache) {
     import std.algorithm : map, filter;
     import std.array : array;
-    import std.file : timeLastModified;
     import my.set;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
 
     auto success = toSet(successFiles);
 
-    auto checksum(AbsolutePath f) {
-        import my.hash : checksum, makeChecksum64, Checksum64;
-
-        try {
-            return checksum!makeChecksum64(f);
-        } catch (Exception e) {
-            logger.trace(e.msg);
-        }
-        return Checksum64(0);
-    }
-
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile in success)) {
         db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
-                checksum(pcmd.cmd.absoluteFile), timeLastModified(pcmd.cmd.absoluteFile));
+                fcache.get(pcmd.cmd.absoluteFile).checksum,
+                fcache.get(pcmd.cmd.absoluteFile).timeStamp);
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
-                root), checksum(a), timeLastModified(a))).array;
+                root), fcache.get(a).checksum, fcache.get(a).timeStamp)).array;
         db.dependencyApi.set(toIncludePath(pcmd.cmd.absoluteFile, root), deps);
     }
 }
@@ -527,7 +523,7 @@ void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     }
 }
 
-bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
+bool isChanged(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache) nothrow {
     import std.math : abs;
 
     foreach (a; files) {
@@ -548,11 +544,12 @@ bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) 
     return false;
 }
 
-void updateTrackFileByStat(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
+void updateTrackFileByStat(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache) nothrow {
     foreach (a; files) {
         try {
-            db.compileDbTrackApi.put(fcache.get(a));
-            logger.trace("saved track data for ", a);
+            auto d = fcache.get(a);
+            db.compileDbTrackApi.put(d);
+            logger.tracef("saved track data for %s %s", a, d);
         } catch (Exception e) {
             logger.trace(e.msg).collectException;
         }

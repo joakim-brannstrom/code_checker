@@ -287,10 +287,8 @@ struct DbCompileDbTrack {
     private Database* wrapperDb;
 
     void put(TrackFileByStat f) {
-        static immutable sql = format!"INSERT INTO %s (path,size,time_stamp)
-            VALUES(:path,:sz,:ts)
-            ON CONFLICT (path) DO UPDATE SET size=:sz,time_stamp=:ts"(
-                compileDbTrack);
+        static immutable sql = format!"INSERT OR REPLACE INTO %s (path,size,time_stamp)
+            VALUES(:path,:sz,:ts)"(compileDbTrack);
 
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", f.file.toString);
@@ -300,15 +298,16 @@ struct DbCompileDbTrack {
     }
 
     TrackFileByStat get(const Path path) {
-        static immutable sql = format!"SELECT path,size,time_stamp FROM %s
+        static immutable sql = format!"SELECT size,time_stamp FROM %s
             WHERE path=:path"(compileDbTrack);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", path);
+        auto rval = TrackFileByStat(path);
         foreach (ref a; stmt.get.execute) {
-            return TrackFileByStat(a.peek!string(0).Path,
-                    cast(ulong) a.peek!long(1), a.peek!string(2).fromSqLiteDateTime.toLocalTime);
+            rval.size = cast(ulong) a.peek!long(0);
+            rval.timeStamp = a.peek!string(1).fromSqLiteDateTime.toLocalTime;
         }
-        throw new Exception("file is not tracked " ~ path);
+        return rval;
     }
 
     /// Remove old entries to avoid infinite growth of the database.
