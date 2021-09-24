@@ -8,7 +8,7 @@ This file contains an analyzer that uses clang-tidy.
 module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
-import std.algorithm : copy, map, joiner, filter;
+import std.algorithm : copy, map, joiner, filter, among;
 import std.array : appender, array, empty;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
@@ -134,7 +134,6 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     auto logg = Logger(env.conf.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
-        import std.array : appender;
         import std.format : format;
         import std.typecons : nullableRef;
         import colorlog : Color, color, Background, Mode;
@@ -307,8 +306,6 @@ struct TidyWork {
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
-    import std.algorithm : copy;
-    import std.array : appender;
     import std.concurrency : send;
     import std.format : format;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
@@ -391,8 +388,6 @@ struct ClangTidyConstants {
 }
 
 auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
-    import std.algorithm : copy;
-    import std.array : appender;
     import code_checker.process;
 
     auto app = appender!(string[])();
@@ -422,7 +417,6 @@ bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
 }
 
 void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
-    import std.algorithm : copy, among;
     import std.file : exists;
     import std.stdio : File;
     import std.ascii;

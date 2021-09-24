@@ -351,11 +351,9 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
     logger.trace(flag_filter);
 
     void writeEntry(T)(T e) {
-        import std.exception : assumeUnique;
-        import std.utf : byChar;
-        import std.json : JSONValue;
-
         auto raw_flags = () @safe {
+            import std.json : JSONValue;
+
             auto app = appender!(string[]);
             //auto pflags = e.parseFlag(flag_filter);
             app.put(e.flags.compiler);
