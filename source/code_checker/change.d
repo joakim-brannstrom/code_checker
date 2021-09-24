@@ -14,6 +14,7 @@ Algorithm for detecting what files need to be analyzed based on previous state.
 module code_checker.change;
 
 import logger = std.experimental.logger;
+import std.exception : collectException;
 
 import my.path;
 import my.optional;
@@ -56,24 +57,32 @@ bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir) @tru
         foreach (a; spinSql!(() => db.dependencyApi.getAll))
             dbDeps[a.file] = a.checksum;
 
-        bool isChanged(T)(T f) {
-            if ((f.root.timeStamp - timeLastModified(f.root.file)).total!"seconds".abs > 1) {
-                debug logger.trace("timestamp changed ", f.root.file);
-                return true;
-            }
+        bool isChanged(T)(T f) nothrow {
+            try {
+                /* TODO: temporary inactivate because of clock drift problem etc.
+                 * Activate when clock diff is added.
+                if ((f.root.timeStamp - timeLastModified(f.root.file)).total!"seconds".abs > 1) {
+                    debug logger.trace("timestamp changed ", f.root.file);
+                    return true;
+                }
+                 */
 
-            if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file))) {
-                debug logger.trace("checksum changed of root", f.root.file);
-                return true;
-            }
+                if (f.root.checksum != getFileFsChecksum(toAbsoluteRoot(rootDir, f.root.file))) {
+                    debug logger.trace("checksum changed of root", f.root.file);
+                    return true;
+                }
 
-            foreach (a; f.deps.filter!(a => getFileFsChecksum(toAbsoluteRoot(rootDir,
-                    a)) != dbDeps[a])) {
-                debug logger.tracef("checksum changed of dependency %s for %s", a, f.root.file);
-                return true;
-            }
+                foreach (a; f.deps.filter!(a => getFileFsChecksum(toAbsoluteRoot(rootDir,
+                        a)) != dbDeps[a])) {
+                    debug logger.tracef("checksum changed of dependency %s for %s", a, f.root.file);
+                    return true;
+                }
 
-            return false;
+                return false;
+            } catch (Exception e) {
+                logger.trace(e.msg).collectException;
+            }
+            return true;
         }
 
         foreach (f; spinSql!(() => db.fileApi).getRootFiles

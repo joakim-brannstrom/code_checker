@@ -238,12 +238,13 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         ];
     }
 
-    void executeTidy(string file) {
+    void executeTidy(AbsolutePath file) {
         auto args = tidyArgs ~ file;
         logger.tracef("run: %s", args);
 
         auto status = spawnProcess(args).wait;
         if (status != 0) {
+            result_.failed ~= file;
             result_.status = Status.failed;
             result_.score -= 100;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy failed to apply fixes for "
