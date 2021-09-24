@@ -139,16 +139,22 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         import std.typecons : nullableRef;
         import colorlog : Color, color, Background, Mode;
         import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
+        import code_checker.process : exitCodeSegFault;
 
         auto res = nullableRef(cast() res_);
 
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        result_.score += res.errors.score;
         result_.supp += res.suppressedWarnings;
 
-        if (res.clangTidyStatus != 0) {
+        if (res.clangTidyStatus == 0) {
+            result_.success ~= res.file;
+        } else if (res.clangTidyStatus == exitCodeSegFault) {
+            res.print;
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy segfaulted for " ~ res.file);
+        } else {
+            result_.score += res.errors.score;
             result_.failed ~= res.file;
             res.print;
 
@@ -175,8 +181,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
             }
         }
 
-        result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
-                ? Status.passed : Status.failed);
+        // by treating a segfault as OK it wont block a pull request. this may be a bad idea....
+        result_.status = mergeStatus(result_.status, res.clangTidyStatus.among(0,
+                exitCodeSegFault) ? Status.passed : Status.failed);
     }
 
     auto pool = new TaskPool;
@@ -243,7 +250,9 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         logger.tracef("run: %s", args);
 
         auto status = spawnProcess(args).wait;
-        if (status != 0) {
+        if (status == 0) {
+            result_.success ~= file;
+        } else {
             result_.failed ~= file;
             result_.status = Status.failed;
             result_.score -= 100;
@@ -391,7 +400,7 @@ auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
     fname.copy(app);
 
     auto rval = run(app.data);
-    if (rval.status == -11) // retry on segfault
+    if (rval.status == exitCodeSegFault)
         return run(app.data);
     return rval;
 }

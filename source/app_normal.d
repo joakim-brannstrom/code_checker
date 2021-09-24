@@ -293,7 +293,7 @@ struct NormalFSM {
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
-                    saveDependencies(db, env, root, tres.failed);
+                    saveDependencies(db, env, root, tres.success);
                     removeDroppedFiles(db, env, root);
                     db.dependencyApi.cleanup;
                 } catch (Exception e) {
@@ -442,7 +442,7 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
 }
 
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
-        AbsolutePath[] failedFiles) {
+        AbsolutePath[] successFiles) {
     import std.algorithm : map, filter;
     import std.array : array;
     import std.file : timeLastModified;
@@ -450,7 +450,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
 
-    auto failed = toSet(failedFiles);
+    auto success = toSet(successFiles);
 
     auto checksum(AbsolutePath f) {
         import my.hash : checksum, makeChecksum64, Checksum64;
@@ -463,7 +463,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         return Checksum64(0);
     }
 
-    foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile !in failed)) {
+    foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile in success)) {
         db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
                 checksum(pcmd.cmd.absoluteFile), timeLastModified(pcmd.cmd.absoluteFile));
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
