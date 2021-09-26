@@ -56,7 +56,7 @@ bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootD
         bool isChanged(T)(T f) nothrow {
             try {
                 if ((f.root.timeStamp - fcache.get(f.root.file.AbsolutePath)
-                        .timeStamp).total!"msecs".abs < 500) {
+                        .timeStamp).total!"msecs".abs < 100) {
                     debug logger.trace("timestamp unchanged ", f.root.file);
                     return false;
                 }

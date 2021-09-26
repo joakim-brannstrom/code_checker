@@ -196,6 +196,8 @@ struct NormalFSM {
             return;
 
         auto res = spawnShell(conf.compileDb.generateDb).wait;
+        fcache = typeof(fcache).init; // drop cache because the update cmd may have changed a dependency
+
         if (res == 0) {
             updateTrackFileByStat(db, conf.compileDb.generateDbDeps, fcache);
         } else {
@@ -237,7 +239,7 @@ struct NormalFSM {
             File(compileCommandsFile, "w").write(compile_db.data);
 
             updateTrackFileByStat(db, conf.compileDb.dbs, fcache);
-            fcache = typeof(fcache).init; // drop cache
+            fcache = typeof(fcache).init; // drop cache, not needed anymore
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -291,7 +293,9 @@ struct NormalFSM {
             auto reg = makeRegistry;
             tres = execute(env, conf.staticCode.analyzers, reg);
             exitStatus = tres.status == Status.passed ? 0 : 1;
+        }
 
+        if (!tres.success.empty) {
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
@@ -542,8 +546,9 @@ bool isChanged(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache)
 void updateTrackFileByStat(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache) nothrow {
     foreach (a; files) {
         try {
-            db.compileDbTrackApi.put(fcache.get(a));
-            logger.trace("saved track data for ", a);
+            auto d = fcache.get(a);
+            db.compileDbTrackApi.put(d);
+            logger.tracef("saved track data for %s %s", a, d);
         } catch (Exception e) {
             logger.trace(e.msg).collectException;
         }
