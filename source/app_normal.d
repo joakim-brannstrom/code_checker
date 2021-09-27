@@ -250,6 +250,7 @@ struct NormalFSM {
                     conf.compileDb.flagFilter, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
 
+            fcache.drop(AbsolutePath(compileCommandsFile)); // do NOT use previously cached value
             updateTrackFileByStat(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile),
                     fcache);
             fcache = typeof(fcache).init; // drop cache, not needed anymore
