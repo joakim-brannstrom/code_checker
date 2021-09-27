@@ -22,6 +22,10 @@ struct FileStatCache(T, alias query) {
         }
         return T.init;
     }
+
+    void drop(AbsolutePath p) @safe nothrow {
+        cache_.remove(p);
+    }
 }
 
 TrackFileByStat getTrackFileByStat(Path p) @safe nothrow {
