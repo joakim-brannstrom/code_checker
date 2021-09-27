@@ -185,11 +185,17 @@ struct NormalFSM {
         import std.process : spawnShell, wait;
 
         bool isUnchanged() nothrow {
-            if (!exists(compileCommandsFile))
-                return false;
-            if (conf.compileDb.generateDbDeps.empty)
-                return false;
-            return !isChanged(db, conf.compileDb.generateDbDeps, fcache);
+            try {
+                if (!exists(compileCommandsFile))
+                    return false;
+                if (conf.compileDb.generateDbDeps.empty)
+                    return false;
+                return !isChanged(db,
+                        conf.compileDb.generateDbDeps ~ AbsolutePath(compileCommandsFile), fcache);
+            } catch (Exception e) {
+                logger.trace(e.msg).collectException;
+            }
+            return false;
         }
 
         if (isUnchanged)
@@ -222,9 +228,15 @@ struct NormalFSM {
         compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.idup).array);
 
         bool isUnchanged() nothrow {
-            if (!exists(compileCommandsFile))
-                return false;
-            return !isChanged(db, conf.compileDb.dbs, fcache);
+            try {
+                if (!exists(compileCommandsFile))
+                    return false;
+                return !isChanged(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile),
+                        fcache);
+            } catch (Exception e) {
+                logger.trace(e.msg).collectException;
+            }
+            return false;
         }
 
         if (isUnchanged)
@@ -238,7 +250,8 @@ struct NormalFSM {
                     conf.compileDb.flagFilter, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
 
-            updateTrackFileByStat(db, conf.compileDb.dbs, fcache);
+            updateTrackFileByStat(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile),
+                    fcache);
             fcache = typeof(fcache).init; // drop cache, not needed anymore
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
