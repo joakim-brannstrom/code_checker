@@ -89,6 +89,7 @@ TotalResult execute(Environment env, string[] analysers, ref Registry reg) @trus
             tres.sugg ~= res.msg.array.filter!(a => a.severity == MsgSeverity.improveSuggestion)
                 .array;
             tres.failed ~= res.failed;
+            tres.success ~= res.success;
 
             logger.trace(res);
             logger.trace(tres);

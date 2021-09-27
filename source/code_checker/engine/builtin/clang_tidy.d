@@ -8,7 +8,7 @@ This file contains an analyzer that uses clang-tidy.
 module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
-import std.algorithm : copy, map, joiner, filter;
+import std.algorithm : copy, map, joiner, filter, among;
 import std.array : appender, array, empty;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
@@ -134,21 +134,26 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     auto logg = Logger(env.conf.logg.dir);
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
-        import std.array : appender;
         import std.format : format;
         import std.typecons : nullableRef;
         import colorlog : Color, color, Background, Mode;
         import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
+        import code_checker.process : exitCodeSegFault;
 
         auto res = nullableRef(cast() res_);
 
         logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
                 .bg(Background.black), res.file).collectException;
 
-        result_.score += res.errors.score;
         result_.supp += res.suppressedWarnings;
 
-        if (res.clangTidyStatus != 0) {
+        if (res.clangTidyStatus == 0) {
+            result_.success ~= res.file;
+        } else if (res.clangTidyStatus == exitCodeSegFault) {
+            res.print;
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy segfaulted for " ~ res.file);
+        } else {
+            result_.score += res.errors.score;
             result_.failed ~= res.file;
             res.print;
 
@@ -175,8 +180,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
             }
         }
 
-        result_.status = mergeStatus(result_.status, res.clangTidyStatus == 0
-                ? Status.passed : Status.failed);
+        // by treating a segfault as OK it wont block a pull request. this may be a bad idea....
+        result_.status = mergeStatus(result_.status, res.clangTidyStatus.among(0,
+                exitCodeSegFault) ? Status.passed : Status.failed);
     }
 
     auto pool = new TaskPool;
@@ -243,7 +249,9 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         logger.tracef("run: %s", args);
 
         auto status = spawnProcess(args).wait;
-        if (status != 0) {
+        if (status == 0) {
+            result_.success ~= file;
+        } else {
             result_.failed ~= file;
             result_.status = Status.failed;
             result_.score -= 100;
@@ -298,8 +306,6 @@ struct TidyWork {
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
-    import std.algorithm : copy;
-    import std.array : appender;
     import std.concurrency : send;
     import std.format : format;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
@@ -382,15 +388,16 @@ struct ClangTidyConstants {
 }
 
 auto runClangTidy(string[] tidy_args, AbsolutePath[] fname) {
-    import std.algorithm : copy;
-    import std.array : appender;
     import code_checker.process;
 
     auto app = appender!(string[])();
     tidy_args.copy(app);
     fname.copy(app);
 
-    return run(app.data);
+    auto rval = run(app.data);
+    if (rval.status == exitCodeSegFault)
+        return run(app.data);
+    return rval;
 }
 
 bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
@@ -410,7 +417,6 @@ bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
 }
 
 void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
-    import std.algorithm : copy, among;
     import std.file : exists;
     import std.stdio : File;
     import std.ascii;

@@ -9,6 +9,8 @@ import std.exception : collectException;
 
 import logger = std.experimental.logger;
 
+immutable int exitCodeSegFault = -11;
+
 struct RunResult {
     int status;
     string[] stdout;

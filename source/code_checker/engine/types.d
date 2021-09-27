@@ -144,6 +144,9 @@ struct Result {
 
     /// Files that failed an analyze.
     AbsolutePath[] failed;
+
+    /// Files that passed all analyzers.
+    AbsolutePath[] success;
 }
 
 /// The result of all analyzers.
@@ -162,6 +165,9 @@ struct TotalResult {
 
     /// Files that failed an analyze.
     AbsolutePath[] failed;
+
+    /// Files that passed all analyzers.
+    AbsolutePath[] success;
 }
 
 /// Classification of warnings. Used by the user to filter on.
