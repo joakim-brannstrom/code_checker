@@ -306,8 +306,8 @@ struct NormalFSM {
         if (!env.files.empty) {
             auto reg = makeRegistry;
             tres = execute(env, conf.staticCode.analyzers, reg);
-            exitStatus = tres.status == Status.passed ? 0 : 1;
         }
+        exitStatus = tres.status.among(Status.passed, Status.none) ? 0 : 1;
 
         if (!tres.success.empty) {
             logger.trace("Saving result for ", tres.success);

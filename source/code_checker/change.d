@@ -100,13 +100,13 @@ bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootD
 Optional!AbsolutePath toAbsolutePath(Path file, AbsolutePath parentDir,
         AbsolutePath workDir, ParseFlags.Include[] includes, SystemIncludePath[] systemIncludes) @trusted nothrow {
     import std.algorithm : map, filter;
-    import std.file : exists;
+    import std.file : exists, isDir;
     import std.path : buildPath;
 
     Optional!AbsolutePath lookup(string dir) nothrow {
         const p = buildPath(dir, file);
         try {
-            if (exists(p))
+            if (exists(p) && !isDir(p))
                 return some(AbsolutePath(p));
         } catch (Exception e) {
         }
