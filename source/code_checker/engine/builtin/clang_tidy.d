@@ -132,6 +132,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
     bool logged_failure;
     auto logg = Logger(env.conf.logg.dir);
+    ExpectedReplyCounter cond;
 
     void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
         import std.format : format;
@@ -142,8 +143,9 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
         auto res = nullableRef(cast() res_);
 
-        logger.infof("%s '%s'", "clang-tidy analyzing".color(Color.yellow)
-                .bg(Background.black), res.file).collectException;
+        logger.infof("%s/%s %s '%s'", cond.replies + 1, cond.expected,
+                "clang-tidy analyzed".color(Color.yellow).bg(Background.black), res.file)
+            .collectException;
 
         result_.supp += res.suppressedWarnings;
 
@@ -188,8 +190,6 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     auto pool = new TaskPool;
     scope (exit)
         pool.finish;
-
-    ExpectedReplyCounter cond;
 
     auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
     auto fixedDb = toRange(env);
