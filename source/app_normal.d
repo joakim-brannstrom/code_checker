@@ -19,9 +19,9 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
 import code_checker.cli : Config;
-import code_checker.database : Database, TrackFileByStat, TrackFile;
+import code_checker.database : Database, TrackFile;
 import code_checker.engine : Environment;
-import code_checker.cache : FileStatCache, getTrackFileByStat, getTrackFile;
+import code_checker.cache : FileStatCache, getTrackFile, isSame;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -80,8 +80,7 @@ struct NormalFSM {
 
     Database db;
 
-    FileStatCache!(TrackFileByStat, (AbsolutePath p) => getTrackFileByStat(p)) fcache;
-    FileStatCache!(TrackFile, (AbsolutePath p) => getTrackFile(p)) fcache2;
+    FileStatCache fcache;
 
     this(Config conf) {
         this.conf = conf;
@@ -223,7 +222,6 @@ struct NormalFSM {
         import std.stdio : File;
         import std.file : exists;
         import compile_db : fromArgCompileDb;
-        import code_checker.database : TrackFileByStat;
 
         compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.idup).array);
 
@@ -253,7 +251,6 @@ struct NormalFSM {
             fcache.drop(AbsolutePath(compileCommandsFile)); // do NOT use previously cached value
             updateTrackFileByStat(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile),
                     fcache);
-            fcache = typeof(fcache).init; // drop cache, not needed anymore
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -273,7 +270,7 @@ struct NormalFSM {
             bool[AbsolutePath] rval;
 
             try {
-                foreach (v; dependencyAnalyze(db, AbsolutePath("."), fcache2).byKeyValue) {
+                foreach (v; dependencyAnalyze(db, AbsolutePath("."), fcache).byKeyValue) {
                     rval[v.key.AbsolutePath] = v.value;
                 }
             } catch (Exception e) {
@@ -314,7 +311,7 @@ struct NormalFSM {
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
-                    saveDependencies(db, env, root, tres.success, fcache2);
+                    saveDependencies(db, env, root, tres.success, fcache);
                     removeDroppedFiles(db, env, root);
                     db.dependencyApi.cleanup;
                 } catch (Exception e) {
@@ -460,8 +457,8 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
     return f;
 }
 
-void saveDependencies(CacheT)(ref Database db, Environment env, AbsolutePath root,
-        AbsolutePath[] successFiles, ref CacheT fcache) {
+void saveDependencies(ref Database db, Environment env, AbsolutePath root,
+        AbsolutePath[] successFiles, ref FileStatCache fcache) {
     import std.algorithm : map, filter;
     import std.array : array;
     import my.set;
@@ -537,19 +534,17 @@ void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     }
 }
 
-bool isChanged(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache) nothrow {
+bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
     import std.math : abs;
 
     foreach (a; files) {
         try {
             logger.trace("checking ", a);
             const prev = db.compileDbTrackApi.get(a);
-            const curr = fcache.get(a);
-            const res = prev.size == curr.size
-                && (prev.timeStamp - curr.timeStamp).total!"msecs".abs < 20;
-            logger.tracef("%s is %s (prev:%s curr:%s)", a, res ? "unchaged" : "changed", prev, curr);
-            if (!res)
-                return true;
+            const res = isSame(prev, a, fcache);
+            logger.tracef(!res, "%s is %s (prev:%s curr:%s)", a, res
+                    ? "unchaged" : "changed", prev, fcache.get(a));
+            return !res;
         } catch (Exception e) {
             logger.trace(e.msg).collectException;
             return true;
@@ -558,7 +553,7 @@ bool isChanged(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache)
     return false;
 }
 
-void updateTrackFileByStat(CacheT)(ref Database db, AbsolutePath[] files, ref CacheT fcache) nothrow {
+void updateTrackFileByStat(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
     foreach (a; files) {
         try {
             auto d = fcache.get(a);

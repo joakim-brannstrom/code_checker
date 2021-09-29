@@ -20,13 +20,14 @@ import my.path;
 import my.optional;
 import compile_db;
 
-import code_checker.database : Database;
+import code_checker.database : Database, toTrackFile;
 import code_checker.utility : toAbsoluteRoot;
+import code_checker.cache;
 
 /** Returns: the root files that need to be re-analyzed because either them or
  * their dependency has changed.
  */
-bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootDir, ref CacheT fcache) @trusted {
+bool[AbsolutePath] dependencyAnalyze(ref Database db, AbsolutePath rootDir, ref FileStatCache fcache) @trusted {
     import std.algorithm : map, cache, filter;
     import std.datetime : dur;
     import std.path : buildPath;
@@ -34,7 +35,7 @@ bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootD
     import std.math : abs;
     import std.conv : to;
     import miniorm : spinSql;
-    import code_checker.database : FileId, TrackFile;
+    import code_checker.database : FileId, TrackFile, DepFile;
     import my.hash : Checksum64;
 
     typeof(return) rval;
@@ -49,26 +50,19 @@ bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootD
     try {
         auto getTrackFile = (Path p) => spinSql!(() => db.fileApi.getFile(p));
 
-        Checksum64[Path] dbDeps;
+        TrackFile[Path] dbDeps;
         foreach (a; spinSql!(() => db.dependencyApi.getAll))
-            dbDeps[a.file] = a.checksum;
+            dbDeps[a.file] = a.toTrackFile;
 
         bool isChanged(T)(T f) nothrow {
             try {
-                if ((f.root.timeStamp - fcache.get(f.root.file.AbsolutePath)
-                        .timeStamp).total!"msecs".abs < 20) {
-                    debug logger.trace("timestamp unchanged ", f.root.file);
-                    return false;
-                }
-
-                if (f.root.checksum != fcache.get(toAbsoluteRoot(rootDir, f.root.file)).checksum) {
-                    debug logger.trace("checksum changed of root", f.root.file);
+                if (!isSame(f.root, f.root.file.AbsolutePath, fcache))
                     return true;
-                }
 
-                foreach (a; f.deps.filter!(a => fcache.get(toAbsoluteRoot(rootDir,
-                        a)).checksum != dbDeps[a])) {
-                    debug logger.tracef("checksum changed of dependency %s for %s", a, f.root.file);
+                foreach (a; f.deps.filter!(a => !isSame(dbDeps[a],
+                        toAbsoluteRoot(rootDir, a), fcache))) {
+                    logger.tracef("%s dependency changed -> %s", f.root.file,
+                            toAbsoluteRoot(rootDir, a));
                     return true;
                 }
 
@@ -91,7 +85,7 @@ bool[AbsolutePath] dependencyAnalyze(CacheT)(ref Database db, AbsolutePath rootD
         logger.warning(e.msg);
     }
 
-    logger.trace("Dependency analyze: ", rval);
+    debug logger.trace("Dependency analyze: ", rval);
 
     return rval;
 }
