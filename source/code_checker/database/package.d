@@ -267,6 +267,10 @@ struct DepFile {
     SysTime timeStamp;
 }
 
+TrackFile toTrackFile(DepFile a) {
+    return TrackFile(a.file, a.checksum, a.timeStamp);
+}
+
 /// Primary key in the files table
 alias FileId = NamedType!(long, Tag!"FileId", long.init, Comparable, Hashable, TagStringable);
 
@@ -276,36 +280,30 @@ struct TrackFile {
     SysTime timeStamp;
 }
 
-struct TrackFileByStat {
-    Path file;
-    ulong size;
-    SysTime timeStamp;
-}
-
 struct DbCompileDbTrack {
     private Miniorm* db;
     private Database* wrapperDb;
 
-    void put(TrackFileByStat f) {
-        static immutable sql = format!"INSERT OR REPLACE INTO %s (path,size,time_stamp)
-            VALUES(:path,:sz,:ts)"(compileDbTrack);
+    void put(TrackFile f) {
+        static immutable sql = format!"INSERT OR REPLACE INTO %s (path,time_stamp,checksum)
+            VALUES(:path,:ts,:cs)"(compileDbTrack);
 
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", f.file.toString);
-        stmt.get.bind(":sz", cast(long) f.size);
         stmt.get.bind(":ts", f.timeStamp.toSqliteDateTime);
+        stmt.get.bind(":cs", cast(long) f.checksum.c0);
         stmt.get.execute;
     }
 
-    TrackFileByStat get(const Path path) {
-        static immutable sql = format!"SELECT size,time_stamp FROM %s
+    TrackFile get(const Path path) {
+        static immutable sql = format!"SELECT time_stamp,checksum FROM %s
             WHERE path=:path"(compileDbTrack);
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", path);
-        auto rval = TrackFileByStat(path);
+        auto rval = TrackFile(path);
         foreach (ref a; stmt.get.execute) {
-            rval.size = cast(ulong) a.peek!long(0);
-            rval.timeStamp = a.peek!string(1).fromSqLiteDateTime.toLocalTime;
+            rval.timeStamp = a.peek!string(0).fromSqLiteDateTime.toLocalTime;
+            rval.checksum = a.peek!long(1).Checksum64;
         }
         return rval;
     }

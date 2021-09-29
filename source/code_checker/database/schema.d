@@ -278,10 +278,10 @@ struct CompileDbTrackTable {
 
     string path;
 
-    long size;
-
     @ColumnName("time_stamp")
     SysTime timeStamp;
+
+    long checksum;
 }
 
 /** If the database start it version 0, not initialized, then initialize to the
@@ -313,6 +313,25 @@ void upgradeV1(ref Miniorm db) {
 }
 
 void upgradeV2(ref Miniorm db) {
+    @TableName(compileDbTrack)
+    @TableConstraint("unique_ UNIQUE (path)")
+    struct CompileDbTrackTable {
+        long id;
+
+        string path;
+
+        long size;
+
+        @ColumnName("time_stamp")
+        SysTime timeStamp;
+
+    }
+
+    db.run(buildSchema!CompileDbTrackTable);
+}
+
+void upgradeV3(ref Miniorm db) {
+    db.run("DROP TABLE " ~ compileDbTrack);
     db.run(buildSchema!CompileDbTrackTable);
 }
 
