@@ -49,7 +49,7 @@ unittest {
             appPath, "--verbose", "trace", "--clang-tidy-fix", "-c",
             buildPath(testData, "all_checks.toml"), "--log", "log", "--logdir",
             "log"
-            ]).status.shouldEqual(1);
+            ]).status.shouldEqual(0);
 
     dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
             a => a.extension == ".yaml").count.shouldEqual(1);
