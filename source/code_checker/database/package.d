@@ -170,10 +170,9 @@ struct DbDependency {
 
     /// The root must already exist or the whole operation will fail with an sql error.
     void set(const Path path, const DepFile[] deps) @trusted {
-        static immutable insertDepSql = format!"INSERT INTO %1$s (file,checksum,time_stamp)
+        static immutable insertDepSql = "INSERT INTO " ~ depFileTable ~ " (file,checksum,time_stamp)
             VALUES(:file,:cs,:ts)
-            ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file"(
-                depFileTable);
+            ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file";
 
         auto stmt = db.prepare(insertDepSql);
         auto ids = appender!(long[])();
@@ -191,8 +190,8 @@ struct DbDependency {
                 ids.put(id.orElse(0L));
         }
 
-        static immutable addRelSql = format!"INSERT OR IGNORE INTO %1$s (dep_id,file_id) VALUES(:did, :fid)"(
-                depRootTable);
+        static immutable addRelSql = "INSERT OR IGNORE INTO " ~ depRootTable
+            ~ " (dep_id,file_id) VALUES(:did, :fid)";
         stmt = db.prepare(addRelSql);
         const fid = () {
             auto a = wrapperDb.fileApi.getFileId(path);
@@ -285,8 +284,8 @@ struct DbCompileDbTrack {
     private Database* wrapperDb;
 
     void put(TrackFile f) {
-        static immutable sql = format!"INSERT OR REPLACE INTO %s (path,time_stamp,checksum)
-            VALUES(:path,:ts,:cs)"(compileDbTrack);
+        static immutable sql = "INSERT OR REPLACE INTO " ~ compileDbTrack
+            ~ " (path,time_stamp,checksum) VALUES(:path,:ts,:cs)";
 
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", f.file.toString);
@@ -296,8 +295,8 @@ struct DbCompileDbTrack {
     }
 
     TrackFile get(const Path path) {
-        static immutable sql = format!"SELECT time_stamp,checksum FROM %s
-            WHERE path=:path"(compileDbTrack);
+        static immutable sql = "SELECT time_stamp,checksum FROM "
+            ~ compileDbTrack ~ " WHERE path=:path";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", path);
         auto rval = TrackFile(path);
@@ -312,9 +311,8 @@ struct DbCompileDbTrack {
     void cleanup(const Duration dropAfter) {
         import std.datetime : Clock, dur;
 
-        static immutable sql = format!"DELETE FROM %s
-            WHERE datetime(time_stamp) < datetime(:older_then)"(
-                compileDbTrack);
+        static immutable sql = "DELETE FROM " ~ compileDbTrack
+            ~ " WHERE datetime(time_stamp) < datetime(:older_then)";
 
         auto stmt = db.prepare(sql);
         // two is a magic number that I think is ok. Over two days not that
