@@ -188,7 +188,7 @@ struct NormalFSM {
                 if (!exists(compileCommandsFile))
                     return false;
                 if (conf.compileDb.generateDbDeps.empty)
-                    return false;
+                    return true;
                 return !isChanged(db,
                         conf.compileDb.generateDbDeps ~ AbsolutePath(compileCommandsFile), fcache);
             } catch (Exception e) {
@@ -553,8 +553,6 @@ void removeFailing(ref Database db, AbsolutePath root, AbsolutePath[] failing) {
 }
 
 bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
-    import std.math : abs;
-
     foreach (a; files) {
         try {
             logger.trace("checking ", a);
@@ -562,7 +560,8 @@ bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) 
             const res = isSame(prev, a, fcache);
             logger.tracef(!res, "%s is %s (prev:%s curr:%s)", a, res
                     ? "unchaged" : "changed", prev, fcache.get(a));
-            return !res;
+            if (!res)
+                return true;
         } catch (Exception e) {
             logger.trace(e.msg).collectException;
             return true;
