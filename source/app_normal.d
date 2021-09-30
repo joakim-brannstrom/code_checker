@@ -306,13 +306,23 @@ struct NormalFSM {
         }
         exitStatus = tres.status.among(Status.passed, Status.none) ? 0 : 1;
 
+        spinSql!(() {
+            auto trans = db.transaction;
+            try {
+                removeDroppedFiles(db, env, root);
+                removeFailing(db, root, tres.failed);
+            } catch (Exception e) {
+                logger.trace(e.msg);
+            }
+            trans.commit;
+        });
+
         if (!tres.success.empty) {
             logger.trace("Saving result for ", tres.success);
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
                     saveDependencies(db, env, root, tres.success, fcache);
-                    removeDroppedFiles(db, env, root);
                     db.dependencyApi.cleanup;
                 } catch (Exception e) {
                     logger.trace(e.msg);
@@ -531,6 +541,14 @@ void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
     auto dbFiles = db.fileApi.getFiles.toSet;
     foreach (removed; dbFiles.setDifference(current).toRange) {
         db.fileApi.removeFile(removed);
+    }
+}
+
+void removeFailing(ref Database db, AbsolutePath root, AbsolutePath[] failing) {
+    import std.path : relativePath, buildNormalizedPath;
+
+    foreach (a; failing) {
+        db.fileApi.removeFile(relativePath(a, root).Path);
     }
 }
 
