@@ -8,12 +8,13 @@ Normal appliation mode.
 module app_normal;
 
 import logger = std.experimental.logger;
-import std.algorithm : among;
-import std.array : empty;
+import std.algorithm : among, map, filter, copy;
+import std.array : empty, appender, array;
 import std.exception : collectException;
 
-import my.path;
 import miniorm : spinSql;
+import my.path;
+import my.set;
 
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
@@ -204,7 +205,7 @@ struct NormalFSM {
         fcache = typeof(fcache).init; // drop cache because the update cmd may have changed a dependency
 
         if (res == 0) {
-            updateTrackFileByStat(db, conf.compileDb.generateDbDeps, fcache);
+            updateCompileDbTrack(db, conf.compileDb.generateDbDeps, fcache);
         } else {
             // the user need some helpful feedback for what failed
             logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
@@ -217,8 +218,6 @@ struct NormalFSM {
     }
 
     void act_fixDb() {
-        import std.algorithm : map;
-        import std.array : appender, array;
         import std.stdio : File;
         import std.file : exists;
         import compile_db : fromArgCompileDb;
@@ -249,8 +248,7 @@ struct NormalFSM {
             File(compileCommandsFile, "w").write(compile_db.data);
 
             fcache.drop(AbsolutePath(compileCommandsFile)); // do NOT use previously cached value
-            updateTrackFileByStat(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile),
-                    fcache);
+            updateCompileDbTrack(db, conf.compileDb.dbs ~ AbsolutePath(compileCommandsFile), fcache);
         } catch (Exception e) {
             logger.errorf("Unable to process %s", compileCommandsFile);
             logger.error(e.msg);
@@ -259,8 +257,6 @@ struct NormalFSM {
     }
 
     void act_runRegistry() {
-        import std.algorithm : map;
-        import std.array : array;
         import code_checker.engine;
         import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
         import code_checker.change : dependencyAnalyze;
@@ -368,8 +364,6 @@ struct NormalFSM {
 /// Unify multiple compilation databases to one json file.
 void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
         CompileCommandFilter flag_filter, ref AppT app) {
-    import std.algorithm : map, joiner, filter, copy;
-    import std.array : array, appender;
     import std.ascii : newline;
     import std.format : formattedWrite;
     import std.path : stripExtension;
@@ -435,7 +429,6 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
 @(`shall quote compile_commands entries as JSON requires when the value is a string containing "`)
 unittest {
     import std.algorithm : canFind;
-    import std.array : appender;
 
     // arrange
     enum test_compile_db = `[
@@ -469,9 +462,6 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
 
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         AbsolutePath[] successFiles, ref FileStatCache fcache) {
-    import std.algorithm : map, filter;
-    import std.array : array;
-    import my.set;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile;
 
@@ -488,12 +478,10 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
 }
 
 AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
-    import std.algorithm : map, filter, copy;
     import std.stdio : File;
     import std.string : strip, startsWith, split;
     import my.optional;
     import my.container.vector;
-    import my.set;
     import code_checker.change : toAbsolutePath;
 
     Set!AbsolutePath found;
@@ -534,9 +522,6 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
 }
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
-    import std.algorithm : map;
-    import my.set;
-
     auto current = env.compileDb.map!(a => a.absoluteFile.toIncludePath(root)).toSet;
     auto dbFiles = db.fileApi.getFiles.toSet;
     foreach (removed; dbFiles.setDifference(current).toRange) {
@@ -553,7 +538,7 @@ void removeFailing(ref Database db, AbsolutePath root, AbsolutePath[] failing) {
 }
 
 bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
-    foreach (a; files) {
+    foreach (a; toSet(files).toRange) {
         try {
             logger.trace("checking ", a);
             const prev = db.compileDbTrackApi.get(a);
@@ -570,8 +555,8 @@ bool isChanged(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) 
     return false;
 }
 
-void updateTrackFileByStat(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
-    foreach (a; files) {
+void updateCompileDbTrack(ref Database db, AbsolutePath[] files, ref FileStatCache fcache) nothrow {
+    foreach (a; toSet(files).toRange) {
         try {
             auto d = fcache.get(a);
             db.compileDbTrackApi.put(d);
