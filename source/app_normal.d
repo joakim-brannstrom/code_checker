@@ -463,17 +463,19 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         AbsolutePath[] successFiles, ref FileStatCache fcache) {
     import code_checker.engine.compile_db : toRange;
-    import code_checker.database : DepFile;
+    import code_checker.database : DepFile, DepFileId;
 
     auto success = toSet(successFiles);
 
+    DepFileId[Path] written;
+
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile in success)) {
-        db.fileApi.put(toIncludePath(pcmd.cmd.absoluteFile, root),
-                fcache.get(pcmd.cmd.absoluteFile).checksum,
+        auto path = toIncludePath(pcmd.cmd.absoluteFile, root);
+        db.fileApi.put(path, fcache.get(pcmd.cmd.absoluteFile).checksum,
                 fcache.get(pcmd.cmd.absoluteFile).timeStamp);
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
                 root), fcache.get(a).checksum, fcache.get(a).timeStamp)).array;
-        db.dependencyApi.set(toIncludePath(pcmd.cmd.absoluteFile, root), deps);
+        db.dependencyApi.set(path, db.dependencyApi.put(deps, written));
     }
 }
 
