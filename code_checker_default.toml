@@ -6,6 +6,9 @@ severity = "style"
 # Available are: ["clang-tidy", "iwyu"]
 # analyzers = ["clang-tidy"]
 
+# database file to use. By default code_checker.sqlite3 is used.
+# database = "code_checker.sqlite3"
+
 [compiler]
 # extra flags to pass on to the compiler.
 # the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
