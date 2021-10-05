@@ -242,7 +242,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     try {
         bool init_conf;
         string config_file = ".code_checker.toml";
-        string database = "code_checker.sqlite3";
+        string database;
         string logdir = ".";
         string workdir;
         string[] analyze_files;
@@ -290,7 +290,10 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         if (conf.logg.toFile)
             conf.logg.dir = Path(logdir).AbsolutePath;
 
-        conf.database = AbsolutePath(database);
+        if (conf.database.empty && database.empty)
+            conf.database = "code_checker.sqlite3".AbsolutePath;
+        else if (!database.empty)
+            conf.database = AbsolutePath(database);
 
         // dfmt off
         conf.compileDb.dbs = conf
@@ -377,6 +380,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     callbacks["defaults.severity"] = &defaults__check_name_standard;
     callbacks["defaults.analyzers"] = (ref Config c, ref TOMLValue v) {
         c.staticCode.analyzers = v.array.map!"a.str".array;
+    };
+    callbacks["defaults.database"] = (ref Config c, ref TOMLValue v) {
+        c.database = v.str.AbsolutePath;
     };
 
     callbacks["compile_commands.search_paths"] = (ref Config c, ref TOMLValue v) {

@@ -1,6 +1,7 @@
 [defaults]
 severity = "style"
 analyzers = ["clang-tidy"]
+database = "mydb.sqlite3"
 
 [compile_commands]
 search_paths = [ "db/compile_commands.json" ]
