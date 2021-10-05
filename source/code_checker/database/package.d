@@ -168,31 +168,45 @@ struct DbDependency {
     private Miniorm* db;
     private Database* wrapperDb;
 
-    /// The root must already exist or the whole operation will fail with an sql error.
-    void set(const Path path, const DepFile[] deps) @trusted {
+    /** Write new dependencies to the database, those that do not exist in written.
+     *
+     * Returns: a list of the dependencies as IDs
+     */
+    DepFileId[] put(const DepFile[] deps, ref DepFileId[Path] written) {
         static immutable insertDepSql = "INSERT INTO " ~ depFileTable ~ " (file,checksum,time_stamp)
             VALUES(:file,:cs,:ts)
             ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file";
 
         auto stmt = db.prepare(insertDepSql);
-        auto ids = appender!(long[])();
+        auto ids = appender!(DepFileId[])();
         foreach (a; deps) {
-            stmt.get.bind(":file", a.file.toString);
-            stmt.get.bind(":cs", cast(long) a.checksum.c0);
-            stmt.get.bind(":ts", a.timeStamp.toSqliteDateTime);
-            stmt.get.execute;
-            stmt.get.reset;
+            if (auto v = a.file in written) {
+                ids.put(*v);
+            } else {
+                stmt.get.bind(":file", a.file.toString);
+                stmt.get.bind(":cs", cast(long) a.checksum.c0);
+                stmt.get.bind(":ts", a.timeStamp.toSqliteDateTime);
+                stmt.get.execute;
+                stmt.get.reset;
 
-            // can't use lastInsertRowid because a conflict would not update
-            // the ID.
-            auto id = getId(a.file);
-            if (id.hasValue)
-                ids.put(id.orElse(0L));
+                // can't use lastInsertRowid because a conflict would not update
+                // the ID.
+                auto id = getId(a.file);
+                if (id.hasValue) {
+                    ids.put(id.orElse(0L).DepFileId);
+                    written[a.file] = DepFileId(id.orElse(0L));
+                }
+            }
         }
 
+        return ids.data;
+    }
+
+    /// The root must already exist or the whole operation will fail with an sql error.
+    void set(const Path path, const DepFileId[] deps) @trusted {
         static immutable addRelSql = "INSERT OR IGNORE INTO " ~ depRootTable
             ~ " (dep_id,file_id) VALUES(:did, :fid)";
-        stmt = db.prepare(addRelSql);
+        auto stmt = db.prepare(addRelSql);
         const fid = () {
             auto a = wrapperDb.fileApi.getFileId(path);
             if (a.isNull) {
@@ -203,8 +217,8 @@ struct DbDependency {
             return a.get;
         }();
 
-        foreach (id; ids.data) {
-            stmt.get.bind(":did", id);
+        foreach (id; deps) {
+            stmt.get.bind(":did", id.get);
             stmt.get.bind(":fid", fid.get);
             stmt.get.execute;
             stmt.get.reset;
@@ -212,7 +226,7 @@ struct DbDependency {
 
         // remove dropped relations
         stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
-                ids.data));
+                deps.map!(a => a.get)));
         stmt.get.bind(":fid", fid.get);
         stmt.get.execute;
     }
@@ -265,6 +279,8 @@ struct DepFile {
     Checksum64 checksum;
     SysTime timeStamp;
 }
+
+alias DepFileId = NamedType!(long, Tag!"DepFileId", long.init, TagStringable, Comparable);
 
 TrackFile toTrackFile(DepFile a) {
     return TrackFile(a.file, a.checksum, a.timeStamp);
