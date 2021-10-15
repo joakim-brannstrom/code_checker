@@ -14,6 +14,7 @@ import std.exception : collectException;
 
 import miniorm : spinSql;
 import my.path;
+import my.profile;
 import my.set;
 
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
@@ -184,6 +185,8 @@ struct NormalFSM {
         import std.file : exists;
         import std.process : spawnShell, wait;
 
+        profileSet(__FUNCTION__);
+
         bool isUnchanged() nothrow {
             try {
                 if (!exists(compileCommandsFile))
@@ -221,6 +224,8 @@ struct NormalFSM {
         import std.stdio : File;
         import std.file : exists;
         import compile_db : fromArgCompileDb;
+
+        profileSet(__FUNCTION__);
 
         compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.idup).array);
 
@@ -261,6 +266,8 @@ struct NormalFSM {
         import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
         import code_checker.change : dependencyAnalyze;
         import code_checker.engine.types : TotalResult;
+
+        profileSet(__FUNCTION__);
 
         auto changed = () {
             bool[AbsolutePath] rval;
@@ -465,6 +472,8 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile, DepFileId;
 
+    profileSet(__FUNCTION__);
+
     auto success = toSet(successFiles);
 
     DepFileId[Path] written;
@@ -524,6 +533,8 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
 }
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
+    profileSet(__FUNCTION__);
+
     auto current = env.compileDb.map!(a => a.absoluteFile.toIncludePath(root)).toSet;
     auto dbFiles = db.fileApi.getFiles.toSet;
     foreach (removed; dbFiles.setDifference(current).toRange) {

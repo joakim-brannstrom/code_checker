@@ -23,6 +23,7 @@ int main(string[] args) {
     import std.path : buildPath;
     import code_checker.cli : AppMode, parseCLI, parseConfigCLI, loadConfig, Config;
     import colorlog;
+    import my.profile;
     import app_normal;
 
     auto conf = () {
@@ -55,6 +56,9 @@ int main(string[] args) {
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
     cmds[AppMode.initConfig] = toDelegate(&modeInitConfig);
+
+    scope (success)
+        logger.trace(getProfileResult.toString);
 
     if (auto v = conf.mode in cmds) {
         return (*v)(conf);

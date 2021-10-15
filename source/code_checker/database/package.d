@@ -21,10 +21,11 @@ import std.typecons : Nullable, Flag, No;
 
 import miniorm : Miniorm, select, insert, insertOrReplace, delete_,
     insertOrIgnore, toSqliteDateTime, fromSqLiteDateTime, Bind;
+import my.hash : Checksum64;
 import my.named_type;
 import my.optional;
 import my.path;
-import my.hash : Checksum64;
+import my.profile;
 
 import code_checker.database.schema;
 
@@ -173,6 +174,8 @@ struct DbDependency {
      * Returns: a list of the dependencies as IDs
      */
     DepFileId[] put(const DepFile[] deps, ref DepFileId[Path] written) {
+        profileAdd(__FUNCTION__);
+
         static immutable insertDepSql = "INSERT INTO " ~ depFileTable ~ " (file,checksum,time_stamp)
             VALUES(:file,:cs,:ts)
             ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file";
@@ -217,18 +220,25 @@ struct DbDependency {
             return a.get;
         }();
 
-        foreach (id; deps) {
-            stmt.get.bind(":did", id.get);
-            stmt.get.bind(":fid", fid.get);
-            stmt.get.execute;
-            stmt.get.reset;
+        {
+            profileAdd(__FUNCTION__ ~ ".insert");
+
+            foreach (id; deps) {
+                stmt.get.bind(":did", id.get);
+                stmt.get.bind(":fid", fid.get);
+                stmt.get.execute;
+                stmt.get.reset;
+            }
         }
 
         // remove dropped relations
-        stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
-                deps.map!(a => a.get)));
-        stmt.get.bind(":fid", fid.get);
-        stmt.get.execute;
+        {
+            profileAdd(__FUNCTION__ ~ ".drop");
+            stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
+                    deps.map!(a => a.get)));
+            stmt.get.bind(":fid", fid.get);
+            stmt.get.execute;
+        }
     }
 
     private Optional!long getId(const Path file) {

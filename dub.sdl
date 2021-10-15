@@ -9,18 +9,9 @@ targetPath "build"
 dependency "colorlog" version="~>0.0.7"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
 dependency "unit-threaded" version="~>2.0.3" default=true
-dependency "my" version="~>0.0.33" default=true
+dependency "my" version="~>0.0.35" default=true
 dependency "compile_db" version="~>0.0.2" default=true
 dependency "miniorm" version="~>0.0.5" default=true
-
-//subPackage "./vendor/colorlog"
-//subPackage "./vendor/toml"
-//subPackage "./vendor/unit-threaded"
-//subPackage "./vendor/mylib"
-//
-//dependency "code_checker:colorlog" version="*"
-//dependency "code_checker:toml" version="*"
-//dependency "code_checker:my" version="*"
 
 configuration "application" {
     targetType "executable"

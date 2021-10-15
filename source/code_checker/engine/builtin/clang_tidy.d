@@ -198,7 +198,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         if (!exists(p.cmd.absoluteFile.toString)) {
             result_.status = Status.failed;
             result_.score -= 100;
-            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find " ~ p.cmd.absoluteFile.toString ~ " in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
             break;
         } else if (!file_filter.match(p.cmd.absoluteFile)) {
             if (logger.globalLogLevel == logger.LogLevel.all)
