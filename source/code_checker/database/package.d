@@ -207,9 +207,6 @@ struct DbDependency {
 
     /// The root must already exist or the whole operation will fail with an sql error.
     void set(const Path path, const DepFileId[] deps) @trusted {
-        static immutable addRelSql = "INSERT OR IGNORE INTO " ~ depRootTable
-            ~ " (dep_id,file_id) VALUES(:did, :fid)";
-        auto stmt = db.prepare(addRelSql);
         const fid = () {
             auto a = wrapperDb.fileApi.getFileId(path);
             if (a.isNull) {
@@ -220,7 +217,18 @@ struct DbDependency {
             return a.get;
         }();
 
+        // start by clearing out all dependencies for the file
         {
+            auto p = profileAdd(__FUNCTION__ ~ ".drop");
+            auto stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid"(depRootTable));
+            stmt.get.bind(":fid", fid.get);
+            stmt.get.execute;
+        }
+
+        static immutable addRelSql = "INSERT OR IGNORE INTO " ~ depRootTable
+            ~ " (dep_id,file_id) VALUES(:did, :fid)";
+        {
+            auto stmt = db.prepare(addRelSql);
             auto p = profileAdd(__FUNCTION__ ~ ".insert");
 
             foreach (id; deps) {
@@ -229,15 +237,6 @@ struct DbDependency {
                 stmt.get.execute;
                 stmt.get.reset;
             }
-        }
-
-        // remove dropped relations
-        {
-            auto p = profileAdd(__FUNCTION__ ~ ".drop");
-            stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
-                    deps.map!(a => a.get)));
-            stmt.get.bind(":fid", fid.get);
-            stmt.get.execute;
         }
     }
 
