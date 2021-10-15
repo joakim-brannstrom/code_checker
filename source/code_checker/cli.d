@@ -16,8 +16,9 @@ import std.exception : collectException, ifThrown;
 import std.path : buildPath, dirName;
 import std.typecons : Tuple, Flag;
 
-import toml : TOMLDocument, TOMLValue;
 import my.path : AbsolutePath, Path;
+import my.set;
+import toml : TOMLDocument, TOMLValue;
 
 @safe:
 
@@ -27,6 +28,11 @@ enum AppMode {
     helpUnknownCommand,
     normal,
     initConfig,
+}
+
+enum Progress {
+    // show save info to DB
+    saveDb,
 }
 
 /// Configuration options only relevant for static code checkers.
@@ -130,6 +136,9 @@ struct Logging {
 
     /// Directory to log to.
     AbsolutePath dir;
+
+    /// Progress info levels
+    Set!Progress progress;
 }
 
 /// Configuration of how to use the program.
@@ -249,6 +258,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string[] analyzers;
         string[] compile_dbs;
         string[] src_filter;
+        Progress[] progress;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
@@ -266,6 +276,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
             "logdir", "path to create logfiles in (default: .)", &logdir,
+            "progress", format!"verbosity of the progress information (%-(%s,%))"([EnumMembers!Progress]), &progress,
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "v|verbose", format("verbose mode is set to trace (%-(%s,%))", [EnumMembers!VerboseMode]), &conf.logg.verbose,
             "workdir", "use this path as the working directory when programs used by analyzers are executed (default: .)", &workdir,
@@ -276,6 +287,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.help;
         else if (init_conf)
             conf.mode = AppMode.initConfig;
+
+        conf.logg.progress = progress.toSet;
 
         // use a sane default which is to look in the current directory
         if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {

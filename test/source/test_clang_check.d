@@ -31,3 +31,15 @@ unittest {
     // assert
     res.status.shouldEqual(0);
 }
+
+@("shall run a perf log")
+unittest {
+    auto ta = makeTestArea;
+
+    dirContentCopy(buildPath(testData, "cpp", "perf"), ta.sandboxPath);
+
+    // action
+    auto res = ta.exec(appPath, "--verbose", "trace", "-c", "code_checker.toml");
+
+    // no assert, this is just performance test that is manually checked
+}
