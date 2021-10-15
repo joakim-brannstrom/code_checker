@@ -41,6 +41,5 @@ unittest {
     // action
     auto res = ta.exec(appPath, "--verbose", "trace", "-c", "code_checker.toml");
 
-    // assert
-    res.status.shouldEqual(0);
+    // no assert, this is just performance test that is manually checked
 }

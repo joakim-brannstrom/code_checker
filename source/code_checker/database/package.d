@@ -174,7 +174,7 @@ struct DbDependency {
      * Returns: a list of the dependencies as IDs
      */
     DepFileId[] put(const DepFile[] deps, ref DepFileId[Path] written) {
-        profileAdd(__FUNCTION__);
+        auto p = profileAdd(__FUNCTION__);
 
         static immutable insertDepSql = "INSERT INTO " ~ depFileTable ~ " (file,checksum,time_stamp)
             VALUES(:file,:cs,:ts)
@@ -221,7 +221,7 @@ struct DbDependency {
         }();
 
         {
-            profileAdd(__FUNCTION__ ~ ".insert");
+            auto p = profileAdd(__FUNCTION__ ~ ".insert");
 
             foreach (id; deps) {
                 stmt.get.bind(":did", id.get);
@@ -233,7 +233,7 @@ struct DbDependency {
 
         // remove dropped relations
         {
-            profileAdd(__FUNCTION__ ~ ".drop");
+            auto p = profileAdd(__FUNCTION__ ~ ".drop");
             stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid AND dep_id NOT IN (%(%s,%))"(depRootTable,
                     deps.map!(a => a.get)));
             stmt.get.bind(":fid", fid.get);

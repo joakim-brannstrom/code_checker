@@ -20,7 +20,7 @@ import my.set;
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
-import code_checker.cli : Config;
+import code_checker.cli : Config, Progress;
 import code_checker.database : Database, TrackFile;
 import code_checker.engine : Environment;
 import code_checker.cache : FileStatCache, getTrackFile, isSame;
@@ -185,7 +185,7 @@ struct NormalFSM {
         import std.file : exists;
         import std.process : spawnShell, wait;
 
-        profileSet(__FUNCTION__);
+        auto profile = profileSet(__FUNCTION__);
 
         bool isUnchanged() nothrow {
             try {
@@ -225,7 +225,7 @@ struct NormalFSM {
         import std.file : exists;
         import compile_db : fromArgCompileDb;
 
-        profileSet(__FUNCTION__);
+        auto profile = profileSet(__FUNCTION__);
 
         compileDb = fromArgCompileDb(conf.compileDb.dbs.map!(a => cast(string) a.idup).array);
 
@@ -267,7 +267,7 @@ struct NormalFSM {
         import code_checker.change : dependencyAnalyze;
         import code_checker.engine.types : TotalResult;
 
-        profileSet(__FUNCTION__);
+        auto profile = profileSet(__FUNCTION__);
 
         auto changed = () {
             bool[AbsolutePath] rval;
@@ -325,7 +325,7 @@ struct NormalFSM {
             spinSql!(() {
                 auto trans = db.transaction;
                 try {
-                    saveDependencies(db, env, root, tres.success, fcache);
+                    saveDependencies(db, env, root, tres.success, fcache, conf.logg.progress);
                     db.dependencyApi.cleanup;
                 } catch (Exception e) {
                     logger.trace(e.msg);
@@ -468,18 +468,32 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
 }
 
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
-        AbsolutePath[] successFiles, ref FileStatCache fcache) {
+        AbsolutePath[] successFiles, ref FileStatCache fcache, Set!Progress progress) {
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile, DepFileId;
 
-    profileSet(__FUNCTION__);
+    auto profile = profileSet(__FUNCTION__);
+
+    const printProgress = Progress.saveDb in progress;
+
+    if (printProgress) {
+        logger.info("Saving dependencies to database");
+    }
 
     auto success = toSet(successFiles);
 
     DepFileId[Path] written;
 
+    size_t saved = 1;
+    size_t total = success.length;
     foreach (pcmd; toRange(env).filter!(a => a.cmd.absoluteFile in success)) {
         auto path = toIncludePath(pcmd.cmd.absoluteFile, root);
+
+        if (printProgress) {
+            logger.infof("Saving %s/%s %s", saved, total, path);
+            saved++;
+        }
+
         db.fileApi.put(path, fcache.get(pcmd.cmd.absoluteFile).checksum,
                 fcache.get(pcmd.cmd.absoluteFile).timeStamp);
         auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
@@ -533,7 +547,7 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
 }
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {
-    profileSet(__FUNCTION__);
+    auto profile = profileSet(__FUNCTION__);
 
     auto current = env.compileDb.map!(a => a.absoluteFile.toIncludePath(root)).toSet;
     auto dbFiles = db.fileApi.getFiles.toSet;
