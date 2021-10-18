@@ -499,26 +499,27 @@ public:
 			/**
 			 * Assigns a value to a `SumType`.
 			 *
-			 * Assigning to a `SumType` is `@system` if any of the
-			 * `SumType`'s members contain pointers or references, since
-			 * those members may be reachable through external references,
-			 * and overwriting them could therefore lead to memory
-			 * corruption.
+			 * Assigning to a `SumType` is `@system` if any of the `SumType`'s
+			 * $(I other) members contain pointers or references, since those
+			 * members may be reachable through external references, and
+			 * overwriting them could therefore lead to memory corruption.
 			 *
 			 * An individual assignment can be `@trusted` if the caller can
-			 * guarantee that there are no outstanding references to $(I any)
-			 * of the `SumType`'s members when the assignment occurs.
+			 * guarantee that, when the assignment occurs, there are no
+			 * outstanding references to any such members.
 			 */
 			ref SumType opAssign(T rhs)
 			{
 				import core.lifetime: forward;
 				import std.traits: hasIndirections, hasNested;
-				import std.meta: Or = templateOr;
+				import std.meta: AliasSeq, Or = templateOr;
 
-				enum mayContainPointers =
-					anySatisfy!(Or!(hasIndirections, hasNested), Types);
+				alias OtherTypes =
+					AliasSeq!(Types[0 .. tid], Types[tid + 1 .. $]);
+				enum unsafeToOverwrite =
+					anySatisfy!(Or!(hasIndirections, hasNested), OtherTypes);
 
-				static if (mayContainPointers) {
+				static if (unsafeToOverwrite) {
 					cast(void) () @system {}();
 				}
 
@@ -1268,14 +1269,22 @@ version (D_BetterC) {} else
 
 // Types with qualified copy constructors
 @safe unittest {
-	static struct S
+	static struct ConstCopy
 	{
 		int n;
 		this(inout int n) inout { this.n = n; }
-		this(ref const S other) const { this.n = other.n; }
+		this(ref const typeof(this) other) const { this.n = other.n; }
 	}
 
-	const SumType!S x = const(S)(1);
+	static struct ImmutableCopy
+	{
+		int n;
+		this(inout int n) inout { this.n = n; }
+		this(ref immutable typeof(this) other) immutable { this.n = other.n; }
+	}
+
+	const SumType!ConstCopy x = const(ConstCopy)(1);
+	immutable SumType!ImmutableCopy y = immutable(ImmutableCopy)(1);
 }
 
 // Types with disabled opEquals
@@ -1378,6 +1387,15 @@ version (D_BetterC) {} else
 	const y = x;
 
 	assert(x.typeIndex == y.typeIndex);
+}
+
+// @safe assignment to the only pointer in a SumType
+@safe unittest {
+	SumType!(string, int) sm = 123;
+
+	assert(__traits(compiles, () @safe {
+		sm = "this should be @safe";
+	}));
 }
 
 /// True if `T` is an instance of the `SumType` template, otherwise false.
