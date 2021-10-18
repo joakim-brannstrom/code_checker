@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdlib>
-#include <iostream>
+#include "test2.hpp"
 
 int fun(int x);
