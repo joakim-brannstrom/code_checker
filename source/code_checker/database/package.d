@@ -65,10 +65,8 @@ struct DbFile {
     private Database* wrapperDb;
 
     void put(const Path p, Checksum64 cs, SysTime lastModified) @trusted {
-        static immutable sql = format!"INSERT INTO %s (path, checksum, root, time_stamp)
-            VALUES (:path, :checksum, 1, :ts)
-            ON CONFLICT (path) DO UPDATE SET checksum=:checksum,time_stamp=:ts"(
-                filesTable);
+        static immutable sql = "INSERT OR REPLACE INTO " ~ filesTable
+            ~ " (path, checksum, root, time_stamp) VALUES (:path, :checksum, 1, :ts)";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
         stmt.get.bind(":checksum", cast(long) cs.c0);
@@ -176,9 +174,8 @@ struct DbDependency {
     DepFileId[] put(const DepFile[] deps, ref DepFileId[Path] written) {
         auto p = profileAdd(__FUNCTION__);
 
-        static immutable insertDepSql = "INSERT INTO " ~ depFileTable ~ " (file,checksum,time_stamp)
-            VALUES(:file,:cs,:ts)
-            ON CONFLICT (file) DO UPDATE SET checksum=:cs,time_stamp=:ts WHERE file=:file";
+        static immutable insertDepSql = "INSERT OR REPLACE INTO "
+            ~ depFileTable ~ " (file,checksum,time_stamp) VALUES(:file,:cs,:ts)";
 
         auto stmt = db.prepare(insertDepSql);
         auto ids = appender!(DepFileId[])();
