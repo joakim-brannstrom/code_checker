@@ -33,7 +33,7 @@
 	],
 	"copyright": "Copyright © 2019, Joakim Brännström",
 	"dependencies": {
-		"sumtype": "~>1.1.2"
+		"sumtype": "~>1.1.4"
 	},
 	"description": "A library collection of algorithms and data structures for personal use",
 	"importPaths": [
@@ -46,5 +46,5 @@
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.33"
+	"version": "0.0.35"
 }

@@ -9,13 +9,12 @@
 
 module silly;
 
-version (unittest)  : static if (!__traits(compiles, () {
-        static import dub_test_root;
-    })) {
-    static assert(false,
-            "Couldn't find 'dub_test_root'. Make sure you are running tests with `dub test`");
+version(unittest):
+
+static if(!__traits(compiles, () {static import dub_test_root;})) {
+	static assert(false, "Couldn't find 'dub_test_root'. Make sure you are running tests with `dub test`");
 } else {
-    static import dub_test_root;
+	static import dub_test_root;
 }
 
 import core.time : Duration, MonoTime;
@@ -23,255 +22,270 @@ import std.ascii : newline;
 import std.stdio : stdout;
 
 shared static this() {
-    import core.runtime : Runtime, UnitTestResult;
-    import std.getopt : getopt;
-    import std.parallelism : TaskPool, totalCPUs;
+	import core.runtime    : Runtime, UnitTestResult;
+	import std.getopt      : getopt;
+	import std.parallelism : TaskPool, totalCPUs;
 
-    Runtime.extendedModuleUnitTester = () {
-        bool verbose;
-        shared ulong passed, failed;
-        uint threads;
-        string include, exclude;
+	Runtime.extendedModuleUnitTester = () {
+		bool verbose;
+		shared ulong passed, failed;
+		uint threads;
+		string include, exclude;
 
-        auto args = Runtime.args;
-        auto getoptResult = args.getopt("no-colours",
-                "Disable colours", &noColours, "t|threads",
-                "Number of worker threads. 0 to auto-detect (default)", &threads, "i|include",
-                "Run tests if their name matches specified regular expression",
-                &include, "e|exclude",
-                "Skip tests if their name matches specified regular expression", &exclude, "v|verbose",
-                "Show verbose output (full stack traces and durations)", &verbose,);
+		auto args = Runtime.args;
+		auto getoptResult = args.getopt(
+			"no-colours",
+				"Disable colours",
+				&noColours,
+			"t|threads",
+				"Number of worker threads. 0 to auto-detect (default)",
+				&threads,
+			"i|include",
+				"Run tests if their name matches specified regular expression",
+				&include,
+			"e|exclude",
+				"Skip tests if their name matches specified regular expression",
+				&exclude,
+			"v|verbose",
+				"Show verbose output (full stack traces and durations)",
+				&verbose,
+		);
 
-        if (getoptResult.helpWanted) {
-            import std.string : leftJustifier;
+		if(getoptResult.helpWanted) {
+			import std.string : leftJustifier;
 
-            stdout.writefln("Usage:%1$s\tdub test -- <options>%1$s%1$sOptions:", newline);
+			stdout.writefln("Usage:%1$s\tdub test -- <options>%1$s%1$sOptions:", newline);
 
-            foreach (option; getoptResult.options)
-                stdout.writefln("  %s\t%s\t%s", option.optShort,
-                        option.optLong.leftJustifier(20), option.help);
+			foreach(option; getoptResult.options)
+				stdout.writefln("  %s\t%s\t%s", option.optShort, option.optLong.leftJustifier(20), option.help);
 
-            return UnitTestResult(0, 0, false, false);
-        }
+			return UnitTestResult(0, 0, false, false);
+		}
 
-        if (!threads)
-            threads = totalCPUs;
+		if(!threads)
+			threads = totalCPUs;
 
-        Console.init;
+		Console.init;
 
-        Test[] tests;
+		Test[] tests;
 
-        // Test discovery
-        foreach (m; dub_test_root.allModules) {
-            import std.traits : fullyQualifiedName;
+		// Test discovery
+		foreach(m; dub_test_root.allModules) {
+			import std.traits : fullyQualifiedName;
+			static if(__traits(isModule, m)) {
+				alias module_ = m;
+			} else {
+				import std.meta : Alias;
+				// For cases when module contains member of the same name
+				alias module_ = Alias!(__traits(parent, m));
+			}
 
-            static if (__traits(isModule, m)) {
-                alias module_ = m;
-            } else {
-                import std.meta : Alias;
+			// Unittests in the module
+			foreach(test; __traits(getUnitTests, module_))
+				tests ~= Test(fullyQualifiedName!test, getTestName!test, &test);
 
-                // For cases when module contains member of the same name
-                alias module_ = Alias!(__traits(parent, m));
-            }
+			// Unittests in structs and classes
+			foreach(member; __traits(derivedMembers, module_))
+				static if(__traits(compiles, __traits(getMember, module_, member)) &&
+					!__traits(isTemplate,  __traits(getMember, module_, member)) &&
+					__traits(compiles, __traits(parent, __traits(getMember, module_, member))) &&
+					__traits(isSame, __traits(parent, __traits(getMember, module_, member)), module_) &&
+					__traits(compiles, __traits(getUnitTests, __traits(getMember, module_, member))))
+						foreach(test; __traits(getUnitTests, __traits(getMember, module_, member)))
+							tests ~= Test(fullyQualifiedName!test, getTestName!test, &test);
+		}
 
-            // Unittests in the module
-            foreach (test; __traits(getUnitTests, module_))
-                tests ~= Test(fullyQualifiedName!test, getTestName!test, &test);
+		auto started = MonoTime.currTime;
 
-            // Unittests in structs and classes
-            foreach (member; __traits(derivedMembers, module_))
-                static if (__traits(compiles, __traits(getMember, module_, member))
-                        && !__traits(isTemplate, __traits(getMember, module_, member))
-                        && __traits(compiles, __traits(parent, __traits(getMember,
-                            module_, member))) && __traits(isSame, __traits(parent,
-                            __traits(getMember, module_, member)),
-                            module_) && __traits(compiles, __traits(getUnitTests,
-                            __traits(getMember, module_, member))))
-                    foreach (test; __traits(getUnitTests, __traits(getMember, module_, member)))
-                        tests ~= Test(fullyQualifiedName!test, getTestName!test, &test);
-        }
+		with(new TaskPool(threads-1)) {
+			import core.atomic : atomicOp;
+			import std.regex   : matchFirst;
 
-        auto started = MonoTime.currTime;
+			foreach(test; parallel(tests)) {
+				if((!include && !exclude) ||
+					(include && !(test.fullName ~ " " ~ test.testName).matchFirst(include).empty) ||
+					(exclude &&  (test.fullName ~ " " ~ test.testName).matchFirst(exclude).empty)) {
+						auto result = test.executeTest;
+						result.writeResult(verbose);
 
-        with (new TaskPool(threads - 1)) {
-            import core.atomic : atomicOp;
-            import std.regex : matchFirst;
+						atomicOp!"+="(result.succeed ? passed : failed, 1UL);
+				}
+			}
 
-            foreach (test; parallel(tests)) {
-                if ((!include && !exclude) || (include
-                        && !(test.fullName ~ " " ~ test.testName).matchFirst(include).empty) || (exclude
-                        && (test.fullName ~ " " ~ test.testName).matchFirst(exclude).empty)) {
-                    auto result = test.executeTest;
-                    result.writeResult(verbose);
+			finish(true);
+		}
 
-                    atomicOp!"+="(result.succeed ? passed : failed, 1UL);
-                }
-            }
+		stdout.writeln;
+		stdout.writefln("%s: %s passed, %s failed in %d ms",
+			Console.emphasis("Summary"),
+			Console.colour(passed, Colour.ok),
+			Console.colour(failed, failed ? Colour.achtung : Colour.none),
+			(MonoTime.currTime - started).total!"msecs",
+		);
 
-            finish(true);
-        }
-
-        stdout.writeln;
-        stdout.writefln("%s: %s passed, %s failed in %d ms", Console.emphasis("Summary"),
-                Console.colour(passed, Colour.ok), Console.colour(failed,
-                    failed ? Colour.achtung : Colour.none),
-                (MonoTime.currTime - started).total!"msecs",);
-
-        return UnitTestResult(passed + failed, passed, false, false);
-    };
+		return UnitTestResult(passed + failed, passed, false, false);
+	};
 }
 
 void writeResult(TestResult result, in bool verbose) {
-    import std.format : formattedWrite;
-    import std.algorithm : canFind;
-    import std.range : drop;
-    import std.string : lastIndexOf, lineSplitter;
+	import std.format    : formattedWrite;
+	import std.algorithm : canFind;
+	import std.range     : drop;
+	import std.string    : lastIndexOf, lineSplitter;
 
-    auto writer = stdout.lockingTextWriter;
+	auto writer = stdout.lockingTextWriter;
 
-    writer.formattedWrite(" %s %s %s", result.succeed ? Console.colour("✓",
-            Colour.ok) : Console.colour("✗", Colour.achtung),
-            Console.emphasis(result.test.fullName[0 .. result.test.fullName.lastIndexOf(
-                    '.')].truncateName(verbose)), result.test.testName,);
+	writer.formattedWrite(" %s %s %s",
+		result.succeed
+			? Console.colour("✓", Colour.ok)
+			: Console.colour("✗", Colour.achtung),
+		Console.emphasis(result.test.fullName[0..result.test.fullName.lastIndexOf('.')].truncateName(verbose)),
+		result.test.testName,
+	);
 
-    if (verbose)
-        writer.formattedWrite(" (%.3f ms)", (cast(real) result.duration.total!"usecs") / 10.0f ^^ 3);
+	if(verbose)
+		writer.formattedWrite(" (%.3f ms)", (cast(real) result.duration.total!"usecs") / 10.0f ^^ 3);
 
-    writer.put(newline);
+	writer.put(newline);
 
-    foreach (th; result.thrown) {
-        writer.formattedWrite("    %s thrown from %s on line %d: %s%s",
-                th.type, th.file, th.line, th.message.lineSplitter.front, newline,);
-        foreach (line; th.message.lineSplitter.drop(1))
-            writer.formattedWrite("      %s%s", line, newline);
+	foreach(th; result.thrown) {
+		writer.formattedWrite("    %s thrown from %s on line %d: %s%s",
+			th.type,
+			th.file,
+			th.line,
+			th.message.lineSplitter.front,
+			newline,
+		);
+		foreach(line; th.message.lineSplitter.drop(1))
+			writer.formattedWrite("      %s%s", line, newline);
 
-        writer.formattedWrite("    --- Stack trace ---%s", newline);
-        if (verbose) {
-            foreach (line; th.info)
-                writer.formattedWrite("    %s%s", line, newline);
-        } else {
-            for (size_t i = 0; i < th.info.length && !th.info[i].canFind(__FILE__);
-                    ++i)
-                writer.formattedWrite("    %s%s", th.info[i], newline);
-        }
-    }
+		writer.formattedWrite("    --- Stack trace ---%s", newline);
+		if(verbose) {
+			foreach(line; th.info)
+				writer.formattedWrite("    %s%s", line, newline);
+		} else {
+			for(size_t i = 0; i < th.info.length && !th.info[i].canFind(__FILE__); ++i)
+				writer.formattedWrite("    %s%s", th.info[i], newline);
+		}
+	}
 }
 
 TestResult executeTest(Test test) {
-    import core.exception : AssertError, OutOfMemoryError;
+	import core.exception : AssertError, OutOfMemoryError;
+	auto ret = TestResult(test);
+	auto started = MonoTime.currTime;
 
-    auto ret = TestResult(test);
-    auto started = MonoTime.currTime;
+	try {
+		scope(exit) ret.duration = MonoTime.currTime - started;
+		test.ptr();
+		ret.succeed = true;
+	} catch(Throwable t) {
+		if(!(cast(Exception) t || cast(AssertError) t))
+			throw t;
 
-    try {
-        scope (exit)
-            ret.duration = MonoTime.currTime - started;
-        test.ptr();
-        ret.succeed = true;
-    } catch (Throwable t) {
-        if (!(cast(Exception) t || cast(AssertError) t))
-            throw t;
+		foreach(th; t) {
+			immutable(string)[] trace;
+			try {
+				foreach(i; th.info)
+					trace ~= i.idup;
+			} catch(OutOfMemoryError) { // TODO: Actually fix a bug instead of this workaround
+				trace ~= "<silly error> Failed to get stack trace, see https://gitlab.com/AntonMeep/silly/issues/31";
+			}
 
-        foreach (th; t) {
-            immutable(string)[] trace;
-            try {
-                foreach (i; th.info)
-                    trace ~= i.idup;
-            } catch (OutOfMemoryError) { // TODO: Actually fix a bug instead of this workaround
-                trace ~= "<silly error> Failed to get stack trace, see https://gitlab.com/AntonMeep/silly/issues/31";
-            }
+			ret.thrown ~= Thrown(typeid(th).name, th.message.idup, th.file, th.line, trace);
+		}
+	}
 
-            ret.thrown ~= Thrown(typeid(th).name, th.message.idup, th.file, th.line, trace);
-        }
-    }
-
-    return ret;
+	return ret;
 }
 
 struct Test {
-    string fullName, testName;
+	string fullName,
+		   testName;
 
-    void function() ptr;
+	void function() ptr;
 }
 
 struct TestResult {
-    Test test;
-    bool succeed;
-    Duration duration;
+	Test test;
+	bool succeed;
+	Duration duration;
 
-    immutable(Thrown)[] thrown;
+	immutable(Thrown)[] thrown;
 }
 
 struct Thrown {
-    string type, message, file;
-    size_t line;
-    immutable(string)[] info;
+	string type,
+		   message,
+		   file;
+	size_t line;
+	immutable(string)[] info;
 }
 
 __gshared bool noColours;
 
 enum Colour {
-    none,
-    ok = 32,
-    achtung = 31,
+	none,
+	ok = 32,
+	achtung = 31,
 }
 
 static struct Console {
-    static void init() {
-        if (noColours) {
-            return;
-        } else {
-            version (Posix) {
-                import core.sys.posix.unistd;
+	static void init() {
+		if(noColours) {
+			return;
+		} else {
+			version(Posix) {
+				import core.sys.posix.unistd;
+				noColours = isatty(STDOUT_FILENO) == 0;
+			} else version(Windows) {
+				import core.sys.windows.winbase : GetStdHandle, STD_OUTPUT_HANDLE, INVALID_HANDLE_VALUE;
+				import core.sys.windows.wincon  : SetConsoleOutputCP, GetConsoleMode, SetConsoleMode;
+				import core.sys.windows.windef  : DWORD;
+				import core.sys.windows.winnls  : CP_UTF8;
 
-                noColours = isatty(STDOUT_FILENO) == 0;
-            } else version (Windows) {
-                import core.sys.windows.winbase : GetStdHandle,
-                    STD_OUTPUT_HANDLE, INVALID_HANDLE_VALUE;
-                import core.sys.windows.wincon : SetConsoleOutputCP, GetConsoleMode, SetConsoleMode;
-                import core.sys.windows.windef : DWORD;
-                import core.sys.windows.winnls : CP_UTF8;
+				SetConsoleOutputCP(CP_UTF8);
 
-                SetConsoleOutputCP(CP_UTF8);
+				auto hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+				DWORD originalMode;
 
-                auto hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-                DWORD originalMode;
+				// TODO: 4 stands for ENABLE_VIRTUAL_TERMINAL_PROCESSING which should be
+				// in druntime v2.082.0
+				noColours = hOut == INVALID_HANDLE_VALUE           ||
+							!GetConsoleMode(hOut, &originalMode)   ||
+							!SetConsoleMode(hOut, originalMode | 4);
+			}
+		}
+	}
 
-                // TODO: 4 stands for ENABLE_VIRTUAL_TERMINAL_PROCESSING which should be
-                // in druntime v2.082.0
-                noColours = hOut == INVALID_HANDLE_VALUE || !GetConsoleMode(hOut,
-                        &originalMode) || !SetConsoleMode(hOut, originalMode | 4);
-            }
-        }
-    }
+	static string colour(T)(T t, Colour c = Colour.none) {
+		import std.conv : text;
 
-    static string colour(T)(T t, Colour c = Colour.none) {
-        import std.conv : text;
+		return noColours ? text(t) : text("\033[", cast(int) c, "m", t, "\033[m");
+	}
 
-        return noColours ? text(t) : text("\033[", cast(int) c, "m", t, "\033[m");
-    }
-
-    static string emphasis(string s) {
-        return noColours ? s : "\033[1m" ~ s ~ "\033[m";
-    }
+	static string emphasis(string s) {
+		return noColours ? s : "\033[1m" ~ s ~ "\033[m";
+	}
 }
 
 string getTestName(alias test)() {
-    string name = __traits(identifier, test);
+	string name = __traits(identifier, test);
 
-    foreach (attribute; __traits(getAttributes, test)) {
-        static if (is(typeof(attribute) : string)) {
-            name = attribute;
-            break;
-        }
-    }
+	foreach(attribute; __traits(getAttributes, test)) {
+		static if(is(typeof(attribute) : string)) {
+			name = attribute;
+			break;
+		}
+	}
 
-    return name;
+	return name;
 }
 
 string truncateName(string s, bool verbose = false) {
-    import std.algorithm : max;
-    import std.string : indexOf;
-
-    return s.length > 30 && !verbose ? s[max(s.indexOf('.', s.length - 30), s.length - 30) .. $] : s;
+	import std.algorithm : max;
+	import std.string    : indexOf;
+	return s.length > 30 && !verbose
+		? s[max(s.indexOf('.', s.length - 30), s.length - 30) .. $]
+		: s;
 }
