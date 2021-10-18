@@ -469,6 +469,7 @@ Path toIncludePath(AbsolutePath f, AbsolutePath root) {
 
 void saveDependencies(ref Database db, Environment env, AbsolutePath root,
         AbsolutePath[] successFiles, ref FileStatCache fcache, Set!Progress progress) {
+    import std.algorithm : sort;
     import code_checker.engine.compile_db : toRange;
     import code_checker.database : DepFile, DepFileId;
 
@@ -483,6 +484,7 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
     auto success = toSet(successFiles);
 
     DepFileId[Path] written;
+    DepScan dscan;
 
     size_t saved = 1;
     size_t total = success.length;
@@ -496,34 +498,38 @@ void saveDependencies(ref Database db, Environment env, AbsolutePath root,
 
         db.fileApi.put(path, fcache.get(pcmd.cmd.absoluteFile).checksum,
                 fcache.get(pcmd.cmd.absoluteFile).timeStamp);
-        auto deps = depScan(pcmd, root).map!(a => DepFile(toIncludePath(a,
+        auto deps = dscan.get(pcmd, root).map!(a => DepFile(toIncludePath(a,
                 root), fcache.get(a).checksum, fcache.get(a).timeStamp)).array;
         db.dependencyApi.set(path, db.dependencyApi.put(deps, written));
     }
+
+    debug {
+        foreach (a; dscan.cache.byKey.array.sort) {
+            logger.tracef("deps for %s : %s", a, dscan.cache[a].sort);
+        }
+    }
 }
 
-AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
+struct DepScan {
     import std.stdio : File;
     import std.string : strip, startsWith, split;
     import my.optional;
     import my.container.vector;
     import code_checker.change : toAbsolutePath;
 
-    Set!AbsolutePath found;
-    Vector!AbsolutePath que;
-    que.put(pcmd.cmd.absoluteFile);
+    AbsolutePath[][AbsolutePath] cache;
 
-    void updateQueue(AbsolutePath p) {
-        if (p !in found)
-            que.put(p);
+    AbsolutePath[] get(ParsedCompileCommand pcmd, AbsolutePath root) {
+        if (auto v = pcmd.cmd.absoluteFile in cache)
+            return *v;
+        return depScan(pcmd, root, pcmd.cmd.absoluteFile);
     }
 
-    while (!que.empty) {
-        auto curr = que.back;
-        que.popBack;
+    AbsolutePath[] flatScan(ParsedCompileCommand pcmd, AbsolutePath root, AbsolutePath startFile) {
+        Set!AbsolutePath found;
 
         try {
-            foreach (d; File(curr).byLine
+            foreach (d; File(startFile).byLine
                     .map!(a => a.strip)
                     .filter!(a => a.startsWith("#include"))
                     .map!(a => a.split)
@@ -535,15 +541,71 @@ AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root) {
                         pcmd.cmd.directory, pcmd.flags.includes, pcmd.flags.systemIncludes))
                     .filter!(a => a.hasValue)
                     .map!(a => a.orElse(AbsolutePath.init))) {
-                updateQueue(d);
                 found.add(d);
             }
         } catch (Exception e) {
             logger.trace(e.msg);
         }
+
+        return found.toArray;
     }
 
-    return found.toArray;
+    AbsolutePath[] depScan(ParsedCompileCommand pcmd, AbsolutePath root, AbsolutePath startFile) {
+        if (auto v = startFile in cache)
+            return *v;
+
+        AbsolutePath[][AbsolutePath] scans;
+        AbsolutePath[] merge(AbsolutePath p) {
+            Set!AbsolutePath visited;
+            Set!AbsolutePath rval;
+            Vector!AbsolutePath que;
+            que.put(p);
+            while (!que.empty) {
+                auto curr = que.back;
+                que.popBack;
+
+                if (curr in visited) {
+                    continue;
+                }
+
+                if (auto v = curr in scans) {
+                    que.put(*v);
+                    rval.add(*v);
+                }
+                visited.add(curr);
+            }
+
+            return rval.toArray;
+        }
+
+        Set!AbsolutePath visited;
+        Vector!AbsolutePath que;
+        que.put(startFile);
+
+        while (!que.empty) {
+            auto curr = que.back;
+            que.popBack;
+
+            if (auto v = curr in cache) {
+                scans[curr] = *v;
+                visited.add(*v);
+            } else {
+                auto deps = flatScan(pcmd, root, curr);
+                foreach (f; deps) {
+                    if (f !in visited) {
+                        que.put(f);
+                        visited.add(f);
+                    }
+                }
+                scans[curr] = deps;
+            }
+        }
+
+        foreach (a; scans.byKey.array.filter!(a => a !in cache))
+            cache[a] = merge(a);
+
+        return cache[startFile];
+    }
 }
 
 void removeDroppedFiles(ref Database db, Environment env, AbsolutePath root) {

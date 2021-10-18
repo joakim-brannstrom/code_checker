@@ -26,10 +26,16 @@ unittest {
     dirContentCopy(buildPath(testData, "cpp", "dep_scan"), ta.sandboxPath);
 
     // action
-    auto res = ta.exec(appPath, "--verbose", "trace", "-c", "code_checker.toml");
+    auto res = ta.exec(appPath, "--verbose", "trace", "-c",
+            "code_checker.toml", "--progress", "saveDb");
 
     // assert
     res.status.shouldEqual(0);
+
+    auto lines = res.output.splitLines.array;
+    "deps for .*/test.cpp : .*/test.hpp, .*test2.hpp".regexIn(lines);
+    "deps for .*/test.hpp : .*test2.hpp".regexIn(lines);
+    `deps for .*/test2.hpp : \[\]`.regexIn(lines);
 }
 
 @("shall run a perf log")
