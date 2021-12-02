@@ -287,6 +287,8 @@ struct NormalFSM {
         env.files = () {
             if (!conf.analyzeFiles.empty)
                 return conf.analyzeFiles.map!(a => cast(string) a).array;
+            if (conf.runOnAllFiles)
+                return env.compileDb.map!(a => a.absoluteFile.toString).array;
 
             string[] rval;
             foreach (dbFile; env.compileDb) {
