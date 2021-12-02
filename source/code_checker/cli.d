@@ -177,6 +177,8 @@ struct Config {
 
     /// If set then only analyze these files.
     AbsolutePath[] analyzeFiles;
+    /// If set then all files are analyzed, ignoring the change based algorithm.
+    bool runOnAllFiles;
 
     /// Returns: a config object with default values.
     static Config make(AbsolutePath workDir, AbsolutePath confFile) @safe {
@@ -289,6 +291,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.initConfig;
 
         conf.logg.progress = progress.toSet;
+
+        if (conf.clangTidy.applyFixitErrors || conf.clangTidy.applyFixit)
+            conf.runOnAllFiles = true;
 
         // use a sane default which is to look in the current directory
         if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
