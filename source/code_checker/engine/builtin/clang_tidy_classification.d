@@ -82,7 +82,7 @@ struct CountErrorsResult {
     }
 
     /// Returns: the score when summing up the found occurancies.
-    int score() @safe pure nothrow const @nogc scope {
+    int score() @safe pure nothrow const @nogc {
         int sum;
         // just chose some numbers. The intent is that warnings should be a high penalty
         foreach (kv; score_.byKeyValue) {
