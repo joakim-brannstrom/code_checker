@@ -383,7 +383,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
 
     void writeEntry(T)(T e) {
         auto raw_flags = () @safe {
-            import std.json : JSONValue;
+            import std.json : JSONValue, JSONOptions;
 
             auto app = appender!(string[]);
             //auto pflags = e.parseFlag(flag_filter);
@@ -393,7 +393,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
             // clang-tidy says "Passed" on everything.
             ["-c", e.cmd.absoluteFile.toString].copy(app);
             // correctly quotes interior strings as JSON requires.
-            return JSONValue(app.data).toString;
+            return JSONValue(app.data).toString(JSONOptions.doNotEscapeSlashes);
         }();
 
         formattedWrite(app, `"directory": "%s",`, cast(string) e.cmd.directory);
