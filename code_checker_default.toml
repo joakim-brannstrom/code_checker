@@ -45,8 +45,7 @@ extra_flags = [ "-Wall",
 
 # search for compile_commands.json in this paths
 search_paths = ["./compile_commands.json"]
-# files matching any of the regex will not be analyzed
-# exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
+
 # flags to remove when analyzing a file in the DB
 # filter = ["-c",
 # "-o",

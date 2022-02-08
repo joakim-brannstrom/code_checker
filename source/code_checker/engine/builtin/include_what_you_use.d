@@ -14,9 +14,9 @@ import std.exception : collectException;
 import std.typecons : Tuple;
 
 import my.path : AbsolutePath, Path;
+import my.filter : ReFilter;
 
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
-import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
 
@@ -137,7 +137,8 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         pool.finish;
     ExpectedReplyCounter cond;
 
-    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    auto file_filter = ReFilter(env.conf.staticCode.fileIncludeFilter,
+            env.conf.staticCode.fileExcludeFilter);
     auto fixedDb = toRange(env);
 
     foreach (cmd; fixedDb) {
