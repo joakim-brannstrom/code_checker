@@ -21,10 +21,10 @@ import std.typecons : Tuple;
 
 import colorlog;
 import my.path : AbsolutePath;
+import my.filter : ReFilter;
 
 import code_checker.cli : Config;
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
-import code_checker.engine.file_filter;
 import code_checker.engine.types;
 import code_checker.process : RunResult;
 
@@ -191,7 +191,8 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     scope (exit)
         pool.finish;
 
-    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    auto file_filter = ReFilter(env.conf.staticCode.fileIncludeFilter,
+            env.conf.staticCode.fileExcludeFilter);
     auto fixedDb = toRange(env);
 
     foreach (p; fixedDb) {
@@ -210,7 +211,8 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
 
             immutable(TidyWork)* w = () @trusted {
                 return cast(immutable) new TidyWork(tidyArgs, p.cmd.absoluteFile,
-                        !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter);
+                        !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter,
+                        env.conf.staticCode.fileIncludeFilter);
             }();
             auto t = task!taskTidy(thisTid, w);
             pool.put(t);
@@ -260,7 +262,8 @@ void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
         }
     }
 
-    auto file_filter = FileFilter(env.conf.staticCode.fileExcludeFilter);
+    auto file_filter = ReFilter(env.conf.staticCode.fileIncludeFilter,
+            env.conf.staticCode.fileExcludeFilter);
     auto fixedDb = toRange(env);
 
     const max_nr = fixedDb.length;
@@ -303,6 +306,7 @@ struct TidyWork {
     AbsolutePath p;
     bool useColors;
     string[] fileExcludeFilter;
+    string[] fileIncludeFilter;
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
@@ -325,9 +329,9 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         }
     }
 
-    FileFilter file_filter;
+    ReFilter file_filter;
     try {
-        file_filter = FileFilter(work.fileExcludeFilter);
+        file_filter = ReFilter(work.fileIncludeFilter, work.fileExcludeFilter);
     } catch (Exception e) {
         logger.error(e.msg).collectException;
         tres.clangTidyStatus = -1;

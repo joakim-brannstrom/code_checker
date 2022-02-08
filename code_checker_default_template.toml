@@ -26,6 +26,12 @@ search_paths = ["./compile_commands.json"]
 # files matching any of the regex will not be analyzed
 # exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
 
+# only those files that fully match the filters will be analyzed.
+# First the files are tested against all `include`-filters.
+# If they match then those that match any `exclude` are removed.
+# include = [ ".*/src/.*", ".*/include/.*" ]
+# exclude = [ ".*/vendor/.*", ".*/include/custom.hpp" ]
+
 [clang_tidy]
 # arguments to -header-filter
 header_filter = ".*"

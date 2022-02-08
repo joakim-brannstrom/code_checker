@@ -47,6 +47,9 @@ struct ConfigStaticCode {
 
     /// Files matching this pattern should not be analyzed.
     string[] fileExcludeFilter;
+
+    /// Only files matching this pattern should be analyzed.
+    string[] fileIncludeFilter;
 }
 
 /// Configuration options only relevant for clang-tidy.
@@ -421,6 +424,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     };
     callbacks["compile_commands.exclude"] = (ref Config c, ref TOMLValue v) {
         c.staticCode.fileExcludeFilter = v.array.map!"a.str".array;
+    };
+    callbacks["compile_commands.include"] = (ref Config c, ref TOMLValue v) {
+        c.staticCode.fileIncludeFilter = v.array.map!"a.str".array;
     };
     callbacks["compile_commands.filter"] = (ref Config c, ref TOMLValue v) {
         import compile_db : FilterClangFlag;
