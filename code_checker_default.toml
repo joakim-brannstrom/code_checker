@@ -10,9 +10,11 @@ severity = "style"
 # database = "code_checker.sqlite3"
 
 [compiler]
+
 # extra flags to pass on to the compiler.
+# intended to be set by a central configuration.
 # the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
-extra_flags = [ "-Wall",
+flags = [ "-Wall",
     "-Wextra", # resonable and standard
     "-Wshadow", # warn the user if a variable declaration shadows one from a parent context
     "-Wnon-virtual-dtor", # warn the user if a class with virtual functions has a non-virtual destructor
@@ -32,6 +34,9 @@ extra_flags = [ "-Wall",
     "-Wuseless-cast", # warn if you perform a cast to the same type
     "-Wdocumentation" # warn about mismatch between the signature and doxygen comment
  ]
+
+# same as flags but intended to be modified by a user.
+# extra_flags = [""]
 
 # use this compilers system includes instead of the one used in the compile_commands.json
 # use_compiler_system_includes = "/path/to/c++"

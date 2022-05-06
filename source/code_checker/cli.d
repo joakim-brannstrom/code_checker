@@ -120,6 +120,11 @@ struct Compiler {
     import compile_db : SystemCompiler = Compiler;
 
     /// Additional flags the user wants to add besides those that are in the compile_commands.json.
+    /// This is intended to be set by a centralized configuration.
+    string[] flags;
+
+    /// Additional flags the user wants to add besides those that are in the compile_commands.json.
+    /// This is intended to be set locally by a user which act in addition to the centralized flags.
     string[] extraFlags;
 
     /// Deduce compiler flags from this compiler and not the one in the
@@ -464,6 +469,9 @@ void loadConfig(ref Config rval, string configFile) @trusted {
         c.clangTidy.systemConfig = v.str;
     };
 
+    callbacks["compiler.flags"] = (ref Config c, ref TOMLValue v) {
+        c.compiler.flags = v.array.map!(a => a.str).array;
+    };
     callbacks["compiler.extra_flags"] = (ref Config c, ref TOMLValue v) {
         c.compiler.extraFlags = v.array.map!(a => a.str).array;
     };
