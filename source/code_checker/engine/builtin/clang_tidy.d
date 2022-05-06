@@ -16,7 +16,7 @@ import std.file : exists;
 import std.format : format;
 import std.path : buildPath;
 import std.process : spawnProcess, wait;
-import std.range : put, only, enumerate;
+import std.range : put, only, enumerate, chain;
 import std.typecons : Tuple;
 
 import colorlog;
@@ -74,7 +74,8 @@ class ClangTidy : BaseFixture {
         if (!env.conf.clangTidy.checkExtensions.empty)
             ["--checks", env.conf.clangTidy.checkExtensions.joiner(",").text].copy(app);
 
-        env.conf.compiler.extraFlags.map!(a => ["--extra-arg", a]).joiner.copy(app);
+        chain(env.conf.compiler.flags, env.conf.compiler.extraFlags).map!(
+                a => ["--extra-arg", a]).joiner.copy(app);
 
         ["--header-filter", env.conf.clangTidy.headerFilter].copy(app);
 
