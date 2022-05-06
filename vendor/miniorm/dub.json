@@ -4,6 +4,9 @@
 	],
 	"configurations": [
 		{
+			"excludedSourceFiles": [
+				"build/ut.d"
+			],
 			"name": "with-lib",
 			"subConfigurations": {
 				"d2sqlite3": "with-lib"
@@ -11,6 +14,9 @@
 			"targetType": "library"
 		},
 		{
+			"excludedSourceFiles": [
+				"build/ut.d"
+			],
 			"name": "all-included",
 			"subConfigurations": {
 				"d2sqlite3": "all-included"
@@ -18,6 +24,9 @@
 			"targetType": "library"
 		},
 		{
+			"excludedSourceFiles": [
+				"build/ut.d"
+			],
 			"name": "without-lib",
 			"subConfigurations": {
 				"d2sqlite3": "without-lib"
