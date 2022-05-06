@@ -13,10 +13,24 @@
 				"-preview=dip25",
 				"-preview=dip1000"
 			],
+			"excludedSourceFiles": [
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_fail.d",
+				"gen/gen_ut_main.d"
+			],
 			"name": "library",
 			"targetType": "library"
 		},
 		{
+			"excludedSourceFiles": [
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_fail.d",
+				"gen/gen_ut_main.d"
+			],
 			"name": "nodips",
 			"targetType": "library"
 		},
@@ -25,6 +39,10 @@
 				"-preview=dip25",
 				"-preview=dip1000",
 				"-preview=dip1008"
+			],
+			"excludedSourceFiles": [
+				"example/example_fail.d",
+				"gen/gen_ut_main.d"
 			],
 			"importPaths": [
 				"source"
@@ -49,6 +67,10 @@
 				"-preview=dip1000",
 				"-preview=dip1008"
 			],
+			"excludedSourceFiles": [
+				"example/example_fail.d",
+				"gen/gen_ut_main.d"
+			],
 			"mainSourceFile": "example/example_pass.d",
 			"name": "unittest-unthreaded",
 			"sourcePaths": [
@@ -70,6 +92,10 @@
 				"-preview=dip1000",
 				"-preview=dip1008"
 			],
+			"excludedSourceFiles": [
+				"example/example_fail.d",
+				"gen/gen_ut_main.d"
+			],
 			"mainSourceFile": "example/example_pass.d",
 			"name": "unittest-light",
 			"sourcePaths": [
@@ -87,6 +113,12 @@
 			]
 		},
 		{
+			"excludedSourceFiles": [
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"gen/gen_ut_main.d"
+			],
 			"mainSourceFile": "example/example_fail.d",
 			"name": "unittest-fail",
 			"sourcePaths": [
@@ -100,6 +132,12 @@
 			]
 		},
 		{
+			"excludedSourceFiles": [
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_pass.d",
+				"example/example_fail.d"
+			],
 			"importPaths": [
 				"gen/source"
 			],
