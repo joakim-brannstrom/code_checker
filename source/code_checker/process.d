@@ -5,6 +5,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.process;
 
+import std.datetime : dur, Duration, Clock;
 import std.exception : collectException;
 
 import logger = std.experimental.logger;
@@ -29,7 +30,7 @@ struct RunResult {
     }
 }
 
-RunResult run(string[] cmd) @trusted {
+RunResult run(string[] cmd, Duration timeout = 10.dur!"minutes") @trusted {
     import std.array : appender;
     import std.algorithm : joiner, copy;
     import std.ascii : newline;
@@ -46,7 +47,8 @@ RunResult run(string[] cmd) @trusted {
     auto p = pipeProcess(cmd, Redirect.all);
     int exit_status = -1;
 
-    while (true) {
+    const stopAt = Clock.currTime + timeout;
+    while (Clock.currTime < stopAt) {
         auto pres = p.pid.tryWait;
 
         p.stdout.byLineCopy.copy(app_out);
@@ -58,6 +60,13 @@ RunResult run(string[] cmd) @trusted {
         }
 
         Thread.sleep(25.dur!"msecs");
+    }
+
+    if (Clock.currTime >= stopAt) {
+        import core.sys.posix.signal : SIGKILL;
+        import std.process : kill;
+
+        kill(p.pid, SIGKILL);
     }
 
     return RunResult(exit_status, app_out.data, app_err.data);
