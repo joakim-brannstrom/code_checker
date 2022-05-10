@@ -147,6 +147,12 @@ struct Result {
 
     /// Files that passed all analyzers.
     AbsolutePath[] success;
+
+    /// Files that triggered timeout;
+    AbsolutePath[] timeout;
+
+    /// Files that the analyzer failed to properly analyze.
+    AbsolutePath[] analyzerFailed;
 }
 
 /// The result of all analyzers.
@@ -168,6 +174,12 @@ struct TotalResult {
 
     /// Files that passed all analyzers.
     AbsolutePath[] success;
+
+    /// Files that triggered timeout;
+    AbsolutePath[] timeout;
+
+    /// Files that the analyzer failed to properly analyze.
+    AbsolutePath[] analyzerFailed;
 }
 
 /// Classification of warnings. Used by the user to filter on.

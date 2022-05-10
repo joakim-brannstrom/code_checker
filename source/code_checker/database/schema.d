@@ -22,6 +22,8 @@ import miniorm : Miniorm, TableName, buildSchema, ColumnParam, TableForeignKey, 
     TablePrimaryKey, KeyRef, KeyParam, ColumnName, delete_, insert, select, spinSql;
 import my.path : AbsolutePath;
 
+public import code_checker.types;
+
 /** Initialize or open an existing database.
  *
  * Params:
@@ -243,6 +245,19 @@ struct FilesTbl {
     SysTime timeStamp;
 }
 
+immutable filesStatusTable = "files_status";
+@TableName(filesStatusTable)
+@TableForeignKey("file_id", KeyRef("files(id)"), KeyParam("ON DELETE CASCADE"))
+@TableConstraint("unique_ UNIQUE (file_id)")
+struct FilesStatusTable {
+    long id;
+
+    @ColumnName("file_id")
+    long fileId;
+
+    FileStatus status;
+}
+
 immutable depFileTable = "dependency_file";
 /** Files that roots are dependent on. They do not need to contain mutants.
  */
@@ -291,7 +306,7 @@ void upgradeV0(ref Miniorm db) {
     auto tbl = makeUpgradeTable;
 
     db.run(buildSchema!(VersionTbl, FilesTbl, DependencyFileTable,
-            DependencyRootTable, CompileDbTrackTable));
+            DependencyRootTable, CompileDbTrackTable, FilesStatusTable));
     updateSchemaVersion(db, tbl.latestSchemaVersion);
 }
 
@@ -333,6 +348,10 @@ void upgradeV2(ref Miniorm db) {
 void upgradeV3(ref Miniorm db) {
     db.run("DROP TABLE " ~ compileDbTrack);
     db.run(buildSchema!CompileDbTrackTable);
+}
+
+void upgradeV4(ref Miniorm db) {
+    db.run(buildSchema!FilesStatusTable);
 }
 
 void replaceTbl(ref Miniorm db, string src, string dst) {

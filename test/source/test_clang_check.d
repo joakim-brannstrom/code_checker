@@ -13,7 +13,7 @@ unittest {
 
     // action
     auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
-            inTestData("cpp/code_mistakes"));
+            inTestData("cpp/code_mistakes/compile_commands.json"));
 
     // assert
     res.status.shouldNotEqual(0);
@@ -48,4 +48,15 @@ unittest {
     auto res = ta.exec(appPath, "--verbose", "trace", "-c", "code_checker.toml");
 
     // no assert, this is just performance test that is manually checked
+}
+
+@("shall detect tool malfunction when failed to run but no warnings")
+unittest {
+    auto ta = makeTestArea;
+
+    auto res = ta.exec(appPath, "--verbose", "trace", "--compile-db",
+            inTestData("robustness/tool_failure/compile_commands.json"),
+            "--clang-tidy-bin", inTestData("robustness/tool_failure/fejk_clang_tidy.sh"));
+
+    res.status.shouldEqual(0);
 }
