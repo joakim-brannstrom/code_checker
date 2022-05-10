@@ -262,47 +262,52 @@ struct NormalFSM {
     }
 
     void act_runRegistry() {
-        import code_checker.engine;
         import compile_db : fromArgCompileDb, parseFlag, CompileCommandFilter;
+        import code_checker.engine;
         import code_checker.change : dependencyAnalyze;
         import code_checker.engine.types : TotalResult;
+        import code_checker.types : FileStatus;
 
         auto profile = profileSet(__FUNCTION__);
 
-        auto changed = () {
-            bool[AbsolutePath] rval;
+        auto env = () {
+            bool[AbsolutePath] changed;
+            {
+                auto root = AbsolutePath(".");
 
-            try {
-                foreach (v; dependencyAnalyze(db, AbsolutePath("."), fcache).byKeyValue) {
-                    rval[v.key.AbsolutePath] = v.value;
+                try {
+                    foreach (v; dependencyAnalyze(db, root, fcache).byKeyValue) {
+                        changed[v.key] = v.value;
+                    }
+                } catch (Exception e) {
+                    logger.warning(e.msg);
                 }
-            } catch (Exception e) {
             }
-            return rval;
-        }();
 
-        Environment env;
-        env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
-        env.compileDb = compileDb;
-        env.files = () {
-            if (!conf.analyzeFiles.empty)
-                return conf.analyzeFiles.map!(a => cast(string) a).array;
-            if (conf.runOnAllFiles)
-                return env.compileDb.map!(a => a.absoluteFile.toString).array;
+            Environment env;
+            env.conf = conf;
+            env.compileDbFile = AbsolutePath(Path(compileCommandsFile));
+            env.compileDb = compileDb;
+            env.files = () {
+                if (!conf.analyzeFiles.empty)
+                    return conf.analyzeFiles.map!(a => cast(string) a).array;
+                if (conf.runOnAllFiles)
+                    return env.compileDb.map!(a => a.absoluteFile.toString).array;
 
-            string[] rval;
-            foreach (dbFile; env.compileDb) {
-                if (auto v = dbFile.absoluteFile in changed) {
-                    if (*v)
+                string[] rval;
+                foreach (dbFile; env.compileDb) {
+                    if (auto v = dbFile.absoluteFile in changed) {
+                        if (*v)
+                            rval ~= dbFile.absoluteFile.toString;
+                    } else {
                         rval ~= dbFile.absoluteFile.toString;
-                } else {
-                    rval ~= dbFile.absoluteFile.toString;
+                    }
                 }
-            }
-            return rval;
-        }();
+                return rval;
+            }();
 
-        env.conf = conf;
+            return env;
+        }();
 
         TotalResult tres;
         if (!env.files.empty) {
@@ -322,19 +327,38 @@ struct NormalFSM {
             trans.commit;
         });
 
-        if (!tres.success.empty) {
-            logger.trace("Saving result for ", tres.success);
-            spinSql!(() {
-                auto trans = db.transaction;
-                try {
-                    saveDependencies(db, env, root, tres.success, fcache, conf.logg.progress);
-                    db.dependencyApi.cleanup;
-                } catch (Exception e) {
-                    logger.trace(e.msg);
-                }
-                trans.commit;
-            });
+        {
+            auto depFiles = tres.success ~ tres.timeout ~ tres.analyzerFailed;
+            if (!depFiles.empty) {
+                logger.trace("Saving result for ", depFiles);
+                spinSql!(() {
+                    auto trans = db.transaction;
+                    try {
+                        saveDependencies(db, env, root, depFiles, fcache, conf.logg.progress);
+                        db.dependencyApi.cleanup;
+                    } catch (Exception e) {
+                        logger.trace(e.msg);
+                    }
+                    trans.commit;
+                });
+            }
         }
+
+        spinSql!(() {
+            import std.path : relativePath;
+            import code_checker.types : FileStatus;
+
+            auto trans = db.transaction;
+
+            foreach (a; tres.success)
+                db.fileApi.setStatus(relativePath(a, root).Path, FileStatus.normal);
+            foreach (a; tres.timeout)
+                db.fileApi.setStatus(relativePath(a, root).Path, FileStatus.clangTidyTimeout);
+            foreach (a; tres.analyzerFailed)
+                db.fileApi.setStatus(relativePath(a, root).Path, FileStatus.clangTidyFailed);
+
+            trans.commit;
+        });
     }
 
     void act_cleanup() {
@@ -656,4 +680,10 @@ void updateCompileDbTrack(ref Database db, AbsolutePath[] files, ref FileStatCac
             logger.trace(e.msg).collectException;
         }
     }
+}
+
+void reportFailedFiles(ref Database db) nothrow {
+    import std.path : relativePath;
+
+    // status[v.key] = db.fileApi.getStatus(relativePath(v.key.toString, root.toString).Path);
 }

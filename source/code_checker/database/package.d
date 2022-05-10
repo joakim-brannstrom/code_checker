@@ -122,7 +122,7 @@ struct DbFile {
 
     /// Returns: all files tagged as a root.
     FileId[] getRootFiles() @trusted {
-        static immutable sql = format!"SELECT id FROM %s WHERE root=1"(filesTable);
+        static immutable sql = "SELECT id FROM " ~ filesTable ~ " WHERE root=1";
 
         auto app = appender!(FileId[])();
         auto stmt = db.prepare(sql);
@@ -146,7 +146,7 @@ struct DbFile {
     }
 
     Nullable!Checksum64 getFileChecksum(const Path p) @trusted {
-        static immutable sql = format!"SELECT checksum FROM %s WHERE path=:path"(filesTable);
+        static immutable sql = "SELECT checksum FROM " ~ filesTable ~ " WHERE path=:path";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
         auto res = stmt.get.execute;
@@ -157,6 +157,28 @@ struct DbFile {
         }
 
         return rval;
+    }
+
+    FileStatus getStatus(const Path p) @trusted {
+        static immutable sql = "SELECT status FROM " ~ filesStatusTable
+            ~ " t0, " ~ filesTable ~ " t1 WHERE t1.path=:path AND t1.id=t0.files_id";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p.toString);
+
+        auto res = stmt.get.execute;
+        if (res.empty)
+            return FileStatus.normal;
+        return res.front.peek!FileStatus(0);
+    }
+
+    void setStatus(const Path p, const FileStatus status) @trusted {
+        static immutable sql = "INSERT OR REPLACE INTO " ~ filesStatusTable
+            ~ " (files_id,status) SELECT t0.id,:status FROM " ~ filesTable
+            ~ " t0 WHERE t0.path=:path";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p);
+        stmt.get.bind(":status", cast(long) status);
+        stmt.get.execute;
     }
 }
 

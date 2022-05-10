@@ -17,6 +17,9 @@ struct RunResult {
     string[] stdout;
     string[] stderr;
 
+    /// true if a timeout triggered.
+    bool timeout;
+
     void print() @safe nothrow const scope {
         import std.ascii : newline;
         import std.stdio : writeln;
@@ -41,11 +44,13 @@ RunResult run(string[] cmd, Duration timeout = 10.dur!"minutes") @trusted {
 
     logger.trace("run: ", cmd.joiner(" "));
 
+    RunResult rval;
+    rval.status = -1;
+
     auto app_out = appender!(string[])();
     auto app_err = appender!(string[])();
 
     auto p = pipeProcess(cmd, Redirect.all);
-    int exit_status = -1;
 
     const stopAt = Clock.currTime + timeout;
     while (Clock.currTime < stopAt) {
@@ -55,7 +60,7 @@ RunResult run(string[] cmd, Duration timeout = 10.dur!"minutes") @trusted {
         p.stderr.byLineCopy.copy(app_err);
 
         if (pres.terminated) {
-            exit_status = pres.status;
+            rval.status = pres.status;
             break;
         }
 
@@ -67,7 +72,11 @@ RunResult run(string[] cmd, Duration timeout = 10.dur!"minutes") @trusted {
         import std.process : kill;
 
         kill(p.pid, SIGKILL);
+        rval.timeout = true;
     }
 
-    return RunResult(exit_status, app_out.data, app_err.data);
+    rval.stdout = app_out.data;
+    rval.stderr = app_err.data;
+
+    return rval;
 }

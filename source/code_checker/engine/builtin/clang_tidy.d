@@ -151,7 +151,12 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
         result_.supp += res.suppressedWarnings;
 
         if (res.clangTidyStatus == 0) {
-            result_.success ~= res.file;
+            if (res.toolFailed)
+                result_.analyzerFailed ~= res.file;
+            else if (res.timeout)
+                result_.timeout ~= res.file;
+            else
+                result_.success ~= res.file;
         } else if (res.clangTidyStatus == exitCodeSegFault) {
             res.print;
             result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy segfaulted for " ~ res.file);
@@ -290,6 +295,12 @@ struct TidyResult {
     /// Exit status from running clang tidy
     int clangTidyStatus;
 
+    /// clang-tidy triggered timeout.
+    bool timeout;
+
+    /// The tool failed to analyze the file.
+    bool toolFailed;
+
     /// Output to the user
     string[] output;
 
@@ -374,12 +385,21 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
         mapClangTidyStats!statMsg(res.stderr);
 
-        tres.clangTidyStatus = res.status != 0 ? res.status : count_errors;
-
-        if (tres.clangTidyStatus != 0) {
-            res.stderr.copy(app);
-            tres.output = app.data;
+        if (res.status != 0 && count_errors != 0) {
+            tres.clangTidyStatus = res.status;
+        } else if (count_errors != 0) {
+            // the tool reported error but no errors where found thus the user
+            // can't actually do anything.
+            tres.toolFailed = true;
+            tres.clangTidyStatus = 0;
+        } else if (res.timeout) {
+            // a timeout is not an error to the user thus use a clean exit status.
+            tres.clangTidyStatus = 0;
+            tres.timeout = res.timeout;
         }
+
+        res.stderr.copy(app);
+        tres.output = app.data;
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
     }

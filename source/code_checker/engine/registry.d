@@ -90,6 +90,8 @@ TotalResult execute(Environment env, string[] analysers, ref Registry reg) @trus
                 .array;
             tres.failed ~= res.failed;
             tres.success ~= res.success;
+            tres.timeout ~= res.timeout;
+            tres.analyzerFailed ~= res.analyzerFailed;
 
             logger.trace(res);
             logger.trace(tres);
@@ -150,11 +152,20 @@ void log(Messages msgs) {
 }
 
 void log(TotalResult tres) {
+    import std.array : empty;
     import std.conv : to;
     import colorlog;
 
     logger.infof("Analyzers reported %s", tres.status == Status.failed
             ? "Failed".color(Color.red) : "Passed".color(Color.green));
+
+    if (!tres.timeout.empty) {
+        logger.info("Files failed to be analyzed");
+        foreach (a; tres.timeout)
+            logger.info("    ", a, " ", "timeout".color(Color.yellow).toString);
+        foreach (a; tres.analyzerFailed)
+            logger.info("    ", a, " ", "failed".color(Color.yellow).toString);
+    }
 
     if (tres.sugg.length > 0) {
         logger.info("Suggestions for how to improve the score");
@@ -162,7 +173,7 @@ void log(TotalResult tres) {
             logger.info("    ", m.value);
     }
 
-    if (tres.supp != 0) {
+    if (tres.supp > 0) {
         logger.infof("You suppressed %s warnings", tres.supp);
     }
 
