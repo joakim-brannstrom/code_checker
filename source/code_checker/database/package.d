@@ -76,8 +76,8 @@ struct DbFile {
 
     /// Returns: the file path that the id correspond to.
     Nullable!TrackFile getFile(const FileId id) @trusted {
-        static immutable sql = format(
-                "SELECT path,checksum,time_stamp FROM %s WHERE id = :id", filesTable);
+        static immutable sql = "SELECT path,checksum,time_stamp FROM "
+            ~ filesTable ~ " WHERE id = :id";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":id", id.get);
 
@@ -89,8 +89,8 @@ struct DbFile {
     }
 
     Nullable!TrackFile getFile(const Path path) @trusted {
-        static immutable sql = format(
-                "SELECT path,checksum,time_stamp FROM %s WHERE path=:path", filesTable);
+        static immutable sql = "SELECT path,checksum,time_stamp FROM "
+            ~ filesTable ~ " WHERE path=:path";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", path);
 
@@ -102,7 +102,7 @@ struct DbFile {
     }
 
     Nullable!FileId getFileId(const Path p) @trusted {
-        static immutable sql = format("SELECT id FROM %s WHERE path=:path", filesTable);
+        static immutable sql = "SELECT id FROM " ~ filesTable ~ " WHERE path=:path";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
         auto res = stmt.get.execute;
@@ -115,14 +115,14 @@ struct DbFile {
 
     /// Remove the file with all mutations that are coupled to it.
     void removeFile(const Path p) @trusted {
-        auto stmt = db.prepare(format!"DELETE FROM %s WHERE path=:path"(filesTable));
+        auto stmt = db.prepare("DELETE FROM " ~ filesTable ~ " WHERE path=:path");
         stmt.get.bind(":path", p.toString);
         stmt.get.execute;
     }
 
     /// Returns: all files tagged as a root.
     FileId[] getRootFiles() @trusted {
-        static immutable sql = format!"SELECT id FROM %s WHERE root=1"(filesTable);
+        static immutable sql = "SELECT id FROM " ~ filesTable ~ " WHERE root=1";
 
         auto app = appender!(FileId[])();
         auto stmt = db.prepare(sql);
@@ -146,7 +146,7 @@ struct DbFile {
     }
 
     Nullable!Checksum64 getFileChecksum(const Path p) @trusted {
-        static immutable sql = format!"SELECT checksum FROM %s WHERE path=:path"(filesTable);
+        static immutable sql = "SELECT checksum FROM " ~ filesTable ~ " WHERE path=:path";
         auto stmt = db.prepare(sql);
         stmt.get.bind(":path", p.toString);
         auto res = stmt.get.execute;
@@ -157,6 +157,28 @@ struct DbFile {
         }
 
         return rval;
+    }
+
+    FileStatus getStatus(const Path p) @trusted {
+        static immutable sql = "SELECT status FROM " ~ filesStatusTable
+            ~ " t0, " ~ filesTable ~ " t1 WHERE t1.path=:path AND t1.id=t0.files_id";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p.toString);
+
+        auto res = stmt.get.execute;
+        if (res.empty)
+            return FileStatus.normal;
+        return res.front.peek!FileStatus(0);
+    }
+
+    void setStatus(const Path p, const FileStatus status) @trusted {
+        static immutable sql = "INSERT OR REPLACE INTO " ~ filesStatusTable
+            ~ " (file_id,status) SELECT t0.id,:status FROM " ~ filesTable
+            ~ " t0 WHERE t0.path=:path";
+        auto stmt = db.prepare(sql);
+        stmt.get.bind(":path", p);
+        stmt.get.bind(":status", cast(long) status);
+        stmt.get.execute;
     }
 }
 
@@ -217,7 +239,7 @@ struct DbDependency {
         // start by clearing out all dependencies for the file
         {
             auto p = profileAdd(__FUNCTION__ ~ ".drop");
-            auto stmt = db.prepare(format!"DELETE FROM %s WHERE file_id=:fid"(depRootTable));
+            auto stmt = db.prepare("DELETE FROM " ~ depRootTable ~ " WHERE file_id=:fid");
             stmt.get.bind(":fid", fid.get);
             stmt.get.execute;
         }
@@ -253,13 +275,13 @@ struct DbDependency {
 
     /// Returns: all files that a root is dependent on.
     Path[] get(const Path root) @trusted {
-        static immutable sql = format!"SELECT t0.file
-            FROM %1$s t0, %2$s t1, %3$s t2
+        static immutable sql = "SELECT t0.file
+            FROM " ~ depFileTable ~ " t0, "
+            ~ depRootTable ~ " t1, " ~ filesTable ~ " t2
             WHERE
             t0.id = t1.dep_id AND
             t1.file_id = t2.id AND
-            t2.path = :file"(depFileTable,
-                depRootTable, filesTable);
+            t2.path = :file";
 
         auto stmt = db.prepare(sql);
         stmt.get.bind(":file", root.toString);
