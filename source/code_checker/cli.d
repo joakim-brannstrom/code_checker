@@ -147,6 +147,9 @@ struct Logging {
 
     /// Progress info levels
     Set!Progress progress;
+
+    /// If set write a json log
+    AbsolutePath jsonFile;
 }
 
 /// Configuration of how to use the program.
@@ -259,16 +262,17 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     bool verbose_trace;
     std.getopt.GetoptResult help_info;
     try {
+        Progress[] progress;
         bool init_conf;
         string config_file = ".code_checker.toml";
         string database;
+        string jsonFile;
         string logdir = ".";
         string workdir;
         string[] analyze_files;
         string[] analyzers;
         string[] compile_dbs;
         string[] src_filter;
-        Progress[] progress;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
@@ -285,7 +289,8 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
-            "logdir", "path to create logfiles in (default: .)", &logdir,
+            "log-dir", "path to create logfiles in (default: .)", &logdir,
+            "log-json", "write the report to a json file", &jsonFile,
             "progress", format!"verbosity of the progress information (%-(%s,%))"([EnumMembers!Progress]), &progress,
             "severity", format("report issues with a severity >= to this value (default: style) %s", [EnumMembers!Severity]), &conf.staticCode.severity,
             "v|verbose", format("verbose mode is set to trace (%-(%s,%))", [EnumMembers!VerboseMode]), &conf.logg.verbose,
@@ -299,6 +304,10 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.initConfig;
 
         conf.logg.progress = progress.toSet;
+        if (!jsonFile.empty)
+            conf.logg.jsonFile = AbsolutePath(jsonFile);
+        if (conf.logg.toFile)
+            conf.logg.dir = Path(logdir).AbsolutePath;
 
         if (conf.clangTidy.applyFixitErrors || conf.clangTidy.applyFixit)
             conf.runOnAllFiles = true;
@@ -312,9 +321,6 @@ void parseCLI(string[] args, ref Config conf) @trusted {
 
         if (!analyzers.empty)
             conf.staticCode.analyzers = analyzers;
-
-        if (conf.logg.toFile)
-            conf.logg.dir = Path(logdir).AbsolutePath;
 
         if (conf.database.empty && database.empty)
             conf.database = "code_checker.sqlite3".AbsolutePath;

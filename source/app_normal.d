@@ -11,6 +11,7 @@ import logger = std.experimental.logger;
 import std.algorithm : among, map, filter, copy;
 import std.array : empty, appender, array;
 import std.exception : collectException;
+import std.json;
 
 import miniorm : spinSql;
 import my.path;
@@ -20,10 +21,11 @@ import my.set;
 import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
+import code_checker.cache : FileStatCache, getTrackFile, isSame;
 import code_checker.cli : Config, Progress;
 import code_checker.database : Database, TrackFile;
 import code_checker.engine : Environment;
-import code_checker.cache : FileStatCache, getTrackFile, isSame;
+import code_checker.engine.types : TotalResult;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
@@ -359,6 +361,17 @@ struct NormalFSM {
 
             trans.commit;
         });
+
+        if (!conf.logg.jsonFile.empty) {
+            try {
+                import std.stdio : File;
+
+                File(conf.logg.jsonFile.toString, "w").writeln(toJson(tres)
+                        .toPrettyString(JSONOptions.doNotEscapeSlashes));
+            } catch (Exception e) {
+                logger.warning(e.msg);
+            }
+        }
     }
 
     void act_cleanup() {
@@ -680,4 +693,33 @@ void updateCompileDbTrack(ref Database db, AbsolutePath[] files, ref FileStatCac
             logger.trace(e.msg).collectException;
         }
     }
+}
+
+JSONValue toJson(TotalResult tres) nothrow {
+    import std.conv : to;
+
+    JSONValue rval;
+
+    try {
+        rval["score"] = tres.score;
+        rval["status"] = tres.status.to!string;
+        rval["status_code"] = tres.status;
+        rval["suggestions"] = tres.sugg.value;
+        rval["suppressed"] = tres.supp;
+
+        rval["files"] = () {
+            JSONValue rval;
+            rval["success"] = JSONValue(tres.success.map!"a.toString".array);
+            rval["failed"] = JSONValue(tres.failed.map!"a.toString".array);
+            rval["timeout"] = JSONValue(tres.timeout.map!"a.toString".array);
+            rval["analyzer_failed"] = JSONValue(tres.analyzerFailed.map!"a.toString".array);
+
+            return rval;
+        }();
+
+    } catch (Exception e) {
+        logger.warning(e.msg).collectException;
+    }
+
+    return rval;
 }
