@@ -28,13 +28,27 @@ unittest {
 
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
-            appPath, "--log", "--logdir", "log", "-c",
+            appPath, "--log", "--log-dir", "log", "-c",
             buildPath(testData, "all_checks.toml"), "--compile-db",
             buildPath(testData, "log", "compile_commands.json").absolutePath
             ]).status.shouldEqual(1);
 
     dirEntries(ta.inSandboxPath("log"), SpanMode.shallow).filter!(
             a => a.extension == ".txt").count.shouldEqual(1);
+}
+
+@("shall create json log")
+unittest {
+    auto ta = makeTestArea;
+
+    ta.exec([appPath, "--init"]).status.shouldEqual(0);
+    ta.exec([
+            appPath, "--log-json", "data.json", "-c",
+            buildPath(testData, "all_checks.toml"), "--compile-db",
+            buildPath(testData, "log", "compile_commands.json").absolutePath
+            ]).status.shouldEqual(1);
+
+    exists(ta.inSandboxPath("data.json")).shouldBeTrue;
 }
 
 @("shall create a yaml fixit log")
@@ -47,7 +61,7 @@ unittest {
     ta.exec([appPath, "--init"]).status.shouldEqual(0);
     ta.exec([
             appPath, "--verbose", "trace", "--clang-tidy-fix", "-c",
-            buildPath(testData, "all_checks.toml"), "--log", "log", "--logdir",
+            buildPath(testData, "all_checks.toml"), "--log", "log", "--log-dir",
             "log"
             ]).status.shouldEqual(0);
 
