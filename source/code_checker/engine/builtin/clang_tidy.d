@@ -466,7 +466,8 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     if (checks.empty) {
         foreach (l; File(baseConf).byLine) {
             if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
-                fconfig.write(format!"HeaderFilterRegex:      '%s'"(conf.clangTidy.headerFilter));
+                fconfig.writeln(format!"HeaderFilterRegex:      '%s'"(
+                        conf.clangTidy.headerFilter));
             } else {
                 fconfig.writeln(l);
             }
@@ -487,7 +488,7 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
 
             if (st == State.afterCheck) {
                 if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
-                    fconfig.write(format!"HeaderFilterRegex:      '%s'"(
+                    fconfig.writeln(format!"HeaderFilterRegex:      '%s'"(
                             conf.clangTidy.headerFilter));
                 } else {
                     fconfig.writeln(l);
