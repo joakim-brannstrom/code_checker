@@ -464,8 +464,13 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     }();
 
     if (checks.empty) {
-        foreach (d; File(baseConf).byChunk(4096))
-            fconfig.rawWrite(d);
+        foreach (l; File(baseConf).byLine) {
+            if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
+                fconfig.write(format!"HeaderFilterRegex:      '%s'"(conf.clangTidy.headerFilter));
+            } else {
+                fconfig.writeln(l);
+            }
+        }
     } else {
         enum State {
             other,
@@ -481,7 +486,12 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
             auto curr = l;
 
             if (st == State.afterCheck) {
-                fconfig.writeln(l);
+                if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
+                    fconfig.write(format!"HeaderFilterRegex:      '%s'"(
+                            conf.clangTidy.headerFilter));
+                } else {
+                    fconfig.writeln(l);
+                }
             } else {
                 while (!curr.empty) {
                     const auto old = st;
@@ -489,9 +499,6 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
                     case State.other:
                         if (curr.startsWith("Checks:")) {
                             st = State.checkKey;
-                        } else if (curr.startsWith("HeaderFilterRegex:")) {
-                            fconfig.write(format!"HeaderFilterRegex:      '%s'"(
-                                    conf.clangTidy.headerFilter));
                         } else {
                             fconfig.write(curr[0]);
                             curr = curr[1 .. $];
@@ -540,6 +547,7 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
                 fconfig.writeln;
             }
         }
+
         fconfig.writeln;
     }
 
