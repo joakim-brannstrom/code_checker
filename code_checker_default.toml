@@ -100,7 +100,7 @@ dedup = true
 # binary = "clang-tidy"
 
 # arguments to -header-filter
-header_filter = ".*"
+# header_filter = ".*"
 
 # system configuration to use if .clang-tidy do not exists in work directory.
 # system_config = "{code_checker}/../etc/code_checker/clang_tidy.conf"
