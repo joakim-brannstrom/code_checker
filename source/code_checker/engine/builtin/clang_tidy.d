@@ -74,9 +74,6 @@ class ClangTidy : BaseFixture {
         if (!env.conf.clangTidy.checkExtensions.empty)
             ["--checks", env.conf.clangTidy.checkExtensions.joiner(",").text].copy(app);
 
-        chain(env.conf.compiler.flags, env.conf.compiler.extraFlags).map!(
-                a => ["--extra-arg", a]).joiner.copy(app);
-
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
             logger.infof("Using local '%s' config", ClangTidyConstants.confFile);

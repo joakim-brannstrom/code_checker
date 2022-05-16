@@ -22,7 +22,7 @@ import compile_db : CompileCommandDB, toCompileCommandDB, DbCompiler = Compiler,
     CompileCommandFilter, defaultCompilerFilter, ParsedCompileCommand;
 
 import code_checker.cache : FileStatCache, getTrackFile, isSame;
-import code_checker.cli : Config, Progress;
+import code_checker.cli : Config, Progress, Compiler;
 import code_checker.database : Database, TrackFile;
 import code_checker.engine : Environment;
 import code_checker.engine.types : TotalResult;
@@ -251,7 +251,7 @@ struct NormalFSM {
         try {
             auto compile_db = appender!string();
             unifyCompileDb(compileDb, conf.compiler.useCompilerSystemIncludes,
-                    conf.compileDb.flagFilter, compile_db);
+                    conf.compileDb.flagFilter, conf.compiler, compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
 
             fcache.drop(AbsolutePath(compileCommandsFile)); // do NOT use previously cached value
@@ -409,7 +409,7 @@ struct NormalFSM {
 
 /// Unify multiple compilation databases to one json file.
 void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
-        CompileCommandFilter flag_filter, ref AppT app) {
+        CompileCommandFilter flag_filter, const Compiler compiler, ref AppT app) {
     import std.ascii : newline;
     import std.format : formattedWrite;
     import std.path : stripExtension;
@@ -421,14 +421,20 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
     void writeEntry(T)(T e) {
         auto raw_flags = () @safe {
             import std.json : JSONValue, JSONOptions;
+            import std.range : chain;
 
             auto app = appender!(string[]);
-            //auto pflags = e.parseFlag(flag_filter);
             app.put(e.flags.compiler);
+
+            // extra flags from user
+            chain(compiler.flags, compiler.extraFlags).copy(app);
+
             e.flags.completeFlags.copy(app);
+
             // add back dummy -c otherwise clang-tidy do not work.
             // clang-tidy says "Passed" on everything.
             ["-c", e.cmd.absoluteFile.toString].copy(app);
+
             // correctly quotes interior strings as JSON requires.
             return JSONValue(app.data).toString(JSONOptions.doNotEscapeSlashes);
         }();
@@ -488,7 +494,7 @@ unittest {
     // act
     auto unified = appender!string();
     unifyCompileDb(db, DbCompiler.init,
-            CompileCommandFilter(defaultCompilerFilter.filter.dup, 0), unified);
+            CompileCommandFilter(defaultCompilerFilter.filter.dup, 0), Compiler.init, unified);
     // assert
     try {
         unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;

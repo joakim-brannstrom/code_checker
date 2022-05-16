@@ -34,7 +34,7 @@ search_paths = ["./compile_commands.json"]
 
 [clang_tidy]
 # arguments to -header-filter
-header_filter = ".*"
+# header_filter = ".*"
 
 # extend the checks configuration
 # check_extensions = []
