@@ -77,8 +77,6 @@ class ClangTidy : BaseFixture {
         chain(env.conf.compiler.flags, env.conf.compiler.extraFlags).map!(
                 a => ["--extra-arg", a]).joiner.copy(app);
 
-        ["--header-filter", env.conf.clangTidy.headerFilter].copy(app);
-
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
             logger.infof("Using local '%s' config", ClangTidyConstants.confFile);
@@ -478,7 +476,7 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
             openCheck,
             insideCheck,
             closeCheck,
-            afterCheck
+            afterCheck,
         }
 
         State st;
@@ -494,6 +492,9 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
                     case State.other:
                         if (curr.startsWith("Checks:")) {
                             st = State.checkKey;
+                        } else if (curr.startsWith("HeaderFilterRegex:")) {
+                            fconfig.write(format!"HeaderFilterRegex:      '%s'"(
+                                    conf.clangTidy.headerFilter));
                         } else {
                             fconfig.write(curr[0]);
                             curr = curr[1 .. $];
