@@ -5,7 +5,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module code_checker.engine.builtin.clang_tidy_classification;
 
-public import code_checker.engine.types : Severity;
+public import code_checker.engine.types : Severity, Position;
 
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue;
@@ -73,8 +73,6 @@ shared static this() @trusted {
 }
 
 struct CountErrorsResult {
-    import code_checker.engine.types : Severity;
-
     private {
         int total;
         int[Severity] score_;
@@ -151,8 +149,14 @@ unittest {
 struct DiagMessage {
     Severity severity;
 
+    /// Kind of warning.
+    string kind;
+
     /// Filename that clang-tidy reported for the warning.
     string file;
+    /// Position inside the file
+    Position pos;
+
     /// The diagnostic message such as file.cpp:2:3 error: some text [foo-check]
     string diagnostic;
     /// The trailing info such as fixits
@@ -181,7 +185,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     import std.conv : to;
     import std.exception : ifThrown;
     import std.range : put;
-    import std.regex : regex, matchFirst;
+    import std.regex : regex, matchFirst, Captures;
     import std.string : startsWith;
 
     void callDiagFnAndReset(ref DiagMessage msg, ref Appender!(string[]) app) {
@@ -196,8 +200,19 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
+    static void updateMsg(ref DiagMessage msg, ref Captures!string m, string l) nothrow {
+        msg.diagnostic = l;
+        try {
+            msg.severity = classify(m["severity"], m["kind"]);
+            msg.kind = m["severity"];
+            msg.file = m["file"];
+            msg.pos = Position(m["line"].to!uint, m["column"].to!uint);
+        } catch (Exception e) {
+        }
+    }
+
     const re_error = regex(
-            `(?P<file>.*):\d*:\d*:.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
+            `(?P<file>.*):(?P<line>\d*):(?P<column>\d*):.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
 
     enum State {
         none,
@@ -237,19 +252,14 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.none:
             break;
         case State.match:
-            msg.severity = classify(m_error["severity"], m_error["kind"]);
-            msg.diagnostic = l;
-            msg.file = m_error["file"];
+            updateMsg(msg, m_error, l);
             break;
         case State.partOfMatch:
             app.put(l);
             break;
         case State.newMatch:
             callDiagFnAndReset(msg, app);
-
-            msg.severity = classify(m_error["severity"], m_error["kind"]);
-            msg.diagnostic = l;
-            msg.file = m_error["file"];
+            updateMsg(msg, m_error, l);
             break;
         }
     }

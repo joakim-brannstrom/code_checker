@@ -723,6 +723,28 @@ JSONValue toJson(TotalResult tres) nothrow {
             return rval;
         }();
 
+        rval["details"] = () {
+            JSONValue rval;
+            foreach (file; tres.details.byKeyValue) {
+                JSONValue[] details;
+                foreach (a; file.value.toRange) {
+                    JSONValue detail;
+                    detail["pos"] = () {
+                        JSONValue x;
+                        x["line"] = a.pos.line;
+                        x["col"] = a.pos.column;
+                        return x;
+                    }();
+                    detail["severity"] = a.severity.to!string;
+                    detail["kind"] = a.kind;
+                    detail["msg"] = a.msg.value;
+                    details ~= detail;
+                }
+                rval[file.key] = details;
+            }
+            return rval;
+        }();
+
     } catch (Exception e) {
         logger.warning(e.msg).collectException;
     }
