@@ -38,6 +38,7 @@ void main(string[] args) {
     metrics["delayed_msg10"] = () => testActorDelayedMsg(12.dur!"msecs", 10.dur!"msecs", 100);
     metrics["delayed_msg100"] = () => testActorDelayedMsg(100.dur!"msecs", 100.dur!"msecs", 10);
     metrics["delayed_msg1000"] = () => testActorDelayedMsg(1000.dur!"msecs", 1000.dur!"msecs", 5);
+    metrics["slow_action"] = toDelegate(&testActorSlowAction);
 
     string[] metricName;
     uint repeatTimes = 1;
@@ -261,4 +262,50 @@ Metric testActorDelayedMsg(Duration delayFor, Duration rate, const ulong dataPoi
         perf;
 
     return rval;
+}
+
+Metric testActorSlowAction() {
+    auto sys = makeSystem;
+
+    static struct Msg {
+        SysTime ts;
+        int cnt;
+    }
+
+    auto actor1 = sys.spawn((Actor* self) {
+        static void handler(ref Capture!(Actor*, "self") ctx, WeakAddress addr, int cnt) {
+            logger.infof("actor1: send request %s %s", cnt, Clock.currTime);
+            ctx.self.request(addr, infTimeout).send(Msg(Clock.currTime, cnt)).then((Msg msg) {
+                logger.infof("actor1: reply %s %s", msg.cnt, Clock.currTime - msg.ts);
+            }, (ref Actor self, ErrorMsg _) @safe nothrow{
+                logger.info("timeout").collectException;
+            });
+            if (cnt < 100)
+                delayedSend(ctx.self, 1.dur!"seconds".delay, addr, cnt + 1);
+            //send(ctx.self, addr, cnt+1);
+        }
+
+        return impl(self, &handler, capture(self));
+    });
+
+    auto actor2 = sys.spawn((Actor* self) {
+        static Msg handler(Msg msg) {
+            logger.infof("actor2: recv %s %s", msg.cnt, Clock.currTime - msg.ts);
+            return msg;
+        }
+
+        return impl(self, &handler);
+    });
+
+    send(actor1, actor2, 0);
+
+    foreach (_; 0 .. 5) {
+        import core.thread : Thread;
+        import core.time : dur;
+
+        logger.info("### ", Clock.currTime, " ###");
+        Thread.sleep(1.dur!"seconds");
+    }
+
+    return Metric.init;
 }
