@@ -102,15 +102,17 @@ void demonitor(AddressT0, AddressT1)(AddressT0 self, AddressT1 sendTo) @safe
 package void sendSystemMsgIfEmpty(AddressT, T)(AddressT sendTo, T msg) @safe
         if (isAddress!AddressT)
 in (!sendTo.empty, "cannot send to an empty address") {
-    auto addr = underlyingAddress(sendTo).get;
+    auto tmp = underlyingAddress(sendTo);
+    auto addr = tmp.get;
     if (addr && addr.empty!SystemMsg)
         addr.put(SystemMsg(msg));
 }
 
 package void sendSystemMsg(AddressT, T)(AddressT sendTo, T msg) @safe
-        if (isAddress!AddressT)
-in (!sendTo.empty, "cannot send to an empty address") {
-    if (auto addr = underlyingAddress(sendTo).get)
+        if (isAddress!AddressT) {
+    auto tmp = underlyingAddress(sendTo);
+    auto addr = tmp.get;
+    if (addr)
         addr.put(SystemMsg(msg));
 }
 
@@ -123,7 +125,8 @@ void delayedSend(AddressT, Args...)(AddressT sendTo, SysTime delayTo, auto ref A
                 MsgType(MsgOneShot(Variant(Tuple!UArgs(args))))), delayTo));
 }
 
-void sendExit(WeakAddress sendTo, const ExitReason reason) @safe {
+void sendExit(AddressT)(AddressT sendTo, const ExitReason reason) @safe
+        if (isAddress!AddressT) {
     import my.actor.system_msg : SystemExitMsg;
 
     sendSystemMsg(sendTo, SystemExitMsg(reason));

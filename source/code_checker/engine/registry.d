@@ -71,6 +71,7 @@ struct Registry {
 TotalResult execute(Environment env, string[] analysers, ref Registry reg) @trusted {
     import std.algorithm;
     import std.range;
+    import my.set : toSet;
 
     TotalResult tres;
 
@@ -92,6 +93,10 @@ TotalResult execute(Environment env, string[] analysers, ref Registry reg) @trus
             tres.success ~= res.success;
             tres.timeout ~= res.timeout;
             tres.analyzerFailed ~= res.analyzerFailed;
+            foreach (a; res_.details.byKeyValue)
+                tres.details.update(a.key, { return a.value.dup.toSet; }, (ref Set!Detail x) {
+                    x.add(a.value);
+                });
 
             logger.trace(res);
             logger.trace(tres);

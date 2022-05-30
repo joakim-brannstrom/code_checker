@@ -4,9 +4,6 @@
 	],
 	"configurations": [
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
 			"name": "with-lib",
 			"subConfigurations": {
 				"d2sqlite3": "with-lib"
@@ -14,9 +11,6 @@
 			"targetType": "library"
 		},
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
 			"name": "all-included",
 			"subConfigurations": {
 				"d2sqlite3": "all-included"
@@ -24,9 +18,6 @@
 			"targetType": "library"
 		},
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
 			"name": "without-lib",
 			"subConfigurations": {
 				"d2sqlite3": "without-lib"
@@ -48,7 +39,7 @@
 	"copyright": "Copyright © 2019, Joakim Brännström",
 	"dependencies": {
 		"d2sqlite3": "~>1.0.0",
-		"sumtype": "~>1.1.4",
+		"sumtype": "~>1.2.4",
 		"unit-threaded": "~>2.0.3"
 	},
 	"description": "A minimalistic ORM for SQLite",
@@ -62,5 +53,5 @@
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.5"
+	"version": "0.0.6"
 }

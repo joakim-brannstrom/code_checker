@@ -6,18 +6,15 @@ RUN apt-get update && \
         ca-certificates \
         git \
         gcc g++ \
-        make
-
-RUN apt-get -y --no-install-recommends install \
+        make \
         curl \
         xz-utils \
         iwyu \
-        gnupg \
+        clang-tidy \
         libsqlite3-dev
 
 WORKDIR /opt
 
-# dmd_latest_version
 ARG DMD_VERSION
 RUN echo ${DMD_VERSION}
 
@@ -41,5 +38,3 @@ RUN tar xfz repo.tar.gz -C repo && rm repo.tar.gz
 RUN cd repo && dub build
 RUN cd repo && dub test
 RUN cd repo && dub run -c integration_test
-# unable to run integration tests because some requires ssh
-#RUN cd repo && dub run -c integration_test

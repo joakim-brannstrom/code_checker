@@ -5,10 +5,11 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module my.actor.system;
 
-import core.sync.mutex : Mutex;
 import core.sync.condition : Condition;
+import core.sync.mutex : Mutex;
 import core.thread : Thread;
-import std.algorithm : min, max;
+import logger = std.experimental.logger;
+import std.algorithm : min, max, clamp;
 import std.datetime : dur, Clock, Duration;
 import std.parallelism : Task, TaskPool, task;
 import std.traits : Parameters, ReturnType;
@@ -121,9 +122,15 @@ struct System {
     // Returns: the address of the actor.
     private WeakAddress schedule(Actor* actor) @safe {
         assert(bg.scheduler.isActive);
-        actor.setHomeSystem(&this);
+        setHomeSystem(actor);
         bg.scheduler.putWaiting(actor);
         return actor.address;
+    }
+
+    // set the homesystem of the actor. this is safe on the assumption that the
+    // actor system is the last to terminate.
+    private void setHomeSystem(Actor* actor) @trusted {
+        actor.setHomeSystem(&this);
     }
 }
 
@@ -221,7 +228,10 @@ struct Backend {
     Scheduler scheduler;
     ActorAlloc alloc;
 
-    void start(TaskPool pool, ulong workers) {
+    // trusted: the ref to alloc on the assumption that the actor system is the
+    // last to terminate. the backend is owned by the system and correctly
+    // shutdown.
+    void start(TaskPool pool, ulong workers) @trusted {
         scheduler.start(pool, workers, &alloc);
     }
 
@@ -322,7 +332,6 @@ class Scheduler {
 
             foreach (_; 0 .. runActors) {
                 if (auto a = sched.inactive.pop.unsafeMove) {
-
                     if (a.hasMessage) {
                         sched.putWaiting(a);
                     } else {
@@ -340,7 +349,7 @@ class Scheduler {
             }
 
             if (inactive != 0) {
-                pollInterval = max(minPoll, nextPoll);
+                pollInterval = clamp(nextPoll, minPoll, maxPoll);
             }
 
             if (inactive == runActors) {
@@ -424,17 +433,19 @@ class Scheduler {
             ulong consecutiveInactive;
 
             foreach (_; 0 .. runActors) {
-                // reduce clock polling
-                const now = Clock.currTime;
                 if (auto ctx = sched.pop) {
                     ulong msgs;
+                    ulong prevMsgs;
                     ulong totalMsgs;
                     do {
+                        // reduce clock polling
+                        const now = Clock.currTime;
                         ctx.process(now);
+                        prevMsgs = msgs;
                         msgs = ctx.messages;
                         totalMsgs += msgs;
                     }
-                    while (totalMsgs < maxThroughput && msgs != 0);
+                    while (totalMsgs < maxThroughput && msgs != prevMsgs);
 
                     if (totalMsgs == 0) {
                         sched.putInactive(ctx);

@@ -6,6 +6,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 module code_checker.engine.types;
 
 public import my.path : AbsolutePath;
+public import my.set : Set;
 
 public import code_checker.cli : Config;
 
@@ -130,6 +131,25 @@ struct Suggestions {
     alias value this;
 }
 
+/// Position inside a file for a warning
+struct Position {
+    uint line;
+    uint column;
+}
+
+struct Detail {
+    Msg msg;
+    Severity severity;
+    string kind;
+    Position pos;
+
+    size_t toHash() @safe pure nothrow const @nogc scope {
+        auto a = msg.hashOf();
+        a += pos.line + pos.column;
+        return kind.hashOf(a);
+    }
+}
+
 /// The result of an analyzer.
 struct Result {
     /// The summary state of an analyzer after it has executed.
@@ -153,6 +173,9 @@ struct Result {
 
     /// Files that the analyzer failed to properly analyze.
     AbsolutePath[] analyzerFailed;
+
+    /// Detailed report for a found warning etc.
+    Detail[][AbsolutePath] details;
 }
 
 /// The result of all analyzers.
@@ -180,6 +203,9 @@ struct TotalResult {
 
     /// Files that the analyzer failed to properly analyze.
     AbsolutePath[] analyzerFailed;
+
+    /// Detailed report for a found warning etc.
+    Set!Detail[AbsolutePath] details;
 }
 
 /// Classification of warnings. Used by the user to filter on.
