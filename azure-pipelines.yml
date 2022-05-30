@@ -5,7 +5,7 @@ trigger:
 
 jobs:
 - job: Linux
-  timeoutInMinutes: 120
+  timeoutInMinutes: 20
   pool:
     vmImage: 'ubuntu-20.04'
   variables:
@@ -15,8 +15,8 @@ jobs:
   strategy:
     matrix:
       latest:
-        DMD_VERSION: dummy
-        DOCKERFILE: Dockerfile.latest_dmd
+        DMD_VERSION: 2.100.0
+        DOCKERFILE: Dockerfile
       # min:
       #   DMD_VERSION: 2.087.1
       #   DOCKERFILE: Dockerfile
