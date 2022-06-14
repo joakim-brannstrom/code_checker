@@ -132,7 +132,7 @@ struct CountErrorsResult {
 }
 
 @("shall sort the error counts")
-unittest {
+@system unittest {
     import std.traits : EnumMembers;
     import code_checker.engine.types : Severity;
     import unit_threaded;
@@ -200,9 +200,9 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
-    static void updateMsg(ref DiagMessage msg, ref Captures!string m, string l) nothrow {
-        msg.diagnostic = l;
+    static void updateMsg(ref DiagMessage msg, ref Captures!string m) nothrow {
         try {
+            msg.diagnostic = m["message"];
             msg.severity = classify(m["severity"], m["kind"]);
             msg.kind = m["severity"];
             msg.file = m["file"];
@@ -212,7 +212,7 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
     }
 
     const re_error = regex(
-            `(?P<file>.*):(?P<line>\d*):(?P<column>\d*):.*(?P<kind>(error|warning)):.*\[(?P<severity>.*)\]`);
+            `(?P<file>.*):(?P<line>\d*):(?P<column>\d*):.*(?P<kind>(error|warning)): (?P<message>.*) \[(?P<severity>.*)\]`);
 
     enum State {
         none,
@@ -252,14 +252,14 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.none:
             break;
         case State.match:
-            updateMsg(msg, m_error, l);
+            updateMsg(msg, m_error);
             break;
         case State.partOfMatch:
             app.put(l);
             break;
         case State.newMatch:
             callDiagFnAndReset(msg, app);
-            updateMsg(msg, m_error, l);
+            updateMsg(msg, m_error);
             break;
         }
     }
@@ -290,7 +290,7 @@ void mapClangTidyStats(alias statFn)(string[] lines) {
 }
 
 @("shall filter warnings")
-unittest {
+@system unittest {
     import std.algorithm : startsWith;
     import std.array : appender;
 
@@ -326,11 +326,11 @@ unittest {
     msgs.length.shouldEqual(3);
 
     msgs[0].file.shouldEqual("gmock-matchers.h");
-    msgs[0].diagnostic.startsWith("gmock-matchers.h:3410:15:").shouldBeTrue;
+    msgs[0].diagnostic.startsWith("invalid case style for private").shouldBeTrue;
     msgs[0].trailing.length.shouldEqual(3);
 
     msgs[2].file.shouldEqual("gmock-matchers2.h");
-    msgs[2].diagnostic.startsWith("gmock-matchers2.h:3410:67").shouldBeTrue;
+    msgs[2].diagnostic.shouldEqual("invalid case style for parameter 'elem_last'");
     msgs[2].trailing.length.shouldEqual(3);
 
     app.data.length.shouldEqual(8);
