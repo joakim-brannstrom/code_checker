@@ -7,35 +7,29 @@ module code_checker.engine.builtin.clang_tidy_classification;
 
 public import code_checker.engine.types : Severity, Position;
 
+import my.path;
+
 version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue;
 }
 
-@safe:
-
-struct SeverityColor {
-    import colorlog : Color, Background, Mode;
-
-    Color c = Color.white;
-    Background bg = Background.black;
-    Mode m;
-}
-
-immutable Severity[string] diagnosticSeverity;
-immutable SeverityColor[Severity] severityColor;
-
-shared static this() @trusted {
+// **NOT THREAD SAFE**.
+// initalizes `diagnosticSeverity` and `severityColor`.
+void initClassification(AbsolutePath clangTidyPath) @system {
     import logger = std.experimental.logger;
     import std.algorithm : filter;
     import std.array : empty;
     import std.conv : to;
-    import std.file : thisExePath, readText;
+    import std.file : readText, exists;
     import std.json : parseJSON, JSONType;
-    import std.path : buildPath, dirName;
     import std.string : split, toLower, startsWith;
 
-    const clangTidyPath = buildPath(thisExePath.dirName.dirName, "etc",
-            "code_checker", "clang-tidy.json");
+    if (!clangTidyPath.exists) {
+        logger.warning("classification data for clang-tidy not found: ", clangTidyPath);
+        return;
+    }
+    logger.trace("reading clang-tidy classification data ", clangTidyPath);
+
     auto json = parseJSON(readText(clangTidyPath));
 
     import colorlog : Color, Background, Mode;
@@ -71,6 +65,19 @@ shared static this() @trusted {
     ];
     // dfmt on
 }
+
+@safe:
+
+struct SeverityColor {
+    import colorlog : Color, Background, Mode;
+
+    Color c = Color.white;
+    Background bg = Background.black;
+    Mode m;
+}
+
+Severity[string] diagnosticSeverity;
+SeverityColor[Severity] severityColor;
 
 struct CountErrorsResult {
     private {
@@ -142,8 +149,8 @@ struct CountErrorsResult {
         r.put(s);
 
     r.toRange.shouldEqual([
-            "1 critical", "1 high", "1 medium", "1 low", "1 style"
-            ]);
+        "1 critical", "1 high", "1 medium", "1 low", "1 style"
+    ]);
 }
 
 struct DiagMessage {

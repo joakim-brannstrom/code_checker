@@ -9,14 +9,14 @@ import logger = std.experimental.logger;
 
 import my.path;
 
-/// Replace words in a configuration string with the appropriate values.
-auto replaceConfigWords(T)(T range) {
-    import std.algorithm : map;
+string replaceConfigWord(string s) @safe {
     import std.array : replace;
-    import std.file : thisExePath;
-    import std.path : dirName;
 
-    return range.map!(a => a.replace("{code_checker}", thisExePath.dirName));
+    foreach (kv; MagicConfWord.byKeyValue) {
+        s = s.replace(kv.key, kv.value);
+    }
+
+    return s;
 }
 
 auto warnIfFileDoNotExist(T)(T range) {
@@ -35,4 +35,17 @@ AbsolutePath toAbsoluteRoot(Path root, Path p) {
     import std.path : buildPath;
 
     return AbsolutePath(buildPath(root, p));
+}
+
+private:
+
+immutable string[string] MagicConfWord;
+
+shared static this() {
+    import std.file : thisExePath;
+    import std.path : dirName;
+
+    string[string] magicConfWordTmp;
+    magicConfWordTmp["{code_checker}"] = thisExePath.dirName;
+    MagicConfWord = cast(immutable) magicConfWordTmp;
 }

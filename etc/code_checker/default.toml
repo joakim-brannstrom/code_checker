@@ -14,7 +14,8 @@ severity = "style"
 # extra flags to pass on to the compiler.
 # intended to be set by a central configuration.
 # the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
-flags = [ "-Wall",
+flags = [
+    "-Wall",
     "-Wextra", # resonable and standard
     "-Wshadow", # warn the user if a variable declaration shadows one from a parent context
     "-Wnon-virtual-dtor", # warn the user if a class with virtual functions has a non-virtual destructor

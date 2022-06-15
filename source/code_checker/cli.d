@@ -11,10 +11,9 @@ This allows the user to override the configuration via the CLI.
 module code_checker.cli;
 
 import logger = std.experimental.logger;
-import std.array : array, empty, appender;
-import std.exception : collectException, ifThrown;
+import std.array : array, empty;
+import std.exception : collectException;
 import std.path : buildPath, dirName;
-import std.typecons : Tuple, Flag;
 
 import my.path : AbsolutePath, Path;
 import my.set;
@@ -156,19 +155,8 @@ struct Logging {
 struct Config {
     AppMode mode;
 
-    /// Where the base configurations are stored.
-    AbsolutePath baseConfDir;
-
-    /// System configuration.
-    AbsolutePath systemConfDir;
-
-    /// Name of the base configuration to merge with the users.
-    string baseConfName = "default";
-
-    /// Path to the base configuration that the user wants to use.
-    AbsolutePath baseUserConf() @safe const {
-        return buildPath(baseConfDir, "code_checker_" ~ baseConfName ~ ".toml").Path.AbsolutePath;
-    }
+    /// System default configuration.
+    AbsolutePath systemConf;
 
     /// Working directory as specified by the user.
     AbsolutePath workDir;
@@ -186,6 +174,9 @@ struct Config {
     Compiler compiler;
     Logging logg;
 
+    /// Template to use when initializing a new config
+    string initTemplate = "default";
+
     /// If set then only analyze these files.
     AbsolutePath[] analyzeFiles;
     /// If set then all files are analyzed, ignoring the change based algorithm.
@@ -193,17 +184,12 @@ struct Config {
 
     /// Returns: a config object with default values.
     static Config make(AbsolutePath workDir, AbsolutePath confFile) @safe {
-        import std.file : thisExePath;
-        import std.process : environment;
         import compile_db : defaultCompilerFlagFilter, CompileCommandFilter;
 
         Config c;
         c.workDir = workDir;
         c.confFile = confFile;
         c.compileDb.flagFilter = CompileCommandFilter(defaultCompilerFlagFilter, 0);
-        c.baseConfDir = environment.get("CODE_CHECKER_DEFAULT",
-                buildPath(thisExePath.dirName, "..")).Path.AbsolutePath;
-        c.systemConfDir = AbsolutePath(c.baseConfDir ~ "etc/code_checker");
 
         return c;
     }
@@ -227,7 +213,6 @@ struct MiniConfig {
 /// Returns: minimal config to load settings and setup working directory.
 MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
     import std.file : getcwd;
-    import std.path : dirName;
     static import std.getopt;
 
     MiniConfig conf;
@@ -252,7 +237,6 @@ MiniConfig parseConfigCLI(string[] args) @trusted nothrow {
 void parseCLI(string[] args, ref Config conf) @trusted {
     import std.algorithm : map, among, filter;
     import std.format : format;
-    import std.path : dirName, buildPath;
     import std.traits : EnumMembers;
     import code_checker.engine.types : Severity;
     import colorlog : VerboseMode;
@@ -263,16 +247,15 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     std.getopt.GetoptResult help_info;
     try {
         Progress[] progress;
-        bool init_conf;
-        string config_file = ".code_checker.toml";
+        bool initConf;
         string database;
+        string dummyValue;
         string jsonFile;
         string logdir = ".";
         string workdir;
-        string[] analyze_files;
+        string[] analyzeFiles;
         string[] analyzers;
-        string[] compile_dbs;
-        string[] src_filter;
+        string[] compileDbs;
 
         // dfmt off
         help_info = std.getopt.getopt(args,
@@ -280,12 +263,12 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "clang-tidy-bin", "clang-tidy binary to use", &conf.clangTidy.binary,
             "clang-tidy-fix", "apply suggested clang-tidy fixes", &conf.clangTidy.applyFixit,
             "clang-tidy-fix-errors", "apply suggested clang-tidy fixes even if they result in compilation errors", &conf.clangTidy.applyFixitErrors,
-            "compile-db", "path to a compilationi database or where to search for one", &compile_dbs,
-            "c|config", "load configuration (default: .code_checker.toml)", &config_file,
+            "compile-db", "path to a compilationi database or where to search for one", &compileDbs,
+            "c|config", format!"load configuration (default: %s)"(MiniConfig.init.rawConfFile), &dummyValue,
             "db|database", "Database path", &database,
-            "f|file", "if set then analyze only these files (default: all)", &analyze_files,
-            "init", "create an initial config to use", &init_conf,
-            "init-template", "base the initial config on the named template (default: default)", &conf.baseConfName,
+            "f|file", "if set then analyze only these files (default: all)", &analyzeFiles,
+            "init", "create an initial config to use", &initConf,
+            "init-template", "path to a config to use as the template", &conf.initTemplate,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
             "iwyu-map", "give iwyu one or more mapping files", &conf.iwyu.maps,
             "log", "create a logfile for each analyzed file", &conf.logg.toFile,
@@ -300,7 +283,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         conf.mode = AppMode.normal;
         if (help_info.helpWanted)
             conf.mode = AppMode.help;
-        else if (init_conf)
+        else if (initConf)
             conf.mode = AppMode.initConfig;
 
         conf.logg.progress = progress.toSet;
@@ -313,10 +296,10 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.runOnAllFiles = true;
 
         // use a sane default which is to look in the current directory
-        if (compile_dbs.length == 0 && conf.compileDb.dbs.length == 0) {
-            compile_dbs = ["./compile_commands.json"];
-        } else if (compile_dbs.length != 0) {
-            conf.compileDb.rawDbs = compile_dbs;
+        if (compileDbs.length == 0 && conf.compileDb.dbs.length == 0) {
+            compileDbs = ["./compile_commands.json"];
+        } else if (compileDbs.length != 0) {
+            conf.compileDb.rawDbs = compileDbs;
         }
 
         if (!analyzers.empty)
@@ -335,7 +318,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             .array;
         // dfmt on
 
-        conf.analyzeFiles = analyze_files.map!(a => Path(buildPath(conf.workDir,
+        conf.analyzeFiles = analyzeFiles.map!(a => Path(buildPath(conf.workDir,
                 a)).AbsolutePath).array;
     } catch (std.getopt.GetOptException e) {
         // unknown option
@@ -360,6 +343,32 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     }
 }
 
+TOMLDocument loadToml(AbsolutePath fname) @trusted {
+    import std.file : exists, readText;
+    import toml : parseTOML;
+
+    if (exists(fname)) {
+        auto txt = readText(fname.toString);
+        return parseTOML(txt);
+    }
+
+    throw new Exception("file " ~ fname ~ " do not exist");
+}
+
+string parseSystemConf(ref TOMLDocument doc, string fallback) @trusted {
+    if (auto section = "defaults" in doc) {
+        if (auto field = "system_config" in *section) {
+            try {
+                return field.str;
+            } catch (Exception e) {
+                logger.warning(e.msg);
+            }
+        }
+    }
+
+    return fallback;
+}
+
 /** Load the configuration from file.
  *
  * Example of a TOML configuration
@@ -368,29 +377,9 @@ void parseCLI(string[] args, ref Config conf) @trusted {
  * check_name_standard = true
  * ---
  */
-void loadConfig(ref Config rval, string configFile) @trusted {
+void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     import std.algorithm : map;
-    import std.file : exists, readText;
-    import std.path : dirName, buildPath;
     import toml;
-
-    if (!exists(configFile))
-        return;
-
-    static auto tryLoading(string configFile) {
-        auto txt = readText(configFile);
-        auto doc = parseTOML(txt);
-        return doc;
-    }
-
-    TOMLDocument doc;
-    try {
-        doc = tryLoading(configFile);
-    } catch (Exception e) {
-        logger.warning("Unable to read the configuration from ", configFile);
-        logger.warning(e.msg);
-        return;
-    }
 
     alias Fn = void delegate(ref Config c, ref TOMLValue v);
     Fn[string] callbacks;
@@ -410,6 +399,11 @@ void loadConfig(ref Config rval, string configFile) @trusted {
     }
 
     callbacks["defaults.severity"] = &defaults__check_name_standard;
+    callbacks["defaults.system_config"] = (ref Config c, ref TOMLValue v) {
+        import code_checker.utility : replaceConfigWord;
+
+        c.systemConf = v.str.replaceConfigWord.AbsolutePath;
+    };
     callbacks["defaults.analyzers"] = (ref Config c, ref TOMLValue v) {
         c.staticCode.analyzers = v.array.map!"a.str".array;
     };

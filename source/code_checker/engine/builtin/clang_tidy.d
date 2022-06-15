@@ -55,10 +55,9 @@ class ClangTidy : BaseFixture {
         import std.conv : text;
         import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
             diagnosticSeverity;
-        import code_checker.utility : replaceConfigWords;
+        import code_checker.utility : replaceConfigWord;
 
-        const systemConf = AbsolutePath(only(env.conf.clangTidy.systemConfig)
-                .replaceConfigWords.front);
+        const systemConf = AbsolutePath(env.conf.clangTidy.systemConfig.replaceConfigWord);
 
         auto app = appender!(string[])();
         app.put(env.conf.clangTidy.binary);
@@ -456,8 +455,7 @@ bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
 void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     import std.file : exists;
     import std.stdio : File;
-    import std.ascii;
-    import std.string;
+    import std.string : startsWith;
     import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
     if (!exists(baseConf)) {
