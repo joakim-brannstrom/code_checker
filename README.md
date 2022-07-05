@@ -45,11 +45,12 @@ Don't be shy to report any issue that you find.
 # Config
 
 The default configuration file that `code_checker` use is located at
-`<binary>/../default_code_checker.toml`.  This can be changed via the
-environment variable `CODE_CHECKER_DEFAULT`.
+`<binary>/../etc/code_checker/default.toml`.
 
 The following configuration options can use `{code_checker}` in the config to
 replace it with the directory where the `code_checker` binary is.
 
+ * `[clang_tidy] system_config`
+ * `[defaults] system_config`
  * `[iwyu] default_mapping_files`
  * `[iwyu] mapping_files`

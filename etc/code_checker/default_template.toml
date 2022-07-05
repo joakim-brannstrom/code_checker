@@ -1,4 +1,8 @@
 [defaults]
+# which default settings to use.
+# settings in this file are modifications to system_conf.
+system_config = "{code_checker}/../etc/code_checker/default.toml"
+
 # only report issues with a severity >= to this value (style, low, medium, high, critical)
 severity = "style"
 
@@ -7,8 +11,7 @@ severity = "style"
 
 [compiler]
 # extra flags to pass on to the compiler
-# the following is recommended based on CppCon2018: Jason Turner Applied Best Practise 32m47s
-extra_flags = []
+# extra_flags = []
 
 # use this compilers system includes instead of the one used in the compile_commands.json
 # use_compiler_system_includes = "/path/to/c++"
@@ -22,9 +25,6 @@ extra_flags = []
 
 # search for compile_commands.json in this paths
 search_paths = ["./compile_commands.json"]
-
-# files matching any of the regex will not be analyzed
-# exclude = [ ".*/foo/.*", ".*/bar/wun.cpp" ]
 
 # only those files that fully match the filters will be analyzed.
 # First the files are tested against all `include`-filters.

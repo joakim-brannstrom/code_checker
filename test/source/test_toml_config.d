@@ -113,11 +113,21 @@ unittest {
 unittest {
     auto ta = makeTestArea;
 
+    auto res = ta.exec([appPath, "--verbose", "trace", "--init"]);
+    res.status.shouldEqual(0);
+
+    ".*system_conf.*=.*code_checker/default.toml".regexIn(
+            File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
+}
+
+@("shall generate a new config file from a custom template when called with --init")
+unittest {
+    auto ta = makeTestArea;
+
     auto res = ta.exec([
-            appPath, "--verbose", "trace", "--init", "--init-template", "my_conf"
-            ], [
-            "CODE_CHECKER_DEFAULT": buildPath(testData, "conf", "default_conf")
-            ]);
+        appPath, "--verbose", "trace", "--init", "--init-template",
+        buildPath(testData, "conf", "default_conf", "my_conf_template.toml")
+    ]);
     res.status.shouldEqual(0);
 
     ".*foo.imp.*".regexIn(File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
@@ -131,8 +141,8 @@ unittest {
     dirContentCopy(buildPath(testData, "conf", "compiler_filter", "db"), ta.inSandboxPath("db"));
 
     auto res = ta.exec([
-            appPath, "--verbose", "trace", "-c", "code_checker.toml"
-            ]);
+        appPath, "--verbose", "trace", "-c", "code_checker.toml"
+    ]);
     res.status.shouldEqual(0);
 
     ".*mremove-dummy=foobar.*".regexNotIn(
@@ -147,8 +157,8 @@ unittest {
     dirContentCopy(buildPath(testData, "conf", "dedup", "db"), ta.inSandboxPath("db"));
 
     auto res = ta.exec([
-            appPath, "--verbose", "trace", "-c", "code_checker.toml"
-            ]);
+        appPath, "--verbose", "trace", "-c", "code_checker.toml"
+    ]);
     res.status.shouldEqual(0);
 
     int cnt;

@@ -48,12 +48,16 @@ class IncludeWhatYouUse : BaseFixture {
         import std.array : appender;
         import std.file : exists;
         import std.range : put, only;
-        import code_checker.utility : replaceConfigWords, warnIfFileDoNotExist;
+        import code_checker.utility : replaceConfigWord, warnIfFileDoNotExist;
 
         auto app = appender!(string[])();
         app.put(env.conf.iwyu.binary);
-        only(env.conf.iwyu.maps, env.conf.iwyu.defaultMaps).joiner.replaceConfigWords.warnIfFileDoNotExist.map!(
-                a => only("-Xiwyu", "--mapping_file=" ~ a)).joiner.copy(app);
+        only(env.conf.iwyu.maps, env.conf.iwyu.defaultMaps).joiner
+            .map!(a => a.replaceConfigWord)
+            .warnIfFileDoNotExist
+            .map!(a => only("-Xiwyu", "--mapping_file=" ~ a))
+            .joiner
+            .copy(app);
         env.conf.iwyu.extraFlags.copy(app);
         iwyuArgs = app.data;
     }
