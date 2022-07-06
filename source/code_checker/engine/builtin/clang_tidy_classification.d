@@ -156,6 +156,8 @@ struct CountErrorsResult {
 struct DiagMessage {
     Severity severity;
 
+    string fullToolOutput;
+
     /// Kind of warning.
     string kind;
 
@@ -207,8 +209,9 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         msg = DiagMessage.init;
     }
 
-    static void updateMsg(ref DiagMessage msg, ref Captures!string m) nothrow {
+    static void updateMsg(ref DiagMessage msg, ref Captures!string m, string toolOutput) nothrow {
         try {
+            msg.fullToolOutput = toolOutput;
             msg.diagnostic = m["message"];
             msg.severity = classify(m["severity"], m["kind"]);
             msg.kind = m["severity"];
@@ -259,14 +262,14 @@ void mapClangTidy(alias diagFn, Writer)(string[] lines, ref scope Writer w) {
         case State.none:
             break;
         case State.match:
-            updateMsg(msg, m_error);
+            updateMsg(msg, m_error, l);
             break;
         case State.partOfMatch:
             app.put(l);
             break;
         case State.newMatch:
             callDiagFnAndReset(msg, app);
-            updateMsg(msg, m_error);
+            updateMsg(msg, m_error, l);
             break;
         }
     }
