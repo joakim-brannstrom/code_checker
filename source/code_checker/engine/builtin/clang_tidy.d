@@ -371,9 +371,9 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
             count_errors++;
             tres.errors.put(msg.severity);
             if (work.useColors)
-                msg.diagnostic = format("%s[%s]", msg.diagnostic, color(msg.severity));
+                msg.diagnostic = format("%s[%s]", msg.fullToolOutput, color(msg.severity));
             else
-                msg.diagnostic = format("%s[%s]", msg.diagnostic, msg.severity);
+                msg.diagnostic = format("%s[%s]", msg.fullToolOutput, msg.severity);
             return true;
         }
 
