@@ -13,6 +13,17 @@ version (unittest) {
     import unit_threaded : shouldEqual, shouldBeTrue;
 }
 
+private shared Severity[string] diagnosticSeverity;
+private shared SeverityColor[Severity] severityColor;
+
+immutable(Severity[string]) getDiagnosticSeverity() @trusted {
+    return cast(immutable(Severity[string])) diagnosticSeverity;
+}
+
+immutable(SeverityColor[Severity]) getSeverityColor() {
+    return cast(immutable(SeverityColor[Severity])) severityColor;
+}
+
 // **NOT THREAD SAFE**.
 // initalizes `diagnosticSeverity` and `severityColor`.
 void initClassification(AbsolutePath clangTidyPath) @system {
@@ -34,6 +45,10 @@ void initClassification(AbsolutePath clangTidyPath) @system {
 
     import colorlog : Color, Background, Mode;
 
+    Severity[string] tmpDiag;
+    scope (exit)
+        diagnosticSeverity = cast(shared) tmpDiag.dup;
+
     foreach (a; json["labels"].object.byKeyValue.filter!(a => a.value.type == JSONType.ARRAY)) {
         Severity s = () {
             foreach (v; a.value.array) {
@@ -50,13 +65,13 @@ void initClassification(AbsolutePath clangTidyPath) @system {
         }();
 
         if (a.key.startsWith("core."))
-            diagnosticSeverity["clang-analyzer-" ~ a.key] = s;
+            tmpDiag["clang-analyzer-" ~ a.key] = s;
         else
-            diagnosticSeverity[a.key] = s;
+            tmpDiag[a.key] = s;
     }
 
     // dfmt off
-    severityColor = [
+    auto tmpColor = [
         Severity.style: SeverityColor(Color.lightCyan, Background.black, Mode.none),
         Severity.low: SeverityColor(Color.lightBlue, Background.black, Mode.bold),
         Severity.medium: SeverityColor(Color.lightYellow, Background.black, Mode.none),
@@ -64,6 +79,8 @@ void initClassification(AbsolutePath clangTidyPath) @system {
         Severity.critical: SeverityColor(Color.magenta, Background.black, Mode.bold),
     ];
     // dfmt on
+
+    severityColor = cast(shared) tmpColor;
 }
 
 @safe:
@@ -75,9 +92,6 @@ struct SeverityColor {
     Background bg = Background.black;
     Mode m;
 }
-
-Severity[string] diagnosticSeverity;
-SeverityColor[Severity] severityColor;
 
 struct CountErrorsResult {
     private {
@@ -375,7 +389,7 @@ Severity classify(string diagnostic_msg, string kind) {
     if (kind == "error")
         return Severity.critical;
 
-    if (auto v = diagnostic_msg in diagnosticSeverity) {
+    if (auto v = diagnostic_msg in getDiagnosticSeverity) {
         return *v;
     }
 
@@ -398,12 +412,9 @@ Severity classify(string diagnostic_msg, string kind) {
 auto filterSeverity(alias predicate)() {
     import std.algorithm : filter, map;
 
-    // dfmt off
-    return diagnosticSeverity
-        .byKeyValue
+    return getDiagnosticSeverity.byKeyValue
         .filter!(a => predicate(a.value))
         .map!(a => a.key);
-    // dfmt on
 }
 
 /// Returns: severity as a string with colors.
