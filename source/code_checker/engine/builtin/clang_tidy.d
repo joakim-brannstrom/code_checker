@@ -53,8 +53,7 @@ class ClangTidy : BaseFixture {
     /// Setup the environment for analyze.
     override void setup() {
         import std.conv : text;
-        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
-            diagnosticSeverity;
+        import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
         import code_checker.utility : replaceConfigWord;
 
         const systemConf = AbsolutePath(env.conf.clangTidy.systemConfig.replaceConfigWord);
