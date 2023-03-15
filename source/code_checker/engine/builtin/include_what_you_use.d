@@ -157,10 +157,18 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         cond.expected++;
 
         immutable(IwyuWork)* w = () @trusted {
+            import std.path : relativePath;
+
             auto args = appender!(string[])();
             iwyuArgs.copy(args);
+            cmd.flags.cflags.copy(args);
+            cmd.flags
+                .includes
+                .map!(a => relativePath(a))
+                .map!(a => ["-I", a])
+                .joiner
+                .copy(args);
             cmd.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
-            cmd.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
             args.put(cmd.cmd.absoluteFile);
 
             return cast(immutable) new IwyuWork(args.data, cmd.cmd.absoluteFile);
