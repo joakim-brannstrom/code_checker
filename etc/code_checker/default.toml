@@ -114,7 +114,7 @@ dedup = true
 # binary = "iwyu"
 
 # extra flags to pass on to the iwyu command. For example: ["-Xiwyu", "--verbose=3"]
-# flags = []
+flags = ["-Xiwyu", "--error=1"]
 
 # gives iwyu one or more mapping file
 # mapping_files = []

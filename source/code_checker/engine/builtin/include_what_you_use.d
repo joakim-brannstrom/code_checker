@@ -9,6 +9,7 @@ This module contains an analyser and runner for
 module code_checker.engine.builtin.include_what_you_use;
 
 import logger = std.experimental.logger;
+import std.array : appender, empty, array;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
 import std.typecons : Tuple;
@@ -45,7 +46,6 @@ class IncludeWhatYouUse : BaseFixture {
     /// Setup the environment for analyze.
     override void setup() {
         import std.algorithm : copy, map, joiner;
-        import std.array : appender;
         import std.file : exists;
         import std.range : put, only;
         import code_checker.utility : replaceConfigWord, warnIfFileDoNotExist;
@@ -79,7 +79,6 @@ private:
 
 void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @safe {
     import std.algorithm : copy, map, joiner;
-    import std.array : appender, array;
     import std.concurrency : thisTid, receiveTimeout;
     import std.file : exists;
     import std.format : format;
@@ -157,10 +156,18 @@ void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @sa
         cond.expected++;
 
         immutable(IwyuWork)* w = () @trusted {
+            import std.path : relativePath;
+
             auto args = appender!(string[])();
             iwyuArgs.copy(args);
+            cmd.flags.cflags.copy(args);
+            cmd.flags
+                .includes
+                .map!(a => relativePath(a))
+                .map!(a => ["-I", a])
+                .joiner
+                .copy(args);
             cmd.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
-            cmd.flags.includes.map!(a => ["-I", a]).joiner.copy(args);
             args.put(cmd.cmd.absoluteFile);
 
             return cast(immutable) new IwyuWork(args.data, cmd.cmd.absoluteFile);
