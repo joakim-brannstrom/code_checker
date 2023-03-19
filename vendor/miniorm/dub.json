@@ -39,7 +39,6 @@
 	"copyright": "Copyright © 2019, Joakim Brännström",
 	"dependencies": {
 		"d2sqlite3": "~>1.0.0",
-		"sumtype": "~>1.2.4",
 		"unit-threaded": "~>2.0.3"
 	},
 	"description": "A minimalistic ORM for SQLite",
@@ -53,5 +52,5 @@
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.6"
+	"version": "0.0.7"
 }

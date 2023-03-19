@@ -14,10 +14,10 @@ level of a "sub tree" (`SpanMode.depth`).
 */
 module colorlog;
 
-import logger = std.experimental.logger;
+import logger = std.logger;
 import std.array : empty;
 import std.conv : to;
-import std.experimental.logger : LogLevel;
+import std.logger : LogLevel;
 import std.stdio : writefln, stderr, stdout;
 
 public import my.term_color;
@@ -49,19 +49,33 @@ LogLevel toLogLevel(VerboseMode mode) @safe pure nothrow @nogc {
 /** Configure `std.experimental.logger` `sharedLog` with a colorlog instance
  * and register it with name "_".
  */
-void confLogger(VerboseMode mode) @safe {
+void confLogger(VerboseMode mode) @trusted {
     logger.globalLogLevel = toLogLevel(mode);
 
-    final switch (mode) {
-    case VerboseMode.info:
-        logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
-        break;
-    case VerboseMode.trace:
-        logger.sharedLog = new DebugLogger(logger.LogLevel.all);
-        break;
-    case VerboseMode.warning:
-        logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
-        break;
+    static if (__VERSION__ <= 2100) {
+        final switch (mode) {
+        case VerboseMode.info:
+            logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
+            break;
+        case VerboseMode.trace:
+            logger.sharedLog = new DebugLogger(logger.LogLevel.all);
+            break;
+        case VerboseMode.warning:
+            logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
+            break;
+        }
+    } else {
+        final switch (mode) {
+        case VerboseMode.info:
+            logger.sharedLog = cast(shared) new SimpleLogger(logger.LogLevel.info);
+            break;
+        case VerboseMode.trace:
+            logger.sharedLog = cast(shared) new DebugLogger(logger.LogLevel.all);
+            break;
+        case VerboseMode.warning:
+            logger.sharedLog = cast(shared) new SimpleLogger(logger.LogLevel.info);
+            break;
+        }
     }
 
     () @trusted { register(logger.sharedLog, RootLogger); }();
@@ -84,25 +98,25 @@ class SimpleLogger : logger.Logger {
 
     override void writeLogMsg(ref LogEntry payload) @trusted {
         auto out_ = stderr;
-        auto use_color = Color.red;
-        auto use_mode = Mode.bold;
-        const use_bg = Background.black;
+        auto useColor = Color.red;
+        auto useMode = Mode.bold;
+        const useBg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
             out_ = stdout;
-            use_color = Color.white;
-            use_mode = Mode.init;
+            useColor = Color.white;
+            useMode = Mode.init;
             break;
         case LogLevel.info:
             out_ = stdout;
-            use_color = Color.white;
+            useColor = Color.white;
             break;
         default:
         }
 
-        out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color)
-                .bg(use_bg).mode(use_mode), payload.msg);
+        out_.writefln("%s: %s", payload.logLevel.to!string.color(useColor)
+                .bg(useBg).mode(useMode), payload.msg);
     }
 }
 
@@ -123,25 +137,25 @@ class DebugLogger : logger.Logger {
 
     override void writeLogMsg(ref LogEntry payload) @trusted {
         auto out_ = stderr;
-        auto use_color = Color.red;
-        auto use_mode = Mode.bold;
-        const use_bg = Background.black;
+        auto useColor = Color.red;
+        auto useMode = Mode.bold;
+        const useBg = Background.black;
 
         switch (payload.logLevel) {
         case LogLevel.trace:
             out_ = stdout;
-            use_color = Color.white;
-            use_mode = Mode.init;
+            useColor = Color.white;
+            useMode = Mode.init;
             break;
         case LogLevel.info:
             out_ = stdout;
-            use_color = Color.white;
+            useColor = Color.white;
             break;
         default:
         }
 
-        out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(use_color)
-                .bg(use_bg).mode(use_mode), payload.msg, payload.funcName, payload.line);
+        out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(useColor)
+                .bg(useBg).mode(useMode), payload.msg, payload.funcName, payload.line);
     }
 }
 
@@ -152,15 +166,27 @@ string mixinModuleLogger(logger.LogLevel defaultLogLvl = logger.LogLevel.all) @s
 }
 
 /// Register a logger for the module and make it configurable from "outside" via the registry.
-void register(logger.Logger logger, string name = __MODULE__) {
-    synchronized (poolLock) {
-        loggers[name] = cast(shared) logger;
+static if (__VERSION__ <= 2100) {
+    void register(logger.Logger logger, string name = __MODULE__) {
+        synchronized (poolLock) {
+            loggers[name] = cast(shared) logger;
+        }
+    }
+} else {
+    void register(shared logger.Logger logger, string name = __MODULE__) {
+        synchronized (poolLock) {
+            loggers[name] = logger;
+        }
     }
 }
 
 /// Create a logger for the module and make it configurable from "outside" via the registry.
 void make(LoggerT)(const logger.LogLevel lvl = logger.LogLevel.all, string name = __MODULE__) @trusted {
-    register(new LoggerT(lvl), name);
+    static if (__VERSION__ <= 2100) {
+        register(new LoggerT(lvl), name);
+    } else {
+        register(cast(shared) new LoggerT(lvl), name);
+    }
 }
 
 /// Returns: the name of all registered loggers.
@@ -252,7 +278,7 @@ void setLogLevel(const NameLevel[] names, const SpanMode span = SpanMode.single)
     logger.globalLogLevel = global;
 }
 
-/** Log a mesage to the specified logger.
+/** Log a message to the specified logger.
  *
  * This only takes the global lock one time and then cache the logger.
  */
@@ -332,7 +358,7 @@ unittest {
 unittest {
     scope (exit)
         clearAllLoggers;
-    register(new TestLogger);
+    register(cast(shared) new TestLogger);
     assert([__MODULE__] == getRegisteredLoggers());
 }
 
