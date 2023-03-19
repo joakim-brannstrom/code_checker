@@ -78,8 +78,8 @@ void shouldEqual(V, E)(auto ref V value, auto ref E expected, string file = __FI
  * Throws: UnitTestException on failure
  */
 void shouldNotEqual(V, E)
-                   (scope auto ref V value,
-                    scope auto ref E expected,
+                   (auto ref V value,
+                    auto ref E expected,
                     string file = __FILE__,
                     size_t line = __LINE__)
 {
@@ -523,7 +523,7 @@ string convertToString(T)(auto ref T value) {  // std.conv.to sometimes is @syst
 }
 
 
-private string[] formatRange(T)(scope string prefix, auto ref T value) {
+private string[] formatRange(T)(scope string prefix, scope auto ref T value) {
     import std.conv: text;
     import std.range: ElementType;
     import std.algorithm: map, reduce, max;
@@ -540,8 +540,8 @@ private string[] formatRange(T)(scope string prefix, auto ref T value) {
         const tooBigForOneLine = (value.array.length > 5 && maxElementSize > 5) || maxElementSize > 10;
         if (!tooBigForOneLine)
             return defaultLines;
-        return [prefix ~ "["] ~
-            value.map!(a => formatValueInItsOwnLine("              ", a).join("") ~ ",").array ~
+        auto elements = value.map!(a => formatValueInItsOwnLine("              ", a).join("") ~ ",");
+        return [prefix ~ "["] ~ () @trusted { return elements.array; }() ~
             "          ]";
     }
 }

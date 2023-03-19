@@ -15,11 +15,14 @@ work well enough for simple needs.
 module my.stat;
 
 import logger = std.experimental.logger;
-import std;
-import std.array : appender;
+import std.algorithm : map, sum, min, max, maxElement, sort;
+import std.array : appender, array;
 import std.ascii : newline;
-import std.format : formattedWrite;
-import std.range : isOutputRange, put;
+import std.format : formattedWrite, format;
+import std.math : pow, sqrt, log, ceil, floor, log10, isInfinity, SQRT2;
+import std.random : uniform;
+import std.range : isOutputRange, put, iota, take;
+import std.stdio : writeln;
 
 @safe:
 
@@ -157,7 +160,7 @@ struct Histogram {
             return 1.0;
         }();
 
-        const indexWidth = cast(int) ceil(log10(buckets.length) + 1);
+        const indexWidth = cast(int) ceil(log10(cast(double) buckets.length)) + 1;
 
         foreach (const i; 0 .. buckets.length) {
             const row = format("[%.3f, %.3f]", (low + i * interval), (low + (i + 1) * interval));
@@ -282,6 +285,8 @@ NormalDistributionPdf pdf(NormDistribution nd) {
 
 double cdf(NormDistribution nd, double x)
 in (nd.sd > 0, "domain error") {
+    import core.stdc.math : erfc;
+
     if (isInfinity(x)) {
         if (x < 0)
             return 0;
