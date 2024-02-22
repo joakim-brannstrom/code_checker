@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2019, Joakim Brännström. All rights reserved.
+Copyright: Copyright (c) Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 
@@ -213,7 +213,10 @@ struct IwyuResult {
         import std.stdio : writeln;
 
         foreach (l; output)
-            writeln(l).collectException;
+            try {
+                writeln(l);
+            } catch (Exception e) {
+            }
     }
 }
 

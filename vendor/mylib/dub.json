@@ -6,7 +6,7 @@
 		{
 			"dflags": [
 				"-preview=dip1000",
-				"-preview=dip25"
+				"-preview=dip1008"
 			],
 			"name": "default",
 			"targetType": "library"
@@ -21,7 +21,7 @@
 			},
 			"dflags-dmd": [
 				"-preview=dip1000",
-				"-preview=dip25",
+				"-preview=dip1008",
 				"-verrors=context"
 			],
 			"dflags-ldc": [
@@ -37,11 +37,11 @@
 		"source/"
 	],
 	"license": "BSL-1.0",
-	"name": "my",
+	"name": "mylib",
 	"sourcePaths": [
 		"source/"
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.39"
+	"version": "0.0.41"
 }

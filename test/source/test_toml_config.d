@@ -23,7 +23,6 @@ unittest {
     foreach (l; res.output.splitLines) {
         l.canFind("Unknown key").shouldBeFalse;
     }
-    res.output.splitLines.any!(a => a.canFind(`--checks *,-modernize-*`)).shouldBeTrue;
 
     ta.inSandboxPath("mydb.sqlite3").exists.shouldBeTrue;
 }

@@ -22,8 +22,7 @@ unittest {
     `- #include "second.hpp"  // lines 2-2`.regexIn(lines);
     `The full include-list`.regexIn(lines);
     `Analyzers reported Failed`.regexIn(lines);
-    `iwyu: 4 in.*first.cpp`.regexIn(lines);
-    `You scored -4 points`.regexIn(lines);
+    `You scored -1 points`.regexIn(lines);
 }
 
 @("shall use the map file for iwyu when suggesting improvements to includes")

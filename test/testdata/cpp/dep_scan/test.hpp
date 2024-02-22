@@ -2,4 +2,4 @@
 
 #include "test2.hpp"
 
-int fun(int x);
+int fun(int param);

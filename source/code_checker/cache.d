@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2021, Joakim Brännström. All rights reserved.
+Copyright: Copyright (c) Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
@@ -33,7 +33,10 @@ struct FileStatCache {
         try {
             return timeStamp_.require(p, timeLastModified(p));
         } catch (Exception e) {
-            logger.trace(e.msg).collectException;
+            try {
+                logger.trace(e.msg);
+            } catch (Exception e) {
+            }
         }
         return Clock.currTime;
     }

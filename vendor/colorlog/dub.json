@@ -10,7 +10,7 @@
 	],
 	"copyright": "Copyright © 2018, Joakim Braennstroem",
 	"dependencies": {
-		"my": "~>0.0.37"
+		"mylib": "~>0.0.41"
 	},
 	"description": "std.experimental.logger with color support",
 	"importPaths": [
@@ -22,5 +22,5 @@
 		"source/"
 	],
 	"targetType": "library",
-	"version": "0.0.9"
+	"version": "0.0.10"
 }
