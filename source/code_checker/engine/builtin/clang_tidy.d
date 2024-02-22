@@ -309,7 +309,10 @@ struct TidyResult {
         import std.stdio : writeln;
 
         foreach (l; output)
-            writeln(l).collectException;
+            try {
+                writeln(l);
+            } catch (Exception e) {
+            }
     }
 }
 

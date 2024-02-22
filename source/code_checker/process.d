@@ -25,10 +25,16 @@ struct RunResult {
         import std.stdio : writeln;
 
         foreach (l; stdout) {
-            writeln(l).collectException;
+            try {
+                writeln(l);
+            } catch (Exception e) {
+            }
         }
         foreach (l; stderr) {
-            writeln(l).collectException;
+            try {
+                writeln(l);
+            } catch (Exception e) {
+            }
         }
     }
 }
