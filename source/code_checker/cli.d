@@ -245,7 +245,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
         string database;
         string dummyValue;
         string jsonFile;
-        string logdir = ".";
+        string logdir = "code_checker_log";
         string workdir;
         string[] analyzeFiles;
         string[] analyzers;

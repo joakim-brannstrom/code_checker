@@ -1,3 +1,3 @@
 #include "test.hpp"
 
-int fun(int x) { return x; }
+int fun(int param) { return param; }
