@@ -86,34 +86,37 @@ struct ParsedCompileCommand {
 alias ParsedCompileCommandRange = SimpleRange!ParsedCompileCommand;
 
 /// Returns: a range over all files in the range where the flags have been parsed.
-auto parse(RangeT)(RangeT r, CompileCommandFilter ccFilter) @safe nothrow 
+auto parse(RangeT)(RangeT r, CompileCommandFilter ccFilter) @safe nothrow
         if (is(ElementType!RangeT == CompileCommand)) {
     return r.map!(a => ParsedCompileCommand(a, parseFlag(a, ccFilter)));
 }
 
 /// Returns: a range wherein the system includes for the compiler has been
 /// deduced and added to the `flags` data.
-auto addSystemIncludes(RangeT)(RangeT r) @safe nothrow 
+auto addSystemIncludes(RangeT)(RangeT r) @safe nothrow
         if (is(ElementType!RangeT == ParsedCompileCommand)) {
-    static SystemIncludePath[] deduce(CompileCommand cmd, Compiler compiler) @safe nothrow {
+    static SystemIncludePath[] deduce(CompileCommand cmd, Compiler compiler) @safe {
         import compile_db.system_compiler : deduceSystemIncludes;
 
         try {
             return deduceSystemIncludes(cmd, compiler);
         } catch (Exception e) {
-            logger.info(e.msg).collectException;
+            logger.info(e.msg);
         }
         return SystemIncludePath[].init;
     }
 
     return r.map!((a) {
-        a.flags.systemIncludes = deduce(a.cmd, a.flags.compiler);
+                  try {
+                    a.flags.systemIncludes = deduce(a.cmd, a.flags.compiler);
+                  } catch(Exception e) {
+                  }
         return a;
     });
 }
 
 /// Return: add a compiler to the `flags` data if it is missing.
-auto addCompiler(RangeT)(RangeT r, Compiler compiler) @safe nothrow 
+auto addCompiler(RangeT)(RangeT r, Compiler compiler) @safe nothrow
         if (is(ElementType!RangeT == ParsedCompileCommand)) {
     ParsedCompileCommand add(ParsedCompileCommand p, Compiler compiler) @safe nothrow {
         if (p.flags.compiler.empty) {
@@ -127,7 +130,7 @@ auto addCompiler(RangeT)(RangeT r, Compiler compiler) @safe nothrow
 
 /// Return: replace the compiler in `flags` with `compiler` if `compiler` is
 /// NOT empty.
-auto replaceCompiler(RangeT)(RangeT r, Compiler compiler) @safe nothrow 
+auto replaceCompiler(RangeT)(RangeT r, Compiler compiler) @safe nothrow
         if (is(ElementType!RangeT == ParsedCompileCommand)) {
     return r.map!((a) {
         if (!compiler.empty)

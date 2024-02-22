@@ -398,6 +398,21 @@ void shouldBeEmpty(R)(const scope auto ref R rng, string file = __FILE__, size_t
         static assert(false, "Cannot call shouldBeEmpty on " ~ R.stringof);
 }
 
+/// assert that rng is empty.
+void shouldBeEmpty(R)(scope auto ref R rng, string file = __FILE__, size_t line = __LINE__) if(!is(R == const)) {
+    import std.range: isInputRange;
+    import std.traits: isAssociativeArray;
+    import std.array;
+
+    static if(isInputRange!R)
+        assert_(rng.empty, file, line);
+    else static if(isAssociativeArray!R)
+        () @trusted { assert_(rng.keys.empty, file, line); }();
+    else
+        static assert(false, "Cannot call shouldBeEmpty on " ~ R.stringof);
+}
+
+
 /// Assert that rng is not empty.
 void shouldNotBeEmpty(R)(const scope auto ref R rng, string file = __FILE__, size_t line = __LINE__) {
     import std.range: isInputRange;
@@ -484,8 +499,9 @@ private void assert_(bool value, string message, string file, size_t line) @safe
         throw new Exception(message, file, line);
 }
 
-void fail(in string output, string file, size_t line) @safe pure {
+noreturn fail(string output, string file, size_t line) @safe pure {
     assert_(false, output, file, line);
+    assert(0);
 }
 
 

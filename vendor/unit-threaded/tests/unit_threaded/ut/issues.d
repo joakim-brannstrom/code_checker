@@ -310,3 +310,50 @@ else {
         (new Test).shouldNotEqual(new Test);
     }
 }
+
+static if(__VERSION__ > 2101L) {
+    @("280")
+        @safe pure unittest {
+        static class FakeSocket {
+            void close() @nogc nothrow scope @trusted {
+
+            }
+
+            long send(scope const(void)[]) @safe {
+                return 42;
+            }
+        }
+
+        auto m = mock!FakeSocket;
+    }
+}
+
+version(unitThreadedLight) {}
+else {
+    @("284")
+        @safe unittest {
+        assertExceptionMsg((1e-7).shouldApproxEqual(0, 1e-8, 1e-8),
+                           "    tests/unit_threaded/ut/issues.d:123 - Expected approx: 0\n" ~
+                           "    tests/unit_threaded/ut/issues.d:123 -      Got       : 1.000000e-07\n" ~
+                           "    tests/unit_threaded/ut/issues.d:123 -      maxRelDiff: 1.000000e-08\n" ~
+                           "    tests/unit_threaded/ut/issues.d:123 -      maxAbsDiff: 1.000000e-08"
+        );
+    }
+}
+
+@("292")
+@safe pure unittest {
+      static struct Rng {
+        int front() { return 0; }
+        bool empty() { return true; }
+        void popFront() {}
+    }
+
+    Rng().shouldBeEmpty();
+}
+
+@("298")
+@safe pure unittest {
+    const(int[]) arr;
+    arr.shouldBeEmpty;
+}
