@@ -6,12 +6,12 @@ license "BSL-1.0"
 
 targetPath "build"
 
-dependency "colorlog" version="~>0.0.7"  default=true
+dependency "colorlog" version="~>0.0.10"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
-dependency "unit-threaded" version="~>2.0.3" default=true
-dependency "my" version="~>0.0.39" default=true
-dependency "compile_db" version="~>0.0.2" default=true
-dependency "miniorm" version="~>0.0.7" default=true
+dependency "unit-threaded" version="~>2.1.9" default=true
+dependency "mylib" version="~>0.0.41" default=true
+dependency "compile_db" version="~>0.0.4" default=true
+dependency "miniorm" version="~>0.0.10" default=true
 
 configuration "application" {
     targetType "executable"
