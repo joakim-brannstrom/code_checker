@@ -56,12 +56,6 @@ struct ConfigClangTidy {
     /// System configuration to use if .clang-tidy do not exists in work directory.
     string systemConfig = "{code_checker}/../etc/code_checker/clang_tidy.conf";
 
-    /// Checks to toggle on/off. Used as a compliment to checks.
-    string[] checkExtensions;
-
-    /// Used as a compliment to options. options is set in the global while optionExtensions is set locally.
-    string[string] optionExtensions;
-
     /// Argument to the be passed on to clang-tidy's --header-filter paramter as-is
     string headerFilter;
 
@@ -456,14 +450,12 @@ void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
                 c.clangTidy.systemConfig);
     };
     callbacks["clang_tidy.check_extensions"] = (ref Config c, ref TOMLValue v) {
-        c.clangTidy.checkExtensions = v.array.map!(a => a.str).array;
+        logger.warning(
+                "DEPRECATED clang_tidy.check_extensions. Use a local .clang-tidy configuration.");
     };
     callbacks["clang_tidy.options"] = (ref Config c, ref TOMLValue v) {
         logger.warning("clang_tidy.options is deprecated. It is replaced by ",
                 c.clangTidy.systemConfig);
-    };
-    callbacks["clang_tidy.option_extensions"] = (ref Config c, ref TOMLValue v) {
-        // dummo to suppress warning about unknown key
     };
     callbacks["clang_tidy.system_config"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.systemConfig = v.str;
@@ -509,9 +501,6 @@ void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     iterSection(rval, "compiler");
     iterSection(rval, "clang_tidy");
     iterSection(rval, "iwyu");
-
-    if (auto section = "clang_tidy" in doc)
-        rval.clangTidy.optionExtensions = parseDict(*section, "option_extensions");
 }
 
 string[string] parseDict(ref TOMLValue root, string section) @trusted {

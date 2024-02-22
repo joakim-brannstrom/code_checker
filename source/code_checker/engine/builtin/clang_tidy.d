@@ -69,9 +69,6 @@ class ClangTidy : BaseFixture {
             app.put(["--fix-errors"]);
         }
 
-        if (!env.conf.clangTidy.checkExtensions.empty)
-            ["--checks", env.conf.clangTidy.checkExtensions.joiner(",").text].copy(app);
-
         if (exists(ClangTidyConstants.confFile)
                 && !isCodeCheckerConfig(AbsolutePath(ClangTidyConstants.confFile))) {
             logger.infof("Using local '%s' config", ClangTidyConstants.confFile);
@@ -562,10 +559,5 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
         }
 
         fconfig.writeln;
-    }
-
-    foreach (kv; conf.clangTidy.optionExtensions.byKeyValue) {
-        fconfig.writeln("   - key:             ", kv.key);
-        fconfig.writefln("     value:           '%s'", kv.value);
     }
 }
