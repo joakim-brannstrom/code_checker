@@ -91,8 +91,10 @@ string[] systemCompilerArg(const string[] cmd, const Compiler compiler) {
 
 SystemIncludePath[] parseCompilerOutput(const string output) {
     auto lines = output.splitLines;
-    const start = lines.countUntil("#include <...> search starts here:") + 1;
-    const end = lines.countUntil("End of search list.");
+    const start = lines.countUntil!(a => a.startsWith("#include <...>")) + 1;
+    if (start >= lines.length)
+        return null;
+    const end = lines[start .. $].countUntil!(a => a.empty || a[0] != ' ') + start;
     if (start == 0 || end == 0 || start > end)
         return null;
 

@@ -277,7 +277,7 @@ Nullable!CompileCommand toCompileCommand(string directory, string file,
     } catch (Exception ex) {
         try {
             logger.error("Unable to parse json: ", ex.msg);
-        } catch(Exception e) {
+        } catch (Exception e) {
         }
     }
 
@@ -325,7 +325,7 @@ private void parseCommands(T)(string raw_input, CompileDbFile db, ref T out_rang
     } catch (Exception ex) {
         try {
             logger.error("Error while parsing compilation database: " ~ ex.msg);
-        } catch(Exception e) {
+        } catch (Exception e) {
         }
     }
 }
