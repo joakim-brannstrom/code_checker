@@ -27,6 +27,7 @@ enum AppMode {
     helpUnknownCommand,
     normal,
     initConfig,
+    include
 }
 
 enum Progress {
@@ -242,6 +243,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
     try {
         Progress[] progress;
         bool initConf;
+        bool writeHeaderInfo;
         string database;
         string dummyValue;
         string jsonFile;
@@ -261,6 +263,7 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             "c|config", format!"load configuration (default: %s)"(MiniConfig.init.rawConfFile), &dummyValue,
             "db|database", "Database path", &database,
             "f|file", "if set then analyze only these files (default: all)", &analyzeFiles,
+            "include-info", "if include info should be written to a file in --log-dir", &writeHeaderInfo,
             "init", "create an initial config to use", &initConf,
             "init-template", "path to a config to use as the template", &conf.initTemplate,
             "iwyu-bin", "iwyu binary to use", &conf.iwyu.binary,
@@ -279,12 +282,13 @@ void parseCLI(string[] args, ref Config conf) @trusted {
             conf.mode = AppMode.help;
         else if (initConf)
             conf.mode = AppMode.initConfig;
+        else if (writeHeaderInfo)
+            conf.mode = AppMode.include;
 
         conf.logg.progress = progress.toSet;
         if (!jsonFile.empty)
             conf.logg.jsonFile = AbsolutePath(jsonFile);
-        if (conf.logg.toFile)
-            conf.logg.dir = Path(logdir).AbsolutePath;
+        conf.logg.dir = Path(logdir).AbsolutePath;
 
         if (conf.clangTidy.applyFixitErrors || conf.clangTidy.applyFixit)
             conf.runOnAllFiles = true;
