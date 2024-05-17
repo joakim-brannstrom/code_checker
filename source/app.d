@@ -116,6 +116,7 @@ int main(string[] args) {
     cmds[AppMode.helpUnknownCommand] = toDelegate(&modeNone_Error);
     cmds[AppMode.normal] = toDelegate(&modeNormal);
     cmds[AppMode.initConfig] = toDelegate(&modeInitConfig);
+    cmds[AppMode.include] = toDelegate(&modeHeaderInfo);
 
     scope (success)
         logger.trace(getProfileResult.toString);
@@ -164,5 +165,44 @@ int modeInitConfig(Config conf) {
         return 1;
     }
 
+    return 0;
+}
+
+int modeHeaderInfo(Config conf) {
+    import std.json : JSONValue, JSONOptions;
+    import std.stdio : File;
+    import std.file : mkdirRecurse;
+    import code_checker.database;
+    import std.algorithm : map, filter;
+    import miniorm : spinSql;
+
+    Database db;
+    try {
+        db = Database.make(conf.database);
+    } catch (Exception e) {
+        logger.warning(e.msg);
+        return 1;
+    }
+
+    JSONValue json;
+    JSONValue roots;
+    ulong[Path] summary;
+
+    foreach (root; spinSql!(() => db.fileApi.getRootFiles).map!(
+            a => spinSql!(() => db.fileApi.getFile(a)))
+            .filter!(a => !a.isNull)
+            .map!(a => a.get.file)) {
+        auto deps = db.dependencyApi.get(root);
+        summary[root] = deps.length;
+        roots[root] = deps;
+    }
+    json["summary"] = summary;
+    json["files"] = roots;
+
+    mkdirRecurse(conf.logg.dir);
+    const infoFile = conf.logg.dir ~ "includes.json";
+    File(infoFile.toString, "w").writeln(
+            json.toPrettyString(JSONOptions.doNotEscapeSlashes));
+    logger.info("Info written to ", infoFile);
     return 0;
 }
