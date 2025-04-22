@@ -472,14 +472,21 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
         return null;
     }();
 
+    void writeHeaderfilterOrLine(char[] l) {
+        if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
+            fconfig.writeln(format!"HeaderFilterRegex: '%s'"(conf.clangTidy.headerFilter));
+        } else if (!conf.clangTidy.headerExcludeFilter.empty
+                && l.startsWith("ExcludeHeaderFilterRegex:")) {
+            fconfig.writeln(format!"ExcludeHeaderFilterRegex: '%s'"(
+                    conf.clangTidy.headerExcludeFilter));
+        } else {
+            fconfig.writeln(l);
+        }
+    }
+
     if (checks.empty) {
         foreach (l; File(baseConf).byLine) {
-            if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
-                fconfig.writeln(format!"HeaderFilterRegex:      '%s'"(
-                        conf.clangTidy.headerFilter));
-            } else {
-                fconfig.writeln(l);
-            }
+            writeHeaderfilterOrLine(l);
         }
     } else {
         enum State {
@@ -496,12 +503,7 @@ void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
             auto curr = l;
 
             if (st == State.afterCheck) {
-                if (!conf.clangTidy.headerFilter.empty && l.startsWith("HeaderFilterRegex:")) {
-                    fconfig.writeln(format!"HeaderFilterRegex:      '%s'"(
-                            conf.clangTidy.headerFilter));
-                } else {
-                    fconfig.writeln(l);
-                }
+                writeHeaderfilterOrLine(l);
             } else {
                 while (!curr.empty) {
                     const auto old = st;
