@@ -57,8 +57,11 @@ struct ConfigClangTidy {
     /// System configuration to use if .clang-tidy do not exists in work directory.
     string systemConfig = "{code_checker}/../etc/code_checker/clang_tidy.conf";
 
-    /// Argument to the be passed on to clang-tidy's --header-filter paramter as-is
+    /// Argument written to .clang-tidy as-is for HeaderFilter
     string headerFilter;
+
+    /// Argument written to .clang-tidy as-is for ExcludeHeaderFilter
+    string headerExcludeFilter;
 
     /// Apply fix hints.
     bool applyFixit;
@@ -448,6 +451,9 @@ void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.headerFilter = v.str;
+    };
+    callbacks["clang_tidy.exclude_header_filter"] = (ref Config c, ref TOMLValue v) {
+        c.clangTidy.headerExcludeFilter = v.str;
     };
     callbacks["clang_tidy.checks"] = (ref Config c, ref TOMLValue v) {
         logger.warning("clang_tidy.checks is deprecated. It is replaced by ",
