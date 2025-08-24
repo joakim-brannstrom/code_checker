@@ -90,15 +90,22 @@ string[] systemCompilerArg(const string[] cmd, const Compiler compiler) {
 }
 
 SystemIncludePath[] parseCompilerOutput(const string output) {
-    auto lines = output.splitLines;
-    const start = lines.countUntil!(a => a.startsWith("#include <...>")) + 1;
-    if (start >= lines.length)
-        return null;
-    const end = lines[start .. $].countUntil!(a => a.empty || a[0] != ' ') + start;
-    if (start == 0 || end == 0 || start > end)
-        return null;
+    SystemIncludePath[] includes;
 
-    return lines[start .. end].map!(a => SystemIncludePath(a.stripLeft)).array;
+    auto lines = output.splitLines;
+    while (true) {
+        const start = lines.countUntil!(a => a.startsWith("#include <...>")) + 1;
+        if (start >= lines.length)
+            break;
+        const end = start + lines[start .. $].countUntil!(a => a.empty || a[0] != ' ');
+        if (start == 0 || end == -1)
+            break;
+        if (start <= end)
+            includes ~= lines[start .. end].map!(a => SystemIncludePath(a.stripLeft)).array;
+        lines = lines[end .. $];
+    }
+
+    return includes;
 }
 
 SystemIncludePath[][Compiler] cacheSysIncludes;
