@@ -20,6 +20,8 @@ module my.actor.utility.limiter;
 
 import std.array : empty;
 import std.typecons : Tuple, tuple;
+import logger = std.logger;
+import std.container : Array;
 
 import my.actor.actor;
 import my.actor.typed;
@@ -41,8 +43,11 @@ struct ReturnTokenMsg {
 private struct RefreshMsg {
 }
 
+private struct TickRefreshMsg {
+}
+
 alias FlowControlActor = typedActor!(Token function(TakeTokenMsg),
-        void function(ReturnTokenMsg), void function(RefreshMsg));
+        void function(ReturnTokenMsg), void function(RefreshMsg), void function(TickRefreshMsg));
 
 /// Initialize the flow controller to total cpu's + 1.
 FlowControlActor.Impl spawnFlowControlTotalCPUs(FlowControlActor.Impl self) {
@@ -54,7 +59,7 @@ FlowControlActor.Impl spawnFlowControlTotalCPUs(FlowControlActor.Impl self) {
 FlowControlActor.Impl spawnFlowControl(FlowControlActor.Impl self, const uint tokens) {
     static struct State {
         uint tokens;
-        Promise!Token[] takeReq;
+        Array!(Promise!Token) takeReq;
     }
 
     self.name = "limiter";
@@ -69,7 +74,7 @@ FlowControlActor.Impl spawnFlowControl(FlowControlActor.Impl self, const uint to
             rval = typeof(return)(Token.init);
         } else {
             auto p = makePromise!Token;
-            ctx.state.get.takeReq ~= p;
+            ctx.state.get.takeReq.insertBack(p);
             rval = typeof(return)(p);
         }
         return rval;
@@ -82,16 +87,24 @@ FlowControlActor.Impl spawnFlowControl(FlowControlActor.Impl self, const uint to
 
     static void refreshMsg(ref CT ctx, RefreshMsg) {
         while (ctx.state.get.tokens > 0 && !ctx.state.get.takeReq.empty) {
-            ctx.state.get.tokens--;
-            ctx.state.get.takeReq[$ - 1].deliver(Token.init);
-            ctx.state.get.takeReq = ctx.state.get.takeReq[0 .. $ - 1];
+            ctx.state.borrow!((ref state) {
+                state.tokens--;
+                state.takeReq.back.deliver(Token.init);
+                state.takeReq.back.clear;
+                state.takeReq.removeBack;
+            });
         }
-
-        // extra caution to refresh in case something is missed.
-        delayedSend(ctx.self, delay(50.dur!"msecs"), RefreshMsg.init);
     }
 
-    return impl(self, &takeMsg, capture(st), &returnMsg, capture(st), &refreshMsg, capture(st));
+    static void tickRefreshMsg(ref CT ctx, TickRefreshMsg) {
+        // extra caution to refresh in case something is missed.
+        delayedSend(ctx.self, delay(200.dur!"msecs"), TickRefreshMsg.init);
+        send(ctx.self, RefreshMsg.init);
+    }
+
+    send(self, TickRefreshMsg.init);
+
+    return impl(self, st, &takeMsg, &returnMsg, &refreshMsg, &tickRefreshMsg);
 }
 
 @("shall limit the message rate of senders by using a limiter to control the flow")
@@ -125,16 +138,16 @@ unittest {
             auto st = tuple!("self", "state")(self, refCounted(State(WeakAddress.init, limiter)));
             alias CT = typeof(st);
 
-            return build(self).set((ref CT ctx, WeakAddress recv) {
+            return build(self).context(st).set("WeakAddress recv", (ref CT ctx, WeakAddress recv) {
                 ctx.state.get.recv = recv;
                 send(ctx.self.address, Tick.init);
-            }, capture(st)).set((ref CT ctx, Tick _) {
+            }).set("Tick", (ref CT ctx, Tick _) {
                 ctx.self.request(ctx.state.get.limiter, infTimeout)
                 .send(TakeTokenMsg.init).capture(ctx).then((ref CT ctx, Token t) {
                     send(ctx.self, Tick.init);
                     send(ctx.state.get.recv, t, 42);
                 });
-            }, capture(st)).finalize;
+            }).finalize;
         });
     }
 
@@ -143,16 +156,16 @@ unittest {
         auto st = tuple!("self", "limiter", "count")(self, limiter, counter);
         alias CT = typeof(st);
 
-        return impl(self, (ref CT ctx, Tick _) {
+        return impl(self, st, (ref CT ctx, Tick _) {
             if (ctx.count.get == 100)
                 ctx.self.shutdown;
             else
                 delayedSend(ctx.self, delay(100.dur!"msecs"), Tick.init);
-        }, capture(st), (ref CT ctx, Token t, int _) {
+        }, (ref CT ctx, Token t, int _) {
             delayedSend(ctx.limiter, delay(100.dur!"msecs"), ReturnTokenMsg.init);
             ctx.count.get++;
             send(ctx.self, Tick.init);
-        }, capture(st));
+        });
     });
 
     foreach (s; senders)

@@ -13,7 +13,7 @@
 		"mylib": {
 			"default": true,
 			"optional": true,
-			"version": "~>0.0.41"
+			"version": "~>0.0.45"
 		}
 	},
 	"description": "parse compile_commands.json",
@@ -27,5 +27,5 @@
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.5"
+	"version": "0.0.6"
 }

@@ -9,8 +9,8 @@ targetPath "build"
 dependency "colorlog" version="~>0.0.10"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
 dependency "unit-threaded" version="~>2.1.9" default=true
-dependency "mylib" version="~>0.0.41" default=true
-dependency "compile_db" version="~>0.0.5" default=true
+dependency "mylib" version="~>0.0.45" default=true
+dependency "compile_db" version="~>0.0.6" default=true
 dependency "miniorm" version="~>0.0.10" default=true
 
 configuration "application" {

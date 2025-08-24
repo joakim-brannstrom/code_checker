@@ -6,13 +6,11 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 module my.actor.mailbox;
 
 import core.sync.mutex : Mutex;
-import logger = std.experimental.logger;
 import std.datetime : SysTime;
 import std.sumtype;
 import std.variant : Variant;
 
 import my.actor.common;
-import my.gc.refc;
 public import my.actor.system_msg;
 
 struct MsgOneShot {
@@ -184,7 +182,8 @@ struct Address {
         }
     }
 
-    package bool hasMessage() @safe pure nothrow const @nogc {
+    package bool hasMessage() @safe pure nothrow const @nogc
+    in (mtx !is null) {
         try {
             synchronized (mtx) {
                 return !(incoming.empty && sysMsg.empty && delayed.empty && replies.empty);
@@ -192,6 +191,16 @@ struct Address {
         } catch (Exception e) {
         }
         return false;
+    }
+
+    package size_t length() @safe pure nothrow const {
+        try {
+            synchronized (mtx) {
+                return incoming.length + sysMsg.length + delayed.length + replies.length;
+            }
+        } catch (Exception e) {
+        }
+        return 0;
     }
 
     package void setOpen() @safe pure nothrow @nogc {
@@ -206,7 +215,7 @@ struct Address {
 struct WeakAddress {
     private Address* addr;
 
-    StrongAddress lock() @safe nothrow @nogc {
+    StrongAddress lock() scope @trusted nothrow @nogc {
         return StrongAddress(addr);
     }
 
@@ -234,19 +243,17 @@ struct WeakAddress {
 /** Messages can be sent to a strong address.
  */
 struct StrongAddress {
-    package {
-        Address* addr;
-    }
+    package Address* addr;
 
     private this(Address* addr) @safe nothrow @nogc {
         this.addr = addr;
     }
 
-    void release() @safe nothrow @nogc {
+    void release() @safe nothrow @nogc scope {
         addr = null;
     }
 
-    ulong id() @safe pure nothrow const @nogc {
+    ulong id() @safe pure nothrow const @nogc scope {
         return cast(ulong) addr;
     }
 
@@ -262,15 +269,15 @@ struct StrongAddress {
         return cast(bool) addr;
     }
 
-    bool empty() @safe pure nothrow const @nogc {
+    bool empty() @safe pure nothrow const @nogc scope {
         return addr is null;
     }
 
-    WeakAddress weakRef() @safe nothrow {
+    WeakAddress weakRef() @safe nothrow return scope {
         return WeakAddress(addr);
     }
 
-    package Address* get() @safe pure nothrow @nogc return {
+    package Address* get() return scope @safe pure nothrow @nogc {
         return addr;
     }
 }
