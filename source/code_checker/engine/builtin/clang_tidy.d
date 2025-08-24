@@ -322,13 +322,33 @@ struct TidyWork {
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
+    import core.thread : Thread;
+    import core.time : dur;
     import std.concurrency : send;
     import std.format : format;
+    import std.parallelism : totalCPUs;
     import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
         mapClangTidyStats, DiagMessage, StatMessage, color;
 
     auto tres = new TidyResult;
     TidyWork* work = cast(TidyWork*) work_;
+
+    void sleepUntilNotOverloaded() {
+        import code_checker.utility : osAverageLoad;
+        import std.algorithm : max;
+        import std.datetime : Clock;
+        import std.random : uniform;
+
+        const maxWaitTime = Clock.currTime + 5.dur!"minutes";
+        const maxLoadLimit = totalCPUs + 1;
+        int loadLimit = maxLoadLimit;
+        while (osAverageLoad()[0] > loadLimit && Clock.currTime < maxWaitTime) {
+            loadLimit = max(0, maxLoadLimit - 2);
+            Thread.sleep(uniform(1, 5).dur!"seconds");
+            logger.trace("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
+                    osAverageLoad[0], loadLimit);
+        }
+    }
 
     void sendToOwner() {
         while (true) {
@@ -383,6 +403,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
         tres.file = work.p;
 
+        sleepUntilNotOverloaded();
         auto res = runClangTidy(work.args, work.p);
 
         auto app = appender!(string[])();
