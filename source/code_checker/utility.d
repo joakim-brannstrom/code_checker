@@ -37,6 +37,17 @@ AbsolutePath toAbsoluteRoot(Path root, Path p) {
     return AbsolutePath(buildPath(root, p));
 }
 
+double[3] osAverageLoad() nothrow @nogc @trusted {
+    import my.libc : getloadavg;
+
+    double[3] load;
+    const nr = getloadavg(&load[0], 3);
+    if (nr <= 0 || nr > load.length) {
+        return [0.0, 0.0, 0.0];
+    }
+    return load;
+};
+
 private:
 
 immutable string[string] MagicConfWord;
