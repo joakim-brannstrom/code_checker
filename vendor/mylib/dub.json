@@ -5,8 +5,8 @@
 	"configurations": [
 		{
 			"dflags": [
-				"-preview=dip1000",
-				"-preview=dip1008"
+				"-preview=dip1008",
+				"-preview=dip1000"
 			],
 			"name": "default",
 			"targetType": "library"
@@ -20,15 +20,18 @@
 				"silly": "~>1.0.2"
 			},
 			"dflags-dmd": [
-				"-preview=dip1000",
 				"-preview=dip1008",
+				"-preview=dip1000",
 				"-verrors=context"
 			],
 			"dflags-ldc": [
 				"--verrors-context"
 			],
 			"name": "unittest",
-			"targetType": "library"
+			"targetType": "library",
+			"versions": [
+				"mylib_actor_trace"
+			]
 		}
 	],
 	"copyright": "Copyright © 2019, Joakim Brännström",
@@ -43,5 +46,5 @@
 	],
 	"targetPath": "build",
 	"targetType": "library",
-	"version": "0.0.41"
+	"version": "0.0.45"
 }

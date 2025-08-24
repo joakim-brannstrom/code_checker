@@ -148,14 +148,14 @@
 	],
 	"copyright": "Copyright © 2013, Atila Neves",
 	"dependencies": {
-		"unit-threaded:assertions": ">=0.0.0",
-		"unit-threaded:behave": ">=0.0.0",
-		"unit-threaded:exception": ">=0.0.0",
-		"unit-threaded:from": ">=0.0.0",
-		"unit-threaded:integration": ">=0.0.0",
-		"unit-threaded:mocks": ">=0.0.0",
-		"unit-threaded:property": ">=0.0.0",
-		"unit-threaded:runner": ">=0.0.0"
+		"unit-threaded:assertions": "*",
+		"unit-threaded:behave": "*",
+		"unit-threaded:exception": "*",
+		"unit-threaded:from": "*",
+		"unit-threaded:integration": "*",
+		"unit-threaded:mocks": "*",
+		"unit-threaded:property": "*",
+		"unit-threaded:runner": "*"
 	},
 	"description": "Advanced multi-threaded unit testing framework with minimal to no boilerplate using built-in unittest blocks",
 	"homepage": "https://github.com/atilaneves/unit-threaded",

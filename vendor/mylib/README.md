@@ -17,13 +17,17 @@ haven't tested.
 Add this line to your dub configuration:
 
 ```sh
-dependency "my" version="~>0.0.2"
+dependency "mylib" version="~>0.0.2"
 ```
 
 Done! Have fun.
 
 Don't be shy to report any issue that you find. I mean, if you find a bug then
 I definitely wants to know about it because it affectsd me as much as you!.
+
+# Actor Framework
+
+Use the version flag `mylib_actor_trace` to activate full trace logging of the internals.
 
 # Credit
 

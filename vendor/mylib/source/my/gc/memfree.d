@@ -10,8 +10,8 @@ module my.gc.memfree;
 
 import std.concurrency : send, spawn, receiveTimeout, Tid;
 
-import my.gc.refc;
 import my.libc;
+import my.gc.refc;
 
 /// Returns: a started instance of MemFree.
 MemFree memFree() @safe {
@@ -39,12 +39,12 @@ struct MemFree {
     }
 
     ~this() @trusted {
-        if (data.empty || !data.get.isRunning)
+        if (!data.empty || !data.isRunning)
             return;
 
         scope (exit)
-            data.get.isRunning = false;
-        send(data.get.bg, Msg.stop);
+            data.isRunning = false;
+        send(data.bg, Msg.stop);
     }
 
     /** Start a background thread to do the work.

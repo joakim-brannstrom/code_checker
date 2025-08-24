@@ -21,6 +21,7 @@ module my.gc.refc;
 import core.atomic : atomicOp, atomicLoad, atomicStore, cas;
 import core.memory : GC;
 import std.algorithm : move, swap;
+import std.traits : isInstanceOf;
 
 /**
  * The "use count" is the number of shared_ptr instances pointing to the
@@ -120,6 +121,8 @@ struct RefCounted(T) {
         impl = null;
     }
 
+    alias get this;
+
     /// Set impl to an allocated block of data. It is uninitialized.
     private static Impl* alloc() @trusted {
         // need to use untyped memory, so we don't get a dtor call by the GC.
@@ -148,7 +151,7 @@ struct RefCounted(T) {
         return item;
     }
 
-    ref inout(T) get() inout
+    ref inout(T) get() inout pure
     in (item !is null, "Invalid refcounted access") {
         return *item;
     }
@@ -195,7 +198,7 @@ struct RefCounted(T) {
     }
 
     WeakRef!T weakRef() {
-        return WeakRef!T(this);
+        return WeakRef!T(impl);
     }
 }
 
@@ -249,20 +252,11 @@ struct WeakRef(T) {
     alias Impl = ControlBlock!T;
     private Impl* impl;
 
-    this(RefCounted!(T) r) {
-        if (r.empty)
-            return;
-
-        incrWeakCnt(r.impl);
-        impl = r.impl;
-    }
-
-    this(ref RefCounted!(T) r) {
-        if (r.empty)
-            return;
-
-        incrWeakCnt(r.impl);
-        impl = r.impl;
+    private this(Impl* impl) {
+        if (impl) {
+            this.impl = impl;
+            incrWeakCnt(this.impl);
+        }
     }
 
     this(this) {
@@ -282,19 +276,6 @@ struct WeakRef(T) {
 
     void opAssign(WeakRef other) @safe nothrow {
         swap(impl, other.impl);
-    }
-
-    RefCounted!(T) asRefCounted() nothrow {
-        if (impl is null) {
-            return typeof(return).init;
-        }
-
-        auto useCnt = atomicLoad(impl.useCnt);
-        if (useCnt == 0)
-            return typeof(return).init;
-
-        cas(&impl.useCnt, useCnt, useCnt + 1);
-        return typeof(return)(impl);
     }
 
     /// Release the reference.
@@ -317,6 +298,23 @@ struct WeakRef(T) {
     T opCast(T : bool)() @safe pure nothrow const @nogc {
         return !empty;
     }
+}
+
+RefCounted!(T) asRefCounted(T)(ref WeakRef!T weak) nothrow {
+    if (weak.impl is null) {
+        return typeof(return).init;
+    }
+
+    auto useCnt = atomicLoad(weak.impl.useCnt);
+    if (useCnt == 0)
+        return typeof(return).init;
+
+    // useCnt can change but it will never go to zero because *this*
+    // RefCounted keep it >0.
+    while (!cas(&weak.impl.useCnt, useCnt, useCnt + 1)) {
+        useCnt = atomicLoad(weak.impl.useCnt);
+    }
+    return typeof(return)(weak.impl);
 }
 
 @("shall only call the destructor one time")
@@ -353,7 +351,7 @@ struct WeakRef(T) {
     size_t dtorcalled = 0;
     struct S {
         int x;
-        WeakRef!(typeof(this)) other;
+        WeakRef!S other;
 
         @safe ~this() {
             if (x)
@@ -367,8 +365,8 @@ struct WeakRef(T) {
         auto rc1 = S(1).refCounted;
         auto rc2 = S(2).refCounted;
 
-        rc1.get.other = rc2.weakRef;
-        rc2.get.other = rc1.weakRef;
+        rc1.other = rc2.weakRef;
+        rc2.other = rc1.weakRef;
 
         assert(rc1.impl.useCnt == 1);
         assert(rc1.impl.weakCnt == 2);
@@ -444,4 +442,56 @@ struct WeakRef(T) {
 
     assert(rc.refCount == 1,
             "when last ref of obj disappears the dtor is called. only one ref left");
+}
+
+/**
+Borrows the payload of $(LREF RefCounted) for use in `fun`. Inferred as `@safe`
+if `fun` is `@safe` and does not escape a reference to the payload.
+The reference count will be incremented for the duration of the operation,
+so destroying the last reference will not leave dangling references in
+`fun`.
+
+Params:
+  fun = A callable accepting the payload either by value or by reference.
+  refCount = The counted reference to the payload.
+Returns:
+  The return value of `fun`, if any. `ref` in the return value will be
+  forwarded.
+Issues:
+  For yet unknown reason, code that uses this function with UFCS syntax
+  will not be inferred as `@safe`. It will still compile if the code is
+  explicitly marked `@safe` and nothing in `fun` prevents that.
+*/
+template borrow(alias fun) {
+    import std.functional : unaryFun;
+
+    auto ref borrow(RC)(RC refCount)
+            if (isInstanceOf!(RefCounted, RC) && is(typeof(unaryFun!fun(refCount.get)))) {
+        assert(!refCount.empty);
+
+        // If `fun` escapes a reference to the payload, it will be inferred
+        // as unsafe due to the scope storage class here.
+        scope plPtr = refCount.ptr;
+        return unaryFun!fun(*plPtr);
+
+        // We destroy our copy of the reference here, automatically destroying
+        // the payload if `fun` destroyed the last reference outside.
+    }
+}
+
+/// This example can be marked `@safe` with `-preview=dip1000`.
+@safe nothrow unittest {
+    auto rcInt = refCounted(5);
+    assert(rcInt.borrow!(theInt => theInt) == 5);
+    auto sameInt = rcInt;
+    assert(sameInt.borrow!"a" == 5);
+
+    // using `ref` in the function
+    auto arr = [0, 1, 2, 3, 4, 5, 6];
+    sameInt.borrow!(ref(x) => arr[x]) = 10;
+    assert(arr == [0, 1, 2, 3, 4, 10, 6]);
+
+    // modifying the payload via an alias
+    sameInt.borrow!"a*=2";
+    assert(rcInt.borrow!"a" == 10);
 }
