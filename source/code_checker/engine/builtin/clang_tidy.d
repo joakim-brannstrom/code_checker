@@ -339,13 +339,13 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         import std.datetime : Clock;
         import std.random : uniform;
 
-        const maxWaitTime = Clock.currTime + 5.dur!"minutes";
-        const maxLoadLimit = totalCPUs + 1;
+        const maxWaitTime = Clock.currTime + 1.dur!"minutes";
+        const int maxLoadLimit = totalCPUs + 1;
         int loadLimit = maxLoadLimit;
         while (osAverageLoad()[0] > loadLimit && Clock.currTime < maxWaitTime) {
-            loadLimit = max(0, maxLoadLimit - 2);
-            Thread.sleep(uniform(1, 5).dur!"seconds");
-            logger.trace("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
+            loadLimit = max(2, maxLoadLimit - 2);
+            Thread.sleep(uniform(1, 60).dur!"seconds");
+            logger.tracef("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
                     osAverageLoad[0], loadLimit);
         }
     }
