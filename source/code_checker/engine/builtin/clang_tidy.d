@@ -8,7 +8,7 @@ This file contains an analyzer that uses clang-tidy.
 module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
-import std.algorithm : copy, map, joiner, filter, among;
+import std.algorithm : copy, map, joiner, filter, among, max;
 import std.array : appender, array, empty;
 import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
@@ -18,6 +18,8 @@ import std.path : buildPath;
 import std.process : spawnProcess, wait;
 import std.range : put, only, enumerate, chain;
 import std.typecons : Tuple;
+import std.datetime : Clock, SysTime;
+import core.time : dur, Duration;
 
 import colorlog;
 import my.path : AbsolutePath;
@@ -212,7 +214,8 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
             immutable(TidyWork)* w = () @trusted {
                 return cast(immutable) new TidyWork(tidyArgs, p.cmd.absoluteFile,
                         !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter,
-                        env.conf.staticCode.fileIncludeFilter);
+                        env.conf.staticCode.fileIncludeFilter, cond.expected % 2 == 0,
+                        Clock.currTime);
             }();
             auto t = task!taskTidy(thisTid, w);
             pool.put(t);
@@ -319,6 +322,8 @@ struct TidyWork {
     bool useColors;
     string[] fileExcludeFilter;
     string[] fileIncludeFilter;
+    bool reduceOnOverload;
+    SysTime workQueued;
 }
 
 void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
@@ -336,17 +341,24 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
     void sleepUntilNotOverloaded() {
         import code_checker.utility : osAverageLoad;
         import std.algorithm : max;
-        import std.datetime : Clock;
         import std.random : uniform;
 
-        const maxWaitTime = Clock.currTime + 1.dur!"minutes";
+        if (!work_.reduceOnOverload)
+            return;
+
+        // progressively shorten the max wait time until it is <0 after two
+        // hours. After two hours the users probably just want to push through
+        // even if it overload the system.
+        const maxWait = 1.dur!"minutes" - ((Clock.currTime - work_.workQueued).total!"minutes" / 2).dur!"seconds";
+        if (maxWait < Duration.zero)
+            return;
+
+        const maxWaitTime = Clock.currTime + maxWait;
         const int maxLoadLimit = totalCPUs + 1;
-        int loadLimit = maxLoadLimit;
-        while (osAverageLoad()[0] > loadLimit && Clock.currTime < maxWaitTime) {
-            loadLimit = max(2, maxLoadLimit - 2);
+        while (osAverageLoad()[0] > maxLoadLimit && Clock.currTime < maxWaitTime) {
             Thread.sleep(uniform(1, 60).dur!"seconds");
             logger.tracef("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
-                    osAverageLoad[0], loadLimit);
+                    osAverageLoad[0], maxLoadLimit);
         }
     }
 
