@@ -355,9 +355,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
         const maxWaitTime = Clock.currTime + maxWait;
         const int maxLoadLimit = totalCPUs + 1;
-        int loadLimit = maxLoadLimit;
-        while (osAverageLoad()[0] > loadLimit && Clock.currTime < maxWaitTime) {
-            loadLimit = max(2, maxLoadLimit - 2);
+        while (osAverageLoad()[0] > maxLoadLimit && Clock.currTime < maxWaitTime) {
             Thread.sleep(uniform(1, 60).dur!"seconds");
             logger.tracef("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
                     osAverageLoad[0], maxLoadLimit);
