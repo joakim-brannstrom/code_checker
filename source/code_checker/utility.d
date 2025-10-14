@@ -55,8 +55,12 @@ immutable string[string] MagicConfWord;
 shared static this() {
     import std.file : thisExePath;
     import std.path : dirName;
+    import std.process : environment;
 
     string[string] magicConfWordTmp;
     magicConfWordTmp["{code_checker}"] = thisExePath.dirName;
+    magicConfWordTmp["${CODE_CHECKER_CLANGTIDY}"] = environment.get(
+            "CODE_CHECKER_CLANGTIDY", "clang-tidy");
+    magicConfWordTmp["${CODE_CHECKER_IWYU}"] = environment.get("CODE_CHECKER_IWYU", "iwyu");
     MagicConfWord = cast(immutable) magicConfWordTmp;
 }

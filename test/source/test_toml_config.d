@@ -168,3 +168,18 @@ unittest {
 
     cnt.shouldEqual(2);
 }
+
+@("shall read binary path from env variable in config")
+unittest {
+    auto ta = makeTestArea;
+    dirContentCopy(buildPath(testData, "conf", "binary_from_env"), ta.sandboxPath);
+
+    string[string] env;
+    env["CODE_CHECKER_CLANGTIDY"] = ta.inSandboxPath("fake_code_checker.d");
+    auto res = ta.exec([
+        appPath, "--verbose", "trace", "-c", "code_checker.toml"
+    ], env);
+
+    res.status.shouldEqual(0);
+    ".*fake_code_checker.*".regexIn(res.output.splitLines);
+}
