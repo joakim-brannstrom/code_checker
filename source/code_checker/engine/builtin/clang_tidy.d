@@ -349,7 +349,8 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
         // progressively shorten the max wait time until it is <0 after two
         // hours. After two hours the users probably just want to push through
         // even if it overload the system.
-        const maxWait = 1.dur!"minutes" - ((Clock.currTime - work_.workQueued).total!"minutes" / 2).dur!"seconds";
+        const maxWait = 1.dur!"minutes" - ((Clock.currTime - work_.workQueued)
+                .total!"minutes" / 2).dur!"seconds";
         if (maxWait < Duration.zero)
             return;
 
