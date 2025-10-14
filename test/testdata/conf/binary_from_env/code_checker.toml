@@ -1,0 +1,5 @@
+[defaults]
+severity = "style"
+
+[clang_tidy]
+binary = "${CODE_CHECKER_CLANGTIDY}"

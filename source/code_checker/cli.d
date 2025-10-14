@@ -381,6 +381,7 @@ string parseSystemConf(ref TOMLDocument doc, string fallback) @trusted {
 void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     import std.algorithm : map;
     import toml;
+    import code_checker.utility : replaceConfigWord;
 
     alias Fn = void delegate(ref Config c, ref TOMLValue v);
     Fn[string] callbacks;
@@ -447,7 +448,7 @@ void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     };
 
     callbacks["clang_tidy.binary"] = (ref Config c, ref TOMLValue v) {
-        c.clangTidy.binary = v.str;
+        c.clangTidy.binary = replaceConfigWord(v.str);
     };
     callbacks["clang_tidy.header_filter"] = (ref Config c, ref TOMLValue v) {
         c.clangTidy.headerFilter = v.str;
@@ -482,7 +483,7 @@ void loadConfig(ref Config rval, ref TOMLDocument doc) @trusted {
     };
 
     callbacks["iwyu.binary"] = (ref Config c, ref TOMLValue v) {
-        c.iwyu.binary = v.str;
+        c.iwyu.binary = replaceConfigWord(v.str);
     };
     callbacks["iwyu.flags"] = (ref Config c, ref TOMLValue v) {
         c.iwyu.extraFlags = v.array.map!(a => a.str).array;
