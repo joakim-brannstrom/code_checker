@@ -7,17 +7,19 @@ Convert a compile_commands.json to an array. Convenient code that is re-used by 
 */
 module code_checker.engine.compile_db;
 
+import std.algorithm : filter, map;
+
 import code_checker.engine.types : Environment;
-import compile_db : ParsedCompileCommandRange;
+import compile_db : ParsedCompileCommandRange, ParsedCompileCommand;
+import my.filter : ReFilter;
+import compile_db : parseFlag, CompileCommandFilter, limitOrAllRange, parse,
+    prependFlags, addCompiler, replaceCompiler,
+    addSystemIncludes, fileRange, CompileCommand, SystemIncludePath, ParsedCompileCommand;
+import std.array : array;
 
 ParsedCompileCommandRange toRange(Environment env) @safe {
-    import std.algorithm : filter, map;
-    import std.array : array;
     import my.path;
     import my.set;
-    import compile_db : parseFlag, CompileCommandFilter, limitOrAllRange, parse, prependFlags,
-        addCompiler, replaceCompiler, addSystemIncludes, fileRange, CompileCommand;
-    import compile_db.user_filerange : ParsedCompileCommandRange;
 
     // the following are not needed for now:
     //.addCompiler
@@ -52,10 +54,27 @@ ParsedCompileCommandRange toRange(Environment env) @safe {
         .filter!uniqueFilter
         .array;
 
+    auto fileFilter = ReFilter(env.conf.staticCode.fileIncludeFilter,
+            env.conf.staticCode.fileExcludeFilter);
+
     // dfmt off
     return ParsedCompileCommandRange.make(files
         .parse(env.conf.compileDb.flagFilter)
         .addSystemIncludes.prependFlags(env.conf.compiler.extraFlags)
+        .map!(a => optimizeScan(fileFilter, a))
         .array);
     // dfmt on
+}
+
+// clang-tidy only scan those includes that are accessed by -I. By moving
+// those that the user asked us not to scan to be read as -isystem the
+// final scan is sped up.
+ParsedCompileCommand optimizeScan(ReFilter fileFilter, ParsedCompileCommand cmd) @safe {
+    cmd.flags.systemIncludes = cmd.flags.systemIncludes ~ cmd.flags
+        .includes
+        .filter!(a => !fileFilter.match(a))
+        .map!(a => SystemIncludePath(a))
+        .array;
+    cmd.flags.includes = cmd.flags.includes.filter!(a => fileFilter.match(a)).array;
+    return cmd;
 }
