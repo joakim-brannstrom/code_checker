@@ -14,6 +14,7 @@ import std.exception : collectException;
 import std.json;
 
 import miniorm : spinSql;
+import my.filter : ReFilter;
 import my.path;
 import my.profile;
 import my.set;
@@ -251,7 +252,9 @@ struct NormalFSM {
         try {
             auto compile_db = appender!string();
             unifyCompileDb(compileDb, conf.compiler.useCompilerSystemIncludes,
-                    conf.compileDb.flagFilter, conf.compiler, compile_db);
+                    conf.compileDb.flagFilter, conf.compiler,
+                    ReFilter(conf.staticCode.fileIncludeFilter, conf.staticCode.fileExcludeFilter),
+                    compile_db);
             File(compileCommandsFile, "w").write(compile_db.data);
 
             fcache.drop(AbsolutePath(compileCommandsFile)); // do NOT use previously cached value
@@ -409,12 +412,13 @@ struct NormalFSM {
 
 /// Unify multiple compilation databases to one json file.
 void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
-        CompileCommandFilter flag_filter, const Compiler compiler, ref AppT app) {
+        CompileCommandFilter flag_filter, const Compiler compiler, ReFilter fileFilter, ref AppT app) {
     import std.ascii : newline;
     import std.format : formattedWrite;
     import std.path : stripExtension;
     import std.range : put;
     import compile_db;
+    import code_checker.engine.compile_db : optimizeScan;
 
     logger.trace(flag_filter);
 
@@ -452,8 +456,8 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
     if (db.empty)
         return;
     auto entries = ParsedCompileCommandRange.make(db.fileRange.parse(flag_filter)
-            .addCompiler(user_compiler).replaceCompiler(user_compiler).addSystemIncludes.array)
-        .array;
+            .addCompiler(user_compiler).replaceCompiler(user_compiler).addSystemIncludes.array).map!(
+            a => optimizeScan(fileFilter, a)).array;
     if (entries.empty)
         return;
 
