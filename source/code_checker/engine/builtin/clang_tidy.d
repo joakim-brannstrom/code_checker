@@ -141,10 +141,12 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
             .collectException;
 
         result_.supp += res.suppressedWarnings;
-        foreach (a; res_.details.byKeyValue)
-            result_.details.update(a.key, { return a.value.dup; }, (ref Detail[] x) {
-                x ~= a.value;
-            });
+        foreach (a; res_.details.byKeyValue) {
+            if (auto d = a.key in result_.details)
+                *d ~= a.value;
+            else
+                result_.details[a.key] = a.value.dup;
+        }
 
         if (res.clangTidyStatus == 0) {
             if (res.toolFailed)

@@ -20,7 +20,7 @@ immutable(Severity[string]) getDiagnosticSeverity() @trusted {
     return cast(immutable(Severity[string])) diagnosticSeverity;
 }
 
-immutable(SeverityColor[Severity]) getSeverityColor() {
+immutable(SeverityColor[Severity]) getSeverityColor() @trusted {
     return cast(immutable(SeverityColor[Severity])) severityColor;
 }
 
@@ -424,7 +424,7 @@ string color(Severity s) {
 
     SeverityColor sc;
 
-    if (auto v = s in severityColor) {
+    if (auto v = s in getSeverityColor()) {
         sc = *v;
     }
 
