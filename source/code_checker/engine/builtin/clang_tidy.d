@@ -237,7 +237,7 @@ void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @sa
     }
 }
 
-/// Run clang-tidy with to fix the code.
+/// Run clang-tidy to fix the code.
 void executeFixit(Environment env, string[] tidyArgs, ref Result result_) {
     import code_checker.engine.logger : Logger;
     import code_checker.engine.compile_db;
@@ -350,7 +350,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
         // progressively shorten the max wait time until it is <0 after two
         // hours. After two hours the users probably just want to push through
-        // even if it overload the system.
+        // even if it overloads the system.
         const maxWait = 1.dur!"minutes" - ((Clock.currTime - work_.workQueued)
                 .total!"minutes" / 2).dur!"seconds";
         if (maxWait < Duration.zero)
@@ -388,9 +388,8 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
     try {
         // there may be warnings that are skipped. If all warnings are skipped
-        // and thus the counter is zero the result should be an automatic
-        // passed. This is because it means that all warnings where from a file
-        // that where excluded.
+        // the counter is zero and the result is an automatic pass: all the
+        // warnings were from excluded files.
         int count_errors;
 
         bool diagMsg(ref DiagMessage msg) {
@@ -426,7 +425,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
 
         mapClangTidyStats!statMsg(res.stderr);
 
-        // clang-tidy returns exit status '0' and warnings if it successfully run.
+        // clang-tidy returns exit status '0' and warnings when it runs successfully.
 
         if (count_errors != 0) {
             tres.clangTidyStatus = 1;
@@ -438,7 +437,7 @@ void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
             // happens when there is e.g. a compilation error and warnings
             tres.clangTidyStatus = res.status;
         } else if (res.status != 0 && count_errors == 0) {
-            // the tool reported error but no errors where found thus the user
+            // the tool reported error but no errors were found thus the user
             // can't actually do anything.
             tres.toolFailed = true;
             tres.clangTidyStatus = 0;
