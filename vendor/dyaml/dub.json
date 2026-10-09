@@ -1,0 +1,53 @@
+{
+	"authors": [
+		"Ferdinand Majerech",
+		"Cameron \"Herringway\" Ross"
+	],
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "library"
+		},
+		{
+			"name": "unittest",
+			"targetType": "library"
+		},
+		{
+			"dependencies": {
+				"tinyendian": "*"
+			},
+			"dflags": [
+				"-preview=dip1000"
+			],
+			"name": "unittest-dip1000",
+			"targetType": "library"
+		}
+	],
+	"copyright": "Copyright © 2011-2018, Ferdinand Majerech",
+	"dependencies": {
+		"tinyendian": "~>0.2.0"
+	},
+	"description": "YAML parser and emitter",
+	"homepage": "https://github.com/dlang-community/D-YAML",
+	"importPaths": [
+		"source/"
+	],
+	"license": "BSL-1.0",
+	"name": "dyaml",
+	"sourcePaths": [
+		"source/"
+	],
+	"subPackages": [
+		"examples/constructor",
+		"examples/getting_started",
+		"examples/representer",
+		"examples/resolver",
+		"examples/tojson",
+		"examples/tokens",
+		"examples/yaml_bench",
+		"examples/yaml_gen",
+		"examples/yaml_stats",
+		"testsuite"
+	],
+	"version": "0.10.0"
+}

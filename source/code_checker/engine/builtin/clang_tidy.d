@@ -25,6 +25,8 @@ import colorlog;
 import my.path : AbsolutePath;
 import my.filter : ReFilter;
 
+import dyaml;
+
 import code_checker.cli : Config;
 import code_checker.engine.builtin.clang_tidy_classification : CountErrorsResult;
 import code_checker.engine.types;
@@ -486,43 +488,134 @@ bool isCodeCheckerConfig(AbsolutePath fname) @trusted nothrow {
     return false;
 }
 
-private Tuple!(bool, "include", bool, "exclude") hasConfigHeaderOptions(
-        AbsolutePath baseConf, Config conf) {
-    import std.stdio : File;
-    import std.string : startsWith;
+/// Presence of the HeaderFilterRegex / ExcludeHeaderFilterRegex keys in the
+/// already-parsed base config mapping. A root that is not a mapping has
+/// neither key.
+private Tuple!(bool, "include", bool, "exclude") hasConfigHeaderOptions(const Node root) @safe {
+    bool hasInclude;
+    bool hasExclude;
 
-    // Which header filter lines the base config already has, computed once
-    // per generated file.
-    bool baseHasHeaderFilterRegex;
-    bool baseHasExcludeHeaderFilterRegex;
-    if (!conf.clangTidy.headerFilter.empty || !conf.clangTidy.headerExcludeFilter.empty) {
-        foreach (l; File(baseConf).byLine) {
-            if (l.startsWith("HeaderFilterRegex:")) {
-                baseHasHeaderFilterRegex = true;
-            } else if (l.startsWith("ExcludeHeaderFilterRegex:")) {
-                baseHasExcludeHeaderFilterRegex = true;
-            }
+    if (root.type != NodeType.mapping) {
+        return typeof(return)(hasInclude, hasExclude);
+    }
+
+    foreach (ref p; root.as!(Node.Pair[])) {
+        // Non-string keys ("42"/"true"/"null"/complex mappings) can never
+        // equal the two target keys, and as!string throws on them.
+        if (p.key.type != NodeType.string) {
+            continue;
+        }
+        if (p.key.as!string == "HeaderFilterRegex") {
+            hasInclude = true;
+        } else if (p.key.as!string == "ExcludeHeaderFilterRegex") {
+            hasExclude = true;
         }
     }
-    return typeof(return)(baseHasHeaderFilterRegex, baseHasExcludeHeaderFilterRegex);
+
+    return typeof(return)(hasInclude, hasExclude);
 }
 
-/// Returns: true if the value can be written to the generated .clang-tidy unescaped.
-private bool isWritableHeaderValue(in char[] value) @safe {
-    import std.algorithm.searching : canFind;
-    import std.string : endsWith;
+/// Builds the spliced Checks value as a dyaml sequence Node: the base
+/// config's entries plus computedChecks, forced to flow style.
+///
+/// Base value handling (checksNode):
+/// - string scalar: split on ',', trim each entry, drop empty entries.
+/// - empty scalar: no base entries.
+/// - sequence: entries kept as-is (each as!string).
+/// - anything else: no base entries; warning logged.
+private Node buildChecksSequence(const Node checksNode, string[] computedChecks) @safe {
+    import std.algorithm.iteration : filter, map, splitter;
+    import std.array : array;
+    import std.string : strip;
 
-    return !value.canFind('\'') && !value.endsWith("\\");
+    string[] entries;
+
+    switch (checksNode.type) {
+    case NodeType.string:
+        entries = checksNode.as!string.splitter(',').map!(a => a.strip)
+            .filter!(a => !a.empty)
+            .array;
+        break;
+    case NodeType.sequence:
+        auto baseEntries = checksNode.as!(Node[]);
+        foreach (entry; baseEntries) {
+            entries ~= entry.as!string;
+        }
+        break;
+    case NodeType.null_:
+        // A `Checks:` line with no value parses as a null node: an empty
+        // scalar contributing no base entries, not an unusable value type.
+        break;
+    default:
+        logger.warningf("clang_tidy.Checks has an unusable value type (%s); only the computed checks are spliced into the generated .clang-tidy",
+                checksNode.type);
+        break;
+    }
+
+    foreach (c; computedChecks) {
+        entries ~= c;
+    }
+
+    auto result = Node(entries);
+    result.setStyle(CollectionStyle.flow);
+    return result;
+}
+
+// TODO: change to a sumtype instead of the OK flag
+/// Outcome of loading the base clang-tidy configuration with dyaml.
+private struct LoadedBaseConfig {
+    /// Parsed mapping root; an invalid node when ok is false.
+    Node root;
+    /// Raw file content when the file was readable, else empty. Not consumed
+    /// by the generation (the verbatim-copy fallback was replaced by a fatal
+    /// error); only the loader tests read it.
+    string rawText;
+    /// True: the file was read AND parsed AND the root is a mapping.
+    bool ok;
+}
+
+/// Loads the base clang-tidy configuration at baseConf with dyaml.
+///
+/// Returns: ok=false on a missing or unreadable file, a dyaml parse failure,
+/// or a non-mapping root. The failure reason is logged once here; the caller
+/// must not log it again.
+private LoadedBaseConfig loadClangTidyConfig(AbsolutePath baseConf) @safe {
+    import std.file : readText;
+
+    LoadedBaseConfig loaded;
+
+    auto fail(string reason) {
+        logger.errorf("Failed to load clang-tidy system configuration %s: %s", baseConf, reason);
+        return loaded;
+    }
+
+    try {
+        loaded.rawText = readText(baseConf);
+    } catch (Exception e) {
+        return fail(e.msg);
+    }
+
+    try {
+        loaded.root = Loader.fromString(loaded.rawText).load();
+    } catch (Exception e) {
+        return fail(e.msg);
+    }
+
+    if (loaded.root.type != NodeType.mapping) {
+        return fail("the root of the YAML document is not a mapping");
+    }
+
+    loaded.ok = true;
+    return loaded;
 }
 
 void writeClangTidyConfig(AbsolutePath baseConf, Config conf) @trusted {
     writeClangTidyConfig(baseConf, AbsolutePath(ClangTidyConstants.confFile), conf);
 }
 
-void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config conf) @trusted {
-    import std.file : exists;
-    import std.stdio : File;
-    import std.string : startsWith;
+void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config conf) @safe {
+    import std.array : appender;
+    import std.file : exists, write;
     import code_checker.engine.builtin.clang_tidy_classification : filterSeverity;
 
     if (!exists(baseConf)) {
@@ -531,52 +624,42 @@ void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config co
         return;
     }
 
-    auto fconfig = File(outFile, "w");
-    fconfig.writeln(ClangTidyConstants.codeCheckerConfigHeader);
-
     string[] checks = () {
         if (conf.staticCode.severity != typeof(conf.staticCode.severity).min)
             return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
         return null;
     }();
 
-    auto hasHeaderConf = hasConfigHeaderOptions(baseConf, conf);
+    auto loaded = loadClangTidyConfig(baseConf);
+    if (!loaded.ok) {
+        // The failure reason is logged by loadClangTidyConfig. Throwing an
+        // Error (not an Exception) lets it escape the engine's Exception
+        // handling and terminate the program: a base config that exists but
+        // cannot be used (unreadable, unparseable, non-mapping root) is a
+        // setup error, not something the analysis can recover from. The
+        // existing .clang-tidy is left untouched.
+        throw new Exception("Unusable clang-tidy system configuration: " ~ baseConf);
+    }
+
+    auto root = loaded.root;
+
+    Tuple!(bool, "include", bool, "exclude") hasHeaderConf;
+    hasHeaderConf = hasConfigHeaderOptions(root);
 
     bool headerFilterPending;
     bool excludeFilterPending;
-    bool headerFilterRejected;
-    bool excludeFilterRejected;
     void checkHeaderFilter() {
-        // A user-set option whose line the base config lacks is warned about and
-        // appended to the generated .clang-tidy instead of being silently dropped.
-        // A value that cannot be written unescaped (a single quote or a trailing
-        // backslash) is rejected instead: the pending append is not scheduled and
-        // the reject warning is logged here for every base-config layout - also
-        // when the option's line exists but is never reached by the substitution
-        // helper, or is reached but rejected (which then skips its own warning).
-        const headerFilterUsable = isWritableHeaderValue(conf.clangTidy.headerFilter);
-        const excludeFilterUsable = isWritableHeaderValue(conf.clangTidy.headerExcludeFilter);
-        const headerFilterMissing = !conf.clangTidy.headerFilter.empty
-            && !hasHeaderConf.include && headerFilterUsable;
-        headerFilterPending = headerFilterMissing;
-        const excludeFilterMissing = !conf.clangTidy.headerExcludeFilter.empty
-            && !hasHeaderConf.exclude && excludeFilterUsable;
-        excludeFilterPending = excludeFilterMissing;
-        headerFilterRejected = !conf.clangTidy.headerFilter.empty && !headerFilterUsable;
-        excludeFilterRejected = !conf.clangTidy.headerExcludeFilter.empty && !excludeFilterUsable;
-        if (headerFilterRejected) {
-            logger.warningf("clang_tidy.%s is ignored; the value contains a single quote or ends with a backslash, which cannot be written unescaped: %s",
-                    "header_filter", conf.clangTidy.headerFilter);
-        }
-        if (excludeFilterRejected) {
-            logger.warningf("clang_tidy.%s is ignored; the value contains a single quote or ends with a backslash, which cannot be written unescaped: %s",
-                    "exclude_header_filter", conf.clangTidy.headerExcludeFilter);
-        }
-        if (headerFilterMissing) {
+        // A user-set option whose line the base config lacks is warned about
+        // and appended to the generated .clang-tidy instead of being silently
+        // dropped. Any value is emitted: dyaml's emitter picks a scalar style
+        // (plain, single-quoted or double-quoted) that can represent it.
+        headerFilterPending = !conf.clangTidy.headerFilter.empty && !hasHeaderConf.include;
+        excludeFilterPending = !conf.clangTidy.headerExcludeFilter.empty && !hasHeaderConf.exclude;
+        if (headerFilterPending) {
             logger.warningf("clang_tidy.%s is set but the system configuration %s lacks a %s line; the setting is appended to the generated .clang-tidy",
                     "header_filter", baseConf, "HeaderFilterRegex:");
         }
-        if (excludeFilterMissing) {
+        if (excludeFilterPending) {
             logger.warningf("clang_tidy.%s is set but the system configuration %s lacks a %s line; the setting is appended to the generated .clang-tidy",
                     "exclude_header_filter", baseConf, "ExcludeHeaderFilterRegex:");
         }
@@ -584,151 +667,92 @@ void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config co
 
     checkHeaderFilter();
 
-    void writeHeaderfilterOrLine(char[] l) {
-        const anchor = l.startsWith("HeaderFilterRegex:");
-        if (!conf.clangTidy.headerFilter.empty && anchor) {
-            // A value with a single quote or a trailing backslash cannot be
-            // written unescaped and would corrupt the generated .clang-tidy:
-            // keep the base line instead of writing the user value. The
-            // reject warning is logged by checkHeaderFilter for every
-            // base-config layout, so this branch stays silent.
-            if (isWritableHeaderValue(conf.clangTidy.headerFilter)) {
-                fconfig.writeln(format!"HeaderFilterRegex: '%s'"(conf.clangTidy.headerFilter));
-            } else {
-                if (!headerFilterRejected) {
-                    logger.warningf("clang_tidy.%s is ignored; the value contains a single quote or ends with a backslash, which cannot be written unescaped: %s",
-                            "header_filter", conf.clangTidy.headerFilter);
+    // Rebuild the root's mapping pairs with the user's filter values and the
+    // computed checks. Rebuilding the pair list keeps the loaded pair order
+    // and any duplicate keys: every HeaderFilterRegex /
+    // ExcludeHeaderFilterRegex pair is substituted, not just the first
+    // match, and pending filters are appended at the end of the mapping.
+    // The rebuilt pair list is assigned back to the root as a fresh mapping
+    // node, which replaces the old line-based output state machine.
+    Node[] newKeys;
+    Node[] newValues;
+    bool checksKeyPresent;
+    foreach (p; root.as!(Node.Pair[])) {
+        Node key = p.key;
+        Node value = p.value;
+        if (key.type == NodeType.string) {
+            switch (key.as!string) {
+            case "Checks":
+                checksKeyPresent = true;
+                if (!checks.empty) {
+                    // Normalize the Checks value to a sequence and splice the
+                    // computed checks into it, forced to flow style by
+                    // buildChecksSequence.
+                    value = buildChecksSequence(value, checks);
                 }
-                fconfig.writeln(l);
-            }
-        } else if (!conf.clangTidy.headerExcludeFilter.empty
-                && l.startsWith("ExcludeHeaderFilterRegex:")) {
-            if (isWritableHeaderValue(conf.clangTidy.headerExcludeFilter)) {
-                fconfig.writeln(format!"ExcludeHeaderFilterRegex: '%s'"(
-                        conf.clangTidy.headerExcludeFilter));
-            } else {
-                if (!excludeFilterRejected) {
-                    logger.warningf("clang_tidy.%s is ignored; the value contains a single quote or ends with a backslash, which cannot be written unescaped: %s",
-                            "exclude_header_filter", conf.clangTidy.headerExcludeFilter);
+                break;
+            case "HeaderFilterRegex":
+                if (!conf.clangTidy.headerFilter.empty) {
+                    value = Node(conf.clangTidy.headerFilter);
                 }
-                fconfig.writeln(l);
+                break;
+            case "ExcludeHeaderFilterRegex":
+                if (!conf.clangTidy.headerExcludeFilter.empty) {
+                    value = Node(conf.clangTidy.headerExcludeFilter);
+                }
+                break;
+            default:
+                break;
             }
-        } else {
-            fconfig.writeln(l);
         }
-        if (anchor && excludeFilterPending) {
-            // exclude_header_filter is set but the base config has no
-            // ExcludeHeaderFilterRegex line: append it right after the anchor
-            // line. header_filter never takes this path because its key line
-            // is the anchor itself; it appends at end of file instead. Only
-            // the exclude option may pend while the anchor line exists; if
-            // this helper ever appends for header_filter too, the pending-flag
-            // logic above must change with it.
-            fconfig.writeln(format!"ExcludeHeaderFilterRegex: '%s'"(
-                    conf.clangTidy.headerExcludeFilter));
-            excludeFilterPending = false;
-        }
+        newKeys ~= key;
+        newValues ~= value;
     }
 
-    if (checks.empty) {
-        foreach (l; File(baseConf).byLine) {
-            writeHeaderfilterOrLine(l);
-        }
-    } else {
-        enum State {
-            other,
-            checkKey,
-            openCheck,
-            insideCheck,
-            closeCheck,
-            afterCheck,
-        }
-
-        State st;
-        foreach (l; File(baseConf).byLine) {
-            auto curr = l;
-
-            if (st == State.afterCheck) {
-                writeHeaderfilterOrLine(l);
-            } else {
-                while (!curr.empty) {
-                    const auto old = st;
-                    final switch (st) {
-                    case State.other:
-                        if (curr.startsWith("Checks:")) {
-                            st = State.checkKey;
-                        } else {
-                            fconfig.write(curr[0]);
-                            curr = curr[1 .. $];
-                        }
-                        break;
-                    case State.checkKey:
-                        if (curr[0].among('"', '\'')) {
-                            st = State.openCheck;
-                        } else {
-                            fconfig.write(curr[0]);
-                            curr = curr[1 .. $];
-                        }
-                        break;
-                    case State.openCheck:
-                        fconfig.write(curr[0]);
-                        curr = curr[1 .. $];
-                        st = State.insideCheck;
-                        break;
-                    case State.insideCheck:
-                        if (curr[0].among('"', '\'')) {
-                            st = State.closeCheck;
-                        } else {
-                            fconfig.write(curr[0]);
-                            curr = curr[1 .. $];
-                        }
-                        break;
-                    case State.closeCheck:
-                        curr = curr[1 .. $];
-                        st = State.afterCheck;
-                        break;
-                    case State.afterCheck:
-                        fconfig.write(curr[0]);
-                        curr = curr[1 .. $];
-                        break;
-                    }
-
-                    debug logger.tracef(old != st, "%s -> %s : %s", old, st, curr);
-
-                    if (st == State.closeCheck) {
-                        fconfig.writeln(",\\");
-                        fconfig.write(checks.joiner(","));
-                        fconfig.write(curr[0]);
-                    }
-                }
-
-                fconfig.writeln;
-            }
-        }
-
-        fconfig.writeln;
-    }
-    // A header filter option still pending here has neither its own line nor
-    // the HeaderFilterRegex anchor in the base config; append it at end of
-    // file so the generated .clang-tidy stays valid YAML. If the base config
-    // puts its HeaderFilterRegex: line before the Checks: block, the
-    // Checks-rewriting state machine consumes that line before State.afterCheck
-    // and the append lands here too - still valid YAML, still exactly one.
     if (headerFilterPending) {
-        fconfig.writeln(format!"HeaderFilterRegex: '%s'"(conf.clangTidy.headerFilter));
+        newKeys ~= Node("HeaderFilterRegex");
+        newValues ~= Node(conf.clangTidy.headerFilter);
     }
+
     if (excludeFilterPending) {
-        fconfig.writeln(format!"ExcludeHeaderFilterRegex: '%s'"(
-                conf.clangTidy.headerExcludeFilter));
+        newKeys ~= Node("ExcludeHeaderFilterRegex");
+        newValues ~= Node(conf.clangTidy.headerExcludeFilter);
     }
+
+    if (!checks.empty && !checksKeyPresent) {
+        logger.warningf("clang_tidy.%s is set but the system configuration %s lacks a Checks entry; the computed checks are spliced into a fresh Checks entry in the generated .clang-tidy",
+                "severity", baseConf);
+        newKeys ~= Node("Checks");
+        // The empty scalar contributes no base entries (the same path the
+        // empty-Checks-scalar test pins), so the fresh sequence contains only
+        // the computed checks.
+        newValues ~= buildChecksSequence(Node(""), checks);
+    }
+
+    root = Node(newKeys, newValues);
+
+    auto buf = appender!string;
+    buf.put(ClangTidyConstants.codeCheckerConfigHeader);
+    buf.put('\n');
+    auto dumper = Dumper();
+    // keep flow sequences on one line; dyaml wraps at 80 columns by default,
+    // and a wrapped double-quoted scalar trips the upstream scanner bug that
+    // eats commas before a newline (dyaml 0.10.0, scanner.d)
+    dumper.textWidth = 1_000_000;
+    // no %YAML version directive in the generated file (the old generator
+    // wrote none); the --- document-start line remains for a mapping root
+    dumper.YAMLVersion = null;
+    dumper.dump(buf, root);
+    write(outFile, buf.data);
 }
 
 @("writeClangTidyConfig substitutes both filter lines when the base config has them")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
+    import std.string : splitLines;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -746,8 +770,12 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n" ~ "Checks:                 \"-*\"\n"
-            ~ "HeaderFilterRegex: 'my-hdrs'\n" ~ "ExcludeHeaderFilterRegex: '3rd/.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("my-hdrs");
+    root["ExcludeHeaderFilterRegex"].as!string.shouldEqual("3rd/.*");
+    // The generated file starts with the code_checker header line.
+    readText(outFile).splitLines[0].shouldEqual(ClangTidyConstants.codeCheckerConfigHeader);
 }
 
 @("writeClangTidyConfig substitutes HeaderFilterRegex in place when only it is in the base config")
@@ -770,33 +798,9 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex: 'my-hdrs'\n");
-}
-
-@("writeClangTidyConfig appends ExcludeHeaderFilterRegex after the HeaderFilterRegex anchor when the exclude line is missing")
-unittest {
-    import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
-    import std.path : buildPath;
-    import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
-
-    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
-    mkdir(dir);
-    scope (exit)
-        rmdirRecurse(dir);
-    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
-    write(baseConf, "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
-    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
-
-    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
-    conf.clangTidy.headerFilter = "my-hdrs";
-    conf.clangTidy.headerExcludeFilter = "3rd/.*";
-
-    writeClangTidyConfig(baseConf, outFile, conf);
-
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n" ~ "Checks:                 \"-*\"\n"
-            ~ "HeaderFilterRegex: 'my-hdrs'\n" ~ "ExcludeHeaderFilterRegex: '3rd/.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("my-hdrs");
 }
 
 @(
@@ -820,8 +824,13 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n"
-            ~ "Checks:                 \"-*\"\n" ~ "ExcludeHeaderFilterRegex: '3rd/.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(2);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[0].value.as!string.shouldEqual("-*");
+    pairs[1].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual("3rd/.*");
 }
 
 @("writeClangTidyConfig appends both filter lines at end of file when the base config has neither line and both options are set")
@@ -845,8 +854,14 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n" ~ "Checks:                 \"-*\"\n"
-            ~ "HeaderFilterRegex: 'my-hdrs'\n" ~ "ExcludeHeaderFilterRegex: '3rd/.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(3);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[2].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual("my-hdrs");
+    pairs[2].value.as!string.shouldEqual("3rd/.*");
 }
 
 @("writeClangTidyConfig appends HeaderFilterRegex at end of file when the base config has neither filter line and only header_filter is set")
@@ -869,8 +884,12 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex: 'my-hdrs'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(2);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual("my-hdrs");
 }
 
 @("writeClangTidyConfig substitutes both filter lines in place when the base config has both lines and both options are set")
@@ -896,8 +915,10 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n" ~ "Checks:                 \"-*\"\n"
-            ~ "HeaderFilterRegex: 'my-hdrs'\n" ~ "ExcludeHeaderFilterRegex: '3rd/.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("my-hdrs");
+    root["ExcludeHeaderFilterRegex"].as!string.shouldEqual("3rd/.*");
 }
 
 @("writeClangTidyConfig copies the base config verbatim when both filter options are empty")
@@ -923,9 +944,15 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader ~ "\n"
-            ~ "Checks:                 \"-*\"\n"
-            ~ "HeaderFilterRegex:      '.*'\n" ~ "ExcludeHeaderFilterRegex: ''\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual(".*");
+    root["ExcludeHeaderFilterRegex"].as!string.shouldEqual("");
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(3);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[2].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
 }
 
 @(
@@ -933,13 +960,21 @@ unittest {
  // Marked @system because initClassification is @system (unittests are @safe
 // by default in modern D).
 @system unittest {
-    import std.algorithm.searching : canFind;
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse, exists;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
     import code_checker.engine.types : Severity;
     import code_checker.engine.builtin.clang_tidy_classification : initClassification;
+
+    static string[] checksOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
 
     // The Checks rewriting consumes the check classification, which is
     // loaded at runtime from the shipped classification data relative to
@@ -973,24 +1008,25 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    auto output = readText(outFile);
-    output.canFind("ExcludeHeaderFilterRegex: '3rd/.*'").shouldBeTrue;
-    output.canFind("HeaderFilterRegex: 'my-hdrs'").shouldBeTrue;
-    // The Checks value is rewritten by the state machine; the original
-    // line must not survive verbatim.
-    output.canFind("Checks:                 \"-*\"").shouldBeFalse;
-    // The state machine appends the configured checks as a YAML flow
-    // sequence over multiple lines.
-    output.canFind(",\\").shouldBeTrue;
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto checksNode = root["Checks"];
+    // The Checks value is rewritten into a sequence with the computed checks
+    // spliced into the base entries.
+    checksNode.type.shouldEqual(NodeType.sequence);
+    auto entries = checksOf(checksNode);
+    (entries.length > 1).shouldBeTrue;
+    entries[0].shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("my-hdrs");
+    root["ExcludeHeaderFilterRegex"].as!string.shouldEqual("3rd/.*");
 }
 
-@(
-        "writeClangTidyConfig keeps the base HeaderFilterRegex line when header_filter contains a single quote")
+@("writeClangTidyConfig substitutes HeaderFilterRegex when header_filter contains a single quote")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -1005,17 +1041,22 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("foo'bar");
+    // Any filter value is emitted: dyaml's emitter picked the plain scalar
+    // style here (pinned; a value needing escaping is written single- or
+    // double-quoted instead).
+    readText(outFile).canFind("HeaderFilterRegex: foo'bar").shouldBeTrue;
 }
 
-@(
-        "writeClangTidyConfig keeps the base HeaderFilterRegex line when header_filter ends with a backslash")
+@("writeClangTidyConfig substitutes HeaderFilterRegex when header_filter ends with a backslash")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -1030,16 +1071,20 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    root["Checks"].as!string.shouldEqual("-*");
+    root["HeaderFilterRegex"].as!string.shouldEqual("foo\\");
+    readText(outFile).canFind("HeaderFilterRegex: foo\\").shouldBeTrue;
 }
 
-@("writeClangTidyConfig keeps the base lines and appends no exclude filter when exclude_header_filter contains a single quote")
+@(
+        "writeClangTidyConfig appends the exclude filter when exclude_header_filter contains a single quote")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -1054,16 +1099,27 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(3);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[0].value.as!string.shouldEqual("-*");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual(".*");
+    pairs[2].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
+    pairs[2].value.as!string.shouldEqual("foo'bar");
+    // Any value is emitted: pinned as the plain scalar style here.
+    readText(outFile).canFind("ExcludeHeaderFilterRegex: foo'bar").shouldBeTrue;
 }
 
-@("writeClangTidyConfig keeps the base lines and appends no exclude filter when exclude_header_filter ends with a backslash")
+@(
+        "writeClangTidyConfig appends the exclude filter when exclude_header_filter ends with a backslash")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -1078,17 +1134,25 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(3);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[0].value.as!string.shouldEqual("-*");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual(".*");
+    pairs[2].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
+    pairs[2].value.as!string.shouldEqual("foo\\");
+    readText(outFile).canFind("ExcludeHeaderFilterRegex: foo\\").shouldBeTrue;
 }
 
-@(
-        "writeClangTidyConfig keeps the base lines and appends neither filter when both options are unwritable")
+@("writeClangTidyConfig substitutes both filters when both values need dyaml's escaping")
 unittest {
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldEqual;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
 
     auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
     mkdir(dir);
@@ -1104,21 +1168,40 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    readText(outFile).shouldEqual(ClangTidyConstants.codeCheckerConfigHeader
-            ~ "\n" ~ "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(3);
+    pairs[0].key.as!string.shouldEqual("Checks");
+    pairs[0].value.as!string.shouldEqual("-*");
+    pairs[1].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[1].value.as!string.shouldEqual("foo'bar");
+    pairs[2].key.as!string.shouldEqual("ExcludeHeaderFilterRegex");
+    pairs[2].value.as!string.shouldEqual("foo\\");
+    // Any value is emitted: pinned as the plain scalar style here.
+    readText(outFile).canFind("HeaderFilterRegex: foo'bar").shouldBeTrue;
+    readText(outFile).canFind("ExcludeHeaderFilterRegex: foo\\").shouldBeTrue;
 }
 
-@("writeClangTidyConfig drops an unwritable header_filter in the Checks-rewriting path")
+@(
+        "writeClangTidyConfig substitutes a header_filter containing a single quote in the Checks-rewriting path")
  // Marked @system because initClassification is @system (unittests are @safe
 // by default in modern D).
 @system unittest {
-    import std.algorithm.searching : canFind;
     import std.file : mkdir, write, readText, tempDir, rmdirRecurse, exists;
     import std.path : buildPath;
     import std.uuid : randomUUID;
-    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
     import code_checker.engine.types : Severity;
     import code_checker.engine.builtin.clang_tidy_classification : initClassification;
+
+    static string[] checksOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
 
     // Same CWD/classification caveat as the Checks-rewriting cell above: the
     // classification data path resolves against the process CWD and
@@ -1142,12 +1225,999 @@ unittest {
 
     writeClangTidyConfig(baseConf, outFile, conf);
 
-    auto output = readText(outFile);
-    // The Checks block is rewritten by the state machine; the original line
-    // does not survive verbatim.
-    output.canFind("Checks:                 \"-*,\\").shouldBeTrue;
-    // The unwritable user value is neither substituted nor appended; the base
-    // HeaderFilterRegex line passes through after the Checks block.
-    output.canFind("foo'bar").shouldBeFalse;
-    output.canFind("HeaderFilterRegex:      '.*'").shouldBeTrue;
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto checksNode = root["Checks"];
+    // The Checks value is rewritten into a sequence with the computed checks
+    // spliced into the base entries.
+    checksNode.type.shouldEqual(NodeType.sequence);
+    auto entries = checksOf(checksNode);
+    entries[0].shouldEqual("-*");
+    (entries.length > 1).shouldBeTrue;
+    // The single quote no longer blocks the substitution.
+    root["HeaderFilterRegex"].as!string.shouldEqual("foo'bar");
+}
+
+@("writeClangTidyConfig keeps the shipped config's base entries and splices the computed checks when severity filtering is configured")
+ // Marked @system because initClassification is @system (unittests are @safe
+// by default in modern D).
+@system unittest {
+    import std.array : appender, array;
+    import std.file : exists, mkdir, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual;
+    import code_checker.engine.types : Severity;
+    import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
+        initClassification;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string[] computedOf(Config conf) @safe {
+        return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
+    }
+
+    static string dumped(Node n) @trusted {
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    // Same CWD/classification caveat as the Checks-rewriting cell above: the
+    // classification data path resolves against the process CWD and
+    // initClassification only logs a warning when the file is missing. It
+    // writes process-global state that is never restored and that is not
+    // thread safe - do not read it from other unittests, and only run this
+    // suite single-threaded if any future test needs classification data.
+    assert(exists("etc/code_checker/clang-tidy.json"),
+            "classification data not found relative to the CWD; run the "
+            ~ "unittest binary from the package root, as dub test does");
+    initClassification(AbsolutePath("etc/code_checker/clang-tidy.json"));
+
+    // The shipped config is parsed once here to compare every non-Checks pair
+    // of the generated file against it.
+    auto baseRoot = Loader.fromString(readText("etc/code_checker/clang_tidy.conf")).load();
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.staticCode.severity = Severity.medium;
+
+    writeClangTidyConfig(AbsolutePath("etc/code_checker/clang_tidy.conf"), outFile, conf);
+
+    auto root = Loader.fromString(readText(outFile)).load();
+
+    // The Checks value is rewritten into a flow sequence: the shipped 8 quoted
+    // entries first, in order, then the computed disabled checks.
+    auto checksNode = root["Checks"];
+    checksNode.type.shouldEqual(NodeType.sequence);
+    // The base prefix is derived from the freshly parsed shipped config by
+    // re-splitting its quoted Checks scalar (the shipped entries themselves
+    // are pinned by the buildChecksSequence cells).
+    auto baseEntries = entriesOf(buildChecksSequence(baseRoot["Checks"], null));
+    auto entries = entriesOf(checksNode);
+    entries.length.shouldEqual(baseEntries.length + computedOf(conf).length);
+    entries[0 .. baseEntries.length].shouldEqual(baseEntries);
+
+    // Every other pair keeps the base config's key, order and value.
+    auto basePairs = baseRoot.as!(Node.Pair[]);
+    auto genPairs = root.as!(Node.Pair[]);
+    genPairs.length.shouldEqual(basePairs.length);
+    foreach (i, p; genPairs) {
+        if (p.key.as!string == "Checks") {
+            continue;
+        }
+        dumped(p.key).shouldEqual(dumped(basePairs[i].key));
+        dumped(p.value).shouldEqual(dumped(basePairs[i].value));
+    }
+}
+
+@("writeClangTidyConfig splices a fresh Checks entry when the base config lacks one")
+ // Marked @system because initClassification is @system (unittests are @safe
+// by default in modern D).
+@system unittest {
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind;
+    import std.array : array;
+    import std.experimental.logger.core : Logger, LogLevel, stdThreadLocalLog;
+    import std.file : exists, mkdir, readText, tempDir, write, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
+    import code_checker.engine.types : Severity;
+    import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
+        initClassification;
+
+    static final class CapturingLogger : Logger {
+        string[] msgs;
+
+        this() {
+            super(LogLevel.all);
+        }
+
+        protected override void writeLogMsg(ref LogEntry payload) @safe {
+            msgs ~= payload.msg;
+        }
+    }
+
+    static string[] computedOf(Config conf) @safe {
+        return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
+    }
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    // Same CWD/classification caveat as the Checks-rewriting cell above: the
+    // classification data path resolves against the process CWD and
+    // initClassification only logs a warning when the file is missing.
+    assert(exists("etc/code_checker/clang-tidy.json"),
+            "classification data not found relative to the CWD; run the "
+            ~ "unittest binary from the package root, as dub test does");
+    initClassification(AbsolutePath("etc/code_checker/clang-tidy.json"));
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "HeaderFilterRegex: '.*'\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.staticCode.severity = Severity.medium;
+    conf.clangTidy.headerFilter = "my-hdrs";
+
+    auto savedLog = stdThreadLocalLog;
+    scope (exit)
+        stdThreadLocalLog = savedLog;
+    auto captured = new CapturingLogger;
+    stdThreadLocalLog = captured;
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    (captured.msgs.canFind!(m => m.canFind("lacks a Checks entry"))).shouldBeTrue;
+
+    // The computed checks are spliced into a fresh Checks entry at the end
+    // of the mapping instead of being dropped.
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(2);
+    pairs[0].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[0].value.as!string.shouldEqual("my-hdrs");
+    pairs[1].key.as!string.shouldEqual("Checks");
+    entriesOf(pairs[1].value).shouldEqual(computedOf(conf));
+}
+
+@("writeClangTidyConfig splices only the computed checks when the base Checks scalar is empty")
+ // Marked @system because initClassification is @system (unittests are @safe
+// by default in modern D).
+@system unittest {
+    import std.array : array;
+    import std.file : exists, mkdir, readText, tempDir, write, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import std.algorithm.searching : canFind;
+    import unit_threaded.should : shouldEqual, shouldBeTrue;
+    import code_checker.engine.types : Severity;
+    import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
+        initClassification;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string[] computedOf(Config conf) @safe {
+        return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
+    }
+
+    // Same CWD/classification caveat as the Checks-rewriting cell above: the
+    // classification data path resolves against the process CWD and
+    // initClassification only logs a warning when the file is missing.
+    assert(exists("etc/code_checker/clang-tidy.json"),
+            "classification data not found relative to the CWD; run the "
+            ~ "unittest binary from the package root, as dub test does");
+    initClassification(AbsolutePath("etc/code_checker/clang-tidy.json"));
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks: ''\n" ~ "HeaderFilterRegex: '.*'\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.staticCode.severity = Severity.medium;
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    auto root = Loader.fromString(readText(outFile)).load();
+
+    // The empty base scalar contributes no entries; only the computed checks
+    // are spliced in.
+    auto checksNode = root["Checks"];
+    checksNode.type.shouldEqual(NodeType.sequence);
+    entriesOf(checksNode).shouldEqual(computedOf(conf));
+}
+
+@("writeClangTidyConfig keeps the base block-sequence entries and forces flow style when the Checks value is a block sequence")
+ // Marked @system because initClassification is @system (unittests are @safe
+// by default in modern D).
+@system unittest {
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind;
+    import std.array : array;
+    import std.file : exists, mkdir, readText, tempDir, write, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+    import code_checker.engine.types : Severity;
+    import code_checker.engine.builtin.clang_tidy_classification : filterSeverity,
+        initClassification;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string[] computedOf(Config conf) @safe {
+        return filterSeverity!(a => a < conf.staticCode.severity).map!(a => "-" ~ a).array;
+    }
+
+    // Same CWD/classification caveat as the Checks-rewriting cell above: the
+    // classification data path resolves against the process CWD and
+    // initClassification only logs a warning when the file is missing.
+    assert(exists("etc/code_checker/clang-tidy.json"),
+            "classification data not found relative to the CWD; run the "
+            ~ "unittest binary from the package root, as dub test does");
+    initClassification(AbsolutePath("etc/code_checker/clang-tidy.json"));
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks:\n" ~ "  - a\n" ~ "  -  b \n" ~ "HeaderFilterRegex: '.*'\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.staticCode.severity = Severity.medium;
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    auto root = Loader.fromString(readText(outFile)).load();
+
+    // The block-sequence entries are kept and the computed checks are
+    // appended in place.
+    auto entries = entriesOf(root["Checks"]);
+    entries.length.shouldEqual(2 + computedOf(conf).length);
+    entries[0 .. 2].shouldEqual(["a", "b"]);
+
+    // Flow style is forced on the rewritten Checks node; nothing else in the
+    // file is turned into a flow collection.
+    auto text = readText(outFile);
+    text.canFind("Checks: [").shouldBeTrue;
+    text.canFind("\n- ").shouldBeFalse;
+}
+
+// Marked @system because catching an Error is not allowed in @safe code
+// (unittests are @safe by default in modern D).
+@("writeClangTidyConfig aborts generation when the base config is unparseable")
+@system unittest {
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind;
+    import std.experimental.logger.core : Logger, LogLevel, stdThreadLocalLog;
+    import std.file : exists, mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static final class CapturingLogger : Logger {
+        string[] msgs;
+
+        this() {
+            super(LogLevel.all);
+        }
+
+        protected override void writeLogMsg(ref LogEntry payload) @safe {
+            msgs ~= payload.msg;
+        }
+    }
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "HeaderFilterRegex: '.*'\n" ~ "Checks:\n" ~ "\t- \"-*\"\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.clangTidy.headerFilter = "my-hdrs";
+
+    auto savedLog = stdThreadLocalLog;
+    scope (exit)
+        stdThreadLocalLog = savedLog;
+    auto captured = new CapturingLogger;
+    stdThreadLocalLog = captured;
+
+    auto caught = false;
+    try {
+        writeClangTidyConfig(baseConf, outFile, conf);
+    } catch (Exception e) {
+        caught = true;
+    }
+    caught.shouldBeTrue;
+
+    // The failure is logged and the existing .clang-tidy is left untouched.
+    (captured.msgs.canFind!(m => m.canFind("Failed to load clang-tidy system configuration")))
+        .shouldBeTrue;
+    exists(outFile).shouldBeFalse;
+}
+
+// Marked @system because catching an Error is not allowed in @safe code
+// (unittests are @safe by default in modern D).
+@("writeClangTidyConfig aborts generation when the base config root is not a mapping")
+@system unittest {
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind;
+    import std.experimental.logger.core : Logger, LogLevel, stdThreadLocalLog;
+    import std.file : exists, mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static final class CapturingLogger : Logger {
+        string[] msgs;
+
+        this() {
+            super(LogLevel.all);
+        }
+
+        protected override void writeLogMsg(ref LogEntry payload) @safe {
+            msgs ~= payload.msg;
+        }
+    }
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "- a\n" ~ "- b\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.clangTidy.headerFilter = "my-hdrs";
+
+    auto savedLog = stdThreadLocalLog;
+    scope (exit)
+        stdThreadLocalLog = savedLog;
+    auto captured = new CapturingLogger;
+    stdThreadLocalLog = captured;
+
+    auto caught = false;
+    try {
+        writeClangTidyConfig(baseConf, outFile, conf);
+    } catch (Exception e) {
+        caught = true;
+    }
+    caught.shouldBeTrue;
+
+    // The failure is logged and the existing .clang-tidy is left untouched.
+    (captured.msgs.canFind!(m => m.canFind("not a mapping"))).shouldBeTrue;
+    exists(outFile).shouldBeFalse;
+}
+
+@("writeClangTidyConfig replaces a mapping HeaderFilterRegex value with the user scalar")
+unittest {
+    import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks: \"-*\"\n" ~ "HeaderFilterRegex:\n" ~ "  a: b\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.clangTidy.headerFilter = "my-hdrs";
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    auto root = Loader.fromString(readText(outFile)).load();
+    // The mapping value is replaced by the plain user scalar (as!string on a
+    // mapping would throw).
+    root["HeaderFilterRegex"].as!string.shouldEqual("my-hdrs");
+    root["Checks"].as!string.shouldEqual("-*");
+}
+
+// Marked @system because catching an Error is not allowed in @safe code
+// (unittests are @safe by default in modern D).
+@(
+        "writeClangTidyConfig aborts generation when the base config has duplicate HeaderFilterRegex keys")
+@system unittest {
+    import std.algorithm.iteration : map, filter;
+    import std.algorithm.searching : canFind;
+    import std.array : array;
+    import std.experimental.logger.core : Logger, LogLevel, stdThreadLocalLog;
+    import std.file : exists, mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static final class CapturingLogger : Logger {
+        string[] msgs;
+
+        this() {
+            super(LogLevel.all);
+        }
+
+        protected override void writeLogMsg(ref LogEntry payload) @safe {
+            msgs ~= payload.msg;
+        }
+    }
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    // dyaml's composer rejects duplicate mapping keys, so the base config
+    // does not even load: generation aborts with a fatal Error (as with an
+    // unparseable base) and no filter option can be applied.
+    auto raw = "Checks: \"-*\"\n" ~ "HeaderFilterRegex: '.*'\n" ~ "HeaderFilterRegex: 'y.*'\n";
+    write(baseConf, raw);
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+    conf.clangTidy.headerFilter = "my-hdrs";
+    conf.clangTidy.headerExcludeFilter = "3rd/.*";
+
+    auto savedLog = stdThreadLocalLog;
+    scope (exit)
+        stdThreadLocalLog = savedLog;
+    auto captured = new CapturingLogger;
+    stdThreadLocalLog = captured;
+
+    auto caught = false;
+    try {
+        writeClangTidyConfig(baseConf, outFile, conf);
+    } catch (Exception e) {
+        caught = true;
+    }
+    caught.shouldBeTrue;
+
+    // The failure is logged and the existing .clang-tidy is left untouched.
+    (captured.msgs.canFind!(m => m.canFind("Failed to load clang-tidy system configuration")))
+        .shouldBeTrue;
+    exists(outFile).shouldBeFalse;
+}
+
+@("writeClangTidyConfig preserves the base config's mapping key order")
+unittest {
+    import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "User:                   system\n" ~ "Checks:                 \"-*\"\n"
+            ~ "FormatStyle:            none\n" ~ "HeaderFilterRegex:      '.*'\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    auto root = Loader.fromString(readText(outFile)).load();
+    auto pairs = root.as!(Node.Pair[]);
+    pairs.length.shouldEqual(4);
+    pairs[0].key.as!string.shouldEqual("User");
+    pairs[0].value.as!string.shouldEqual("system");
+    pairs[1].key.as!string.shouldEqual("Checks");
+    pairs[1].value.as!string.shouldEqual("-*");
+    pairs[2].key.as!string.shouldEqual("FormatStyle");
+    pairs[2].value.as!string.shouldEqual("none");
+    pairs[3].key.as!string.shouldEqual("HeaderFilterRegex");
+    pairs[3].value.as!string.shouldEqual(".*");
+}
+
+@("writeClangTidyConfig emits the GENERATED header as the first line of a valid YAML document")
+unittest {
+    import std.algorithm.searching : canFind, endsWith;
+    import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.string : splitLines;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks: \"-*\"\n");
+    auto outFile = AbsolutePath(buildPath(dir, ".clang-tidy"));
+
+    auto conf = Config.make(AbsolutePath(dir), AbsolutePath(buildPath(dir, "ut.toml")));
+
+    writeClangTidyConfig(baseConf, outFile, conf);
+
+    auto text = readText(outFile);
+    // The generated file parses and its first line is the code_checker
+    // header: with YAMLVersion = null dyaml emits no %YAML directive and no
+    // --- document-start before the mapping (probe-verified).
+    Loader.fromString(text).load();
+    text.splitLines[0].shouldEqual(ClangTidyConstants.codeCheckerConfigHeader);
+    // Pinned trailing-newline behavior: dyaml's dump ends the document with a
+    // line break.
+    text.endsWith("\n").shouldBeTrue;
+    text.canFind("---").shouldBeFalse;
+}
+
+@("loadClangTidyConfig parses a valid mapping base config")
+unittest {
+    import dyaml : NodeType;
+    import std.file : mkdir, write, readText, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldEqual;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeTrue;
+    loaded.root.type.shouldEqual(NodeType.mapping);
+    loaded.root["Checks"].as!string.shouldEqual("-*");
+    loaded.rawText.shouldEqual(
+            "Checks:                 \"-*\"\n" ~ "HeaderFilterRegex:      '.*'\n");
+}
+
+@("loadClangTidyConfig fails on a missing file")
+unittest {
+    import std.array : empty;
+    import std.file : tempDir;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto baseConf = AbsolutePath(buildPath(tempDir(),
+            "code_checker_ut_" ~ randomUUID().toString, "missing.conf"));
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    loaded.rawText.empty.shouldBeTrue;
+}
+
+@("loadClangTidyConfig fails on an empty file")
+unittest {
+    import std.array : empty;
+    import std.file : mkdir, write, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "");
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    loaded.rawText.empty.shouldBeTrue;
+}
+
+@("loadClangTidyConfig fails on malformed YAML")
+unittest {
+    import std.array : empty;
+    import std.file : mkdir, write, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "Checks:\n\t- \"-*\"\n");
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    // The file was readable, so the verbatim-copy fallback still has it.
+    loaded.rawText.empty.shouldBeFalse;
+}
+
+@("loadClangTidyConfig fails on a non-mapping root")
+unittest {
+    import dyaml : NodeType;
+    import std.array : empty;
+    import std.file : mkdir, write, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse, shouldEqual;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    write(baseConf, "- a\n- b\n");
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    loaded.root.type.shouldEqual(NodeType.sequence);
+    loaded.rawText.empty.shouldBeFalse;
+}
+
+@("loadClangTidyConfig fails on a multi-document base config")
+unittest {
+    import std.array : empty;
+    import std.file : mkdir, write, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldEqual, shouldBeFalse;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto baseConf = AbsolutePath(buildPath(dir, "base.conf"));
+    // dyaml's scanner rejects multi-document streams, so the loader helper
+    // reports the failure and hands back the raw text for the caller.
+    auto content = "---\n" ~ "Checks: \"-*\"\n" ~ "---\n" ~ "foo: 1\n";
+    write(baseConf, content);
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    loaded.rawText.shouldEqual(content);
+}
+
+@("loadClangTidyConfig fails on a non-UTF-8 file")
+unittest {
+    import std.array : empty;
+    import std.file : mkdir, tempDir, rmdirRecurse;
+    import std.path : buildPath;
+    import std.stdio : File;
+    import std.uuid : randomUUID;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto dir = buildPath(tempDir(), "code_checker_ut_" ~ randomUUID().toString);
+    mkdir(dir);
+    scope (exit)
+        rmdirRecurse(dir);
+    auto rawPath = buildPath(dir, "base.conf");
+    auto baseConf = AbsolutePath(rawPath);
+    // readText throws UTFException, which the loader helper maps to a plain
+    // failure (no raw text is kept).
+    auto f = File(rawPath, "wb");
+    f.rawWrite([cast(ubyte) 0xff, cast(ubyte) 0xfe]);
+    f.close;
+
+    auto loaded = loadClangTidyConfig(baseConf);
+
+    loaded.ok.shouldBeFalse;
+    loaded.rawText.empty.shouldBeTrue;
+}
+
+@("hasConfigHeaderOptions finds both header option keys")
+unittest {
+    import dyaml : Loader;
+    import unit_threaded.should : shouldBeTrue;
+
+    auto root = Loader.fromString(
+            "Checks: '*'\n" ~ "HeaderFilterRegex:      '.*'\n" ~ "ExcludeHeaderFilterRegex: 'x'\n").load();
+
+    auto r = hasConfigHeaderOptions(root);
+
+    r.include.shouldBeTrue;
+    r.exclude.shouldBeTrue;
+}
+
+@("hasConfigHeaderOptions finds each header option key separately")
+unittest {
+    import dyaml : Loader;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto withInclude = Loader.fromString("HeaderFilterRegex:      '.*'\n").load();
+    auto withExclude = Loader.fromString("ExcludeHeaderFilterRegex: 'x'\n").load();
+
+    auto rInclude = hasConfigHeaderOptions(withInclude);
+    auto rExclude = hasConfigHeaderOptions(withExclude);
+
+    rInclude.include.shouldBeTrue;
+    rInclude.exclude.shouldBeFalse;
+    rExclude.include.shouldBeFalse;
+    rExclude.exclude.shouldBeTrue;
+}
+
+@("hasConfigHeaderOptions reports absent keys")
+unittest {
+    import dyaml : Loader;
+    import unit_threaded.should : shouldBeFalse;
+
+    auto root = Loader.fromString(
+            "Checks: '*'\n" ~ "CheckOptions:\n" ~ "  - key: a\n" ~ "    value: b\n").load();
+
+    auto r = hasConfigHeaderOptions(root);
+
+    r.include.shouldBeFalse;
+    r.exclude.shouldBeFalse;
+}
+
+@("hasConfigHeaderOptions tolerates a non-mapping root")
+unittest {
+    import dyaml : Loader;
+    import unit_threaded.should : shouldBeFalse;
+
+    auto sequenceRoot = Loader.fromString("- a\n- b\n").load();
+    auto scalarRoot = Loader.fromString("42\n").load();
+
+    auto rSequence = hasConfigHeaderOptions(sequenceRoot);
+    auto rScalar = hasConfigHeaderOptions(scalarRoot);
+
+    rSequence.include.shouldBeFalse;
+    rSequence.exclude.shouldBeFalse;
+    rScalar.include.shouldBeFalse;
+    rScalar.exclude.shouldBeFalse;
+}
+
+@("hasConfigHeaderOptions skips non-scalar mapping keys")
+unittest {
+    import dyaml : Loader;
+    import unit_threaded.should : shouldBeTrue, shouldBeFalse;
+
+    auto withComplexKey = Loader.fromString("{a: b}: c\n" ~ "HeaderFilterRegex:      '.*'\n").load();
+    auto withNullKey = Loader.fromString("~: c\n" ~ "ExcludeHeaderFilterRegex: 'x'\n").load();
+
+    auto rComplex = hasConfigHeaderOptions(withComplexKey);
+    auto rNull = hasConfigHeaderOptions(withNullKey);
+
+    rComplex.include.shouldBeTrue;
+    rComplex.exclude.shouldBeFalse;
+    rNull.include.shouldBeFalse;
+    rNull.exclude.shouldBeTrue;
+}
+
+@("buildChecksSequence splits the shipped config's Checks scalar")
+unittest {
+    import std.algorithm.searching : canFind;
+    import dyaml : NodeType;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string dumped(Node n) @trusted {
+        import std.array : appender;
+
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    auto loaded = loadClangTidyConfig(AbsolutePath("etc/code_checker/clang_tidy.conf"));
+    loaded.ok.shouldBeTrue;
+
+    auto r = buildChecksSequence(loaded.root["Checks"], null);
+
+    r.type.shouldEqual(NodeType.sequence);
+    entriesOf(r).shouldEqual([
+        "-*", "clang-diagnostic-*", "clang-analyzer-*", "cppcoreguidelines*",
+        "readability-*", "modernize-*", "-modernize-use-trailing-return-type",
+        "hicpp*"
+    ]);
+    dumped(r).canFind("\n- ").shouldBeFalse;
+}
+
+@("buildChecksSequence splices computed checks after the shipped entries")
+unittest {
+    import std.algorithm.searching : canFind;
+    import std.string : endsWith;
+    import dyaml : NodeType;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string dumped(Node n) @trusted {
+        import std.array : appender;
+
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    auto loaded = loadClangTidyConfig(AbsolutePath("etc/code_checker/clang_tidy.conf"));
+    loaded.ok.shouldBeTrue;
+
+    auto r = buildChecksSequence(loaded.root["Checks"], ["-computed*"]);
+
+    r.type.shouldEqual(NodeType.sequence);
+    dumped(r).endsWith("]\n").shouldBeTrue;
+    dumped(r).canFind("\n- ").shouldBeFalse;
+    entriesOf(r).shouldEqual([
+        "-*", "clang-diagnostic-*", "clang-analyzer-*", "cppcoreguidelines*",
+        "readability-*", "modernize-*",
+        "-modernize-use-trailing-return-type", "hicpp*", "-computed*"
+    ]);
+}
+
+@("buildChecksSequence contributes no entries from an empty Checks scalar")
+unittest {
+    import std.algorithm.searching : canFind;
+    import std.string : endsWith;
+    import dyaml : Loader, NodeType;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string dumped(Node n) @trusted {
+        import std.array : appender;
+
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    auto root = Loader.fromString("Checks: ''\n").load();
+
+    auto r = buildChecksSequence(root["Checks"], ["-a", "-b"]);
+
+    r.type.shouldEqual(NodeType.sequence);
+    dumped(r).endsWith("]\n").shouldBeTrue;
+    dumped(r).canFind("\n- ").shouldBeFalse;
+    entriesOf(r).shouldEqual(["-a", "-b"]);
+}
+
+@("buildChecksSequence keeps a sequence Checks value")
+unittest {
+    import std.algorithm.searching : canFind;
+    import std.string : endsWith;
+    import dyaml : Loader, NodeType;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string dumped(Node n) @trusted {
+        import std.array : appender;
+
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    auto root = Loader.fromString("Checks:\n" ~ "  - a\n" ~ "  -  b \n").load();
+
+    auto r = buildChecksSequence(root["Checks"], ["c"]);
+
+    r.type.shouldEqual(NodeType.sequence);
+    dumped(r).endsWith("]\n").shouldBeTrue;
+    dumped(r).canFind("\n- ").shouldBeFalse;
+    entriesOf(r).shouldEqual(["a", "b", "c"]);
+}
+
+@("buildChecksSequence skips an unusable Checks value")
+unittest {
+    import std.algorithm.searching : canFind;
+    import std.string : endsWith;
+    import dyaml : Loader, NodeType;
+    import unit_threaded.should : shouldEqual, shouldBeTrue, shouldBeFalse;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    static string dumped(Node n) @trusted {
+        import std.array : appender;
+
+        auto app = appender!string;
+        Dumper().dump(app, n);
+        return app.data;
+    }
+
+    auto root = Loader.fromString("Checks:\n" ~ "  a: b\n").load();
+
+    auto r = buildChecksSequence(root["Checks"], ["-a"]);
+
+    r.type.shouldEqual(NodeType.sequence);
+    dumped(r).endsWith("]\n").shouldBeTrue;
+    dumped(r).canFind("\n- ").shouldBeFalse;
+    entriesOf(r).shouldEqual(["-a"]);
+}
+
+@("buildChecksSequence contributes no entries from a Checks null node")
+unittest {
+    import dyaml : Loader, NodeType;
+    import unit_threaded.should : shouldEqual;
+
+    static string[] entriesOf(Node n) @trusted {
+        import std.algorithm.iteration : map;
+        import std.array : array;
+
+        return n.as!(Node[])
+            .map!(e => e.as!string)
+            .array;
+    }
+
+    auto root = Loader.fromString("Checks:\n" ~ "HeaderFilterRegex: '.*'\n").load();
+
+    auto r = buildChecksSequence(root["Checks"], ["-a"]);
+
+    r.type.shouldEqual(NodeType.sequence);
+    entriesOf(r).shouldEqual(["-a"]);
 }
