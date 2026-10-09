@@ -20,12 +20,12 @@ immutable(Severity[string]) getDiagnosticSeverity() @trusted {
     return cast(immutable(Severity[string])) diagnosticSeverity;
 }
 
-immutable(SeverityColor[Severity]) getSeverityColor() {
+immutable(SeverityColor[Severity]) getSeverityColor() @trusted {
     return cast(immutable(SeverityColor[Severity])) severityColor;
 }
 
 // **NOT THREAD SAFE**.
-// initalizes `diagnosticSeverity` and `severityColor`.
+// initializes `diagnosticSeverity` and `severityColor`.
 void initClassification(AbsolutePath clangTidyPath) @system {
     import logger = std.experimental.logger;
     import std.algorithm : filter;
@@ -100,10 +100,10 @@ struct CountErrorsResult {
         int suppressedWarnings;
     }
 
-    /// Returns: the score when summing up the found occurancies.
+    /// Returns: the score when summing up the found occurrences.
     int score() @safe pure nothrow const @nogc {
         int sum;
-        // just chose some numbers. The intent is that warnings should be a high penalty
+        // just chose some numbers. The intent is that warnings should carry a high penalty
         foreach (kv; score_.byKeyValue) {
             final switch (kv.key) {
             case Severity.style:
@@ -193,8 +193,8 @@ struct StatMessage {
 
 /** Apply `fn` on the diagnostic messages.
  *
- * The return value from fn replaces the message. This makes it possible to
- * rewrite a message if needed.
+ * The return value from fn decides whether the message is written. fn may
+ * rewrite the message. This makes it possible to rewrite a message if needed.
  *
  * Params:
  *  diagFn = mapped onto a diagnostic message
@@ -394,7 +394,7 @@ Severity classify(string diagnostic_msg, string kind) {
     }
 
     // this is a fallback when new rules are added to clang-tidy but
-    // they haven't been thoroughly analyzed in
+    // they haven't been given a severity in
     // `code_checker.engine.builtin.clang_tidy_classification`.
     if (diagnostic_msg.startsWith("readability-"))
         return Severity.style;
@@ -407,7 +407,7 @@ Severity classify(string diagnostic_msg, string kind) {
 /**
  * Params:
  *  predicate = param is the classification of the diagnostic message. True means that it is kept, false thrown away
- * Returns: a range of rules to inactivate that are below `s`
+ * Returns: a range of rules to inactivate; a rule is kept when `predicate` returns true
  */
 auto filterSeverity(alias predicate)() {
     import std.algorithm : filter, map;
@@ -424,7 +424,7 @@ string color(Severity s) {
 
     SeverityColor sc;
 
-    if (auto v = s in severityColor) {
+    if (auto v = s in getSeverityColor()) {
         sc = *v;
     }
 

@@ -35,6 +35,11 @@ search_paths = ["./compile_commands.json"]
 [clang_tidy]
 # arguments to -header-filter
 # header_filter = ".*"
+# regular expression of headers for which diagnostics should be excluded
+# exclude_header_filter = "third_party/.*"
+# a value containing a single quote or ending with a backslash is ignored
+# (cannot be written unescaped); an explicitly empty value is not expressible
+# (empty means unset)
 
 # extend the checks configuration
 # check_extensions = []
