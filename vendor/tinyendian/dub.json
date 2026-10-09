@@ -1,0 +1,47 @@
+{
+	"authors": [
+		"Ferdinand Majerech"
+	],
+	"buildTypes": {
+		"debug": {
+			"buildOptions": [
+				"debugMode",
+				"debugInfoC"
+			]
+		},
+		"profile": {
+			"buildOptions": [
+				"releaseMode",
+				"debugInfoC",
+				"noBoundsCheck",
+				"optimize"
+			]
+		},
+		"release": {
+			"buildOptions": [
+				"releaseMode",
+				"inline",
+				"noBoundsCheck",
+				"optimize"
+			]
+		}
+	},
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "library"
+		}
+	],
+	"copyright": "Copyright © 2014, Ferdinand Majerech",
+	"description": "Lightweight endianness handling library",
+	"homepage": "https://github.com/kiith-sa/tinyendian",
+	"importPaths": [
+		"source"
+	],
+	"license": "Boost 1.0",
+	"name": "tinyendian",
+	"sourcePaths": [
+		"source/"
+	],
+	"version": "0.2.0"
+}
