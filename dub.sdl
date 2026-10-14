@@ -12,6 +12,8 @@ dependency "unit-threaded" version="~>2.1.9" default=true
 dependency "mylib" version="~>0.0.45" default=true
 dependency "compile_db" version="~>0.0.6" default=true
 dependency "miniorm" version="~>0.0.10" default=true
+dependency "dyaml" version="~>0.10.0"  default=true
+dependency "tinyendian" version="~>0.2.0"  default=true
 
 configuration "application" {
     targetType "executable"
