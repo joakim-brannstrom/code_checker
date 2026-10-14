@@ -1,0 +1,16 @@
+{
+	"name": "error",
+	"sourceFiles": ["error.d", "../common.d"],
+	"importPaths": ["."],
+	"configurations": [
+		{
+			"name": "library"
+		},
+		{
+			"name": "unittest",
+			"dependencies": {
+				"silly": {"path": "../../"}
+			}
+		}
+	]
+}

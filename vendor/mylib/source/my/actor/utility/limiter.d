@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2021, Joakim Brännström. All rights reserved.
+Copyright: Copyright (c) Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 
@@ -8,165 +8,171 @@ An actor that can limit the flow of messages between consumer/producer.
 The limiter is initialized with a number of tokens.
 
 Producers try and take a token from the limiter. Either one is free and they
-get it right away or a promise is returned. The promise will trigger whenever
-a token is returned by the consumre.  The waiting producers are triggered in
+get it right away or a promise is returned. The promise is delivered whenever
+a token is returned by the consumer. The waiting producers are triggered in
 LIFO (just because that is a more efficient data structure).
 
-A consumer receiver a message from a producer containing the token and data.
+A consumer receives a message from a producer containing the token and data.
 When the consumer has finished processing the message it returns the token to
-the limier.
+the limiter.
 */
 module my.actor.utility.limiter;
 
-import std.array : empty;
-import std.typecons : Tuple, tuple;
-import logger = std.logger;
 import std.container : Array;
+import std.datetime : dur;
 
-import my.actor.actor;
-import my.actor.typed;
-import my.actor.msg;
+import my.actor.actor : makePromise, Promise, RequestResult;
+import my.actor.behavior : ActorRef;
+import my.actor.channel : Channel, dynDelayedSend, dynSend;
+import my.actor.common : ExitReason;
+import my.actor.mailbox : TypedAddress, WeakAddress;
+import my.actor.msg : Capture, capture, delay, sendExit;
 import my.gc.refc;
 
 /// A token of work.
 struct Token {
 }
 
-/// Take a token if there are any free.
-struct TakeTokenMsg {
+interface IFlowControl {
+    /// Take a token if there are any free.
+    RequestResult!Token takeToken();
+
+    /// Return a token.
+    void returnToken();
+
+    /// Deliver free tokens to waiting producers.
+    void refresh();
+
+    /// Refresh periodically; extra caution in case something is missed.
+    void tickRefresh();
 }
 
-/// Return a token.
-struct ReturnTokenMsg {
-}
+class FlowControl : IFlowControl {
+    ActorRef self_;
+    uint tokens_;
+    Array!(Promise!Token) takeReq_; // pending takeToken requests, delivered LIFO
 
-private struct RefreshMsg {
-}
-
-private struct TickRefreshMsg {
-}
-
-alias FlowControlActor = typedActor!(Token function(TakeTokenMsg),
-        void function(ReturnTokenMsg), void function(RefreshMsg), void function(TickRefreshMsg));
-
-/// Initialize the flow controller to total cpu's + 1.
-FlowControlActor.Impl spawnFlowControlTotalCPUs(FlowControlActor.Impl self) {
-    import std.parallelism : totalCPUs;
-
-    return spawnFlowControl(self, totalCPUs + 1);
-}
-
-FlowControlActor.Impl spawnFlowControl(FlowControlActor.Impl self, const uint tokens) {
-    static struct State {
-        uint tokens;
-        Array!(Promise!Token) takeReq;
+    this(const uint tokens) {
+        tokens_ = tokens;
     }
 
-    self.name = "limiter";
-    auto st = tuple!("self", "state")(self, refCounted(State(tokens)));
-    alias CT = typeof(st);
+    void onSpawn(ActorRef self) @safe {
+        self_ = self;
+        // kick the periodic refresh so that no returned token is missed.
+        dynSend(self_.address, "tickRefresh");
+    }
 
-    static RequestResult!Token takeMsg(ref CT ctx, TakeTokenMsg) {
+    override RequestResult!Token takeToken() {
         typeof(return) rval;
 
-        if (ctx.state.get.tokens > 0) {
-            ctx.state.get.tokens--;
+        if (tokens_ > 0) {
+            tokens_--;
             rval = typeof(return)(Token.init);
         } else {
             auto p = makePromise!Token;
-            ctx.state.get.takeReq.insertBack(p);
+            takeReq_.insertBack(p);
             rval = typeof(return)(p);
         }
         return rval;
     }
 
-    static void returnMsg(ref CT ctx, ReturnTokenMsg) {
-        ctx.state.get.tokens++;
-        send(ctx.self, RefreshMsg.init);
+    override void returnToken() {
+        tokens_++;
+        dynSend(self_.address, "refresh");
     }
 
-    static void refreshMsg(ref CT ctx, RefreshMsg) {
-        while (ctx.state.get.tokens > 0 && !ctx.state.get.takeReq.empty) {
-            ctx.state.borrow!((ref state) {
-                state.tokens--;
-                state.takeReq.back.deliver(Token.init);
-                state.takeReq.back.clear;
-                state.takeReq.removeBack;
-            });
+    override void refresh() {
+        while (tokens_ > 0 && !takeReq_.empty) {
+            tokens_--;
+            takeReq_.back.deliver(Token.init);
+            takeReq_.back.clear;
+            takeReq_.removeBack;
         }
     }
 
-    static void tickRefreshMsg(ref CT ctx, TickRefreshMsg) {
+    override void tickRefresh() {
         // extra caution to refresh in case something is missed.
-        delayedSend(ctx.self, delay(200.dur!"msecs"), TickRefreshMsg.init);
-        send(ctx.self, RefreshMsg.init);
+        dynDelayedSend(self_.address, delay(200.dur!"msecs"), "tickRefresh");
+        dynSend(self_.address, "refresh");
+    }
+}
+
+version (unittest) {
+    private final class Sender {
+        WeakAddress limiter_;
+        WeakAddress recv_;
+        ActorRef self_;
+
+        this(WeakAddress limiter) @safe {
+            limiter_ = limiter;
+        }
+
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+        }
+
+        void setRecv(WeakAddress recv) {
+            recv_ = recv;
+            dynSend(self_.address, "tick");
+        }
+
+        void tick() {
+            Channel!IFlowControl(limiter_, self_).takeToken()
+                .capture(Capture!(Sender, "self")(this)).then(&onToken);
+        }
+
+        static void onToken(ref Capture!(Sender, "self") ctx, Token t) {
+            auto self = ctx.self;
+            dynSend(self.self_.address, "tick");
+            dynSend(self.recv_, "take", t, 42);
+        }
     }
 
-    send(self, TickRefreshMsg.init);
+    private final class Consumer {
+        WeakAddress limiter_;
+        RefCounted!int count_;
+        ActorRef self_;
 
-    return impl(self, st, &takeMsg, &returnMsg, &refreshMsg, &tickRefreshMsg);
+        this(WeakAddress limiter, RefCounted!int count) {
+            limiter_ = limiter;
+            count_ = count;
+        }
+
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+        }
+
+        void tick() {
+            if (count_.get == 100)
+                sendExit(self_.address, ExitReason.userShutdown);
+            else
+                dynDelayedSend(self_.address, delay(100.dur!"msecs"), "tick");
+        }
+
+        void take(Token t, int _) {
+            dynDelayedSend(limiter_, delay(100.dur!"msecs"), "returnToken");
+            count_.get++;
+            dynSend(self_.address, "tick");
+        }
+    }
 }
 
 @("shall limit the message rate of senders by using a limiter to control the flow")
 unittest {
     import core.thread : Thread;
-    import core.time : dur;
-    import std.datetime.stopwatch : StopWatch, AutoStart;
+    import std.datetime.stopwatch : AutoStart, StopWatch;
     import my.actor.system;
 
     auto sys = makeSystem;
 
-    auto limiter = sys.spawn(&spawnFlowControl, 40);
+    auto limiter = sys.spawn!FlowControl(40);
 
-    immutable SenderRate = 1.dur!"msecs";
-    immutable ReaderRate = 100.dur!"msecs";
-
-    static struct Tick {
-    }
-
-    WeakAddress[] senders;
-    foreach (_; 0 .. 100) {
-        static struct State {
-            WeakAddress recv;
-            FlowControlActor.Address limiter;
-        }
-
-        static struct SendMsg {
-        }
-
-        senders ~= sys.spawn((Actor* self) {
-            auto st = tuple!("self", "state")(self, refCounted(State(WeakAddress.init, limiter)));
-            alias CT = typeof(st);
-
-            return build(self).context(st).set("WeakAddress recv", (ref CT ctx, WeakAddress recv) {
-                ctx.state.get.recv = recv;
-                send(ctx.self.address, Tick.init);
-            }).set("Tick", (ref CT ctx, Tick _) {
-                ctx.self.request(ctx.state.get.limiter, infTimeout)
-                .send(TakeTokenMsg.init).capture(ctx).then((ref CT ctx, Token t) {
-                    send(ctx.self, Tick.init);
-                    send(ctx.state.get.recv, t, 42);
-                });
-            }).finalize;
-        });
-    }
+    TypedAddress!Sender[] senders;
+    foreach (_; 0 .. 100)
+        senders ~= sys.spawn!Sender(limiter.weakRef);
 
     auto counter = refCounted(0);
-    auto consumer = sys.spawn((Actor* self) {
-        auto st = tuple!("self", "limiter", "count")(self, limiter, counter);
-        alias CT = typeof(st);
-
-        return impl(self, st, (ref CT ctx, Tick _) {
-            if (ctx.count.get == 100)
-                ctx.self.shutdown;
-            else
-                delayedSend(ctx.self, delay(100.dur!"msecs"), Tick.init);
-        }, (ref CT ctx, Token t, int _) {
-            delayedSend(ctx.limiter, delay(100.dur!"msecs"), ReturnTokenMsg.init);
-            ctx.count.get++;
-            send(ctx.self, Tick.init);
-        });
-    });
+    auto consumer = sys.spawn!Consumer(limiter.weakRef, counter);
 
     foreach (s; senders)
         s.linkTo(consumer);
@@ -174,7 +180,7 @@ unittest {
 
     auto sw = StopWatch(AutoStart.yes);
     foreach (s; senders)
-        send(s, consumer);
+        dynSend(s.weakRef, "setRecv", consumer.weakRef);
 
     while (counter.get < 100 && sw.peek < 4.dur!"seconds") {
         Thread.sleep(1.dur!"msecs");
@@ -183,4 +189,5 @@ unittest {
     assert(counter.get >= 100);
     // 40 tokens mean that it will trigger at least two "slowdown" which is at least 200 ms.
     assert(sw.peek > 200.dur!"msecs");
+    sys.shutdown;
 }

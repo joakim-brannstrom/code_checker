@@ -2,23 +2,23 @@
 	"authors": [
 		"Kripth"
 	],
-	"configurations": [
-		{
-			"name": "library",
-			"targetType": "library"
-		}
-	],
-	"description": "D implementation of TOML",
-	"importPaths": [
-		"src/"
+	"subPackages": [
+		"json"
 	],
 	"license": "MIT",
 	"name": "toml",
 	"sourcePaths": [
 		"src/"
 	],
-	"subPackages": [
-		"json"
+	"description": "D implementation of TOML",
+	"importPaths": [
+		"src/"
 	],
-	"version": "1.0.0"
+	"version": "1.0.0",
+	"configurations": [
+		{
+			"targetType": "library",
+			"name": "library"
+		}
+	]
 }

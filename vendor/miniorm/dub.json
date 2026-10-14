@@ -1,65 +1,44 @@
 {
-	"authors": [
-		"Joakim Brännström"
-	],
 	"configurations": [
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
-			"name": "with-lib",
+			"targetType": "library",
 			"subConfigurations": {
 				"d2sqlite3": "with-lib"
 			},
-			"targetType": "library"
+			"name": "with-lib"
 		},
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
-			"name": "all-included",
+			"targetType": "library",
 			"subConfigurations": {
 				"d2sqlite3": "all-included"
 			},
-			"targetType": "library"
+			"name": "all-included"
 		},
 		{
-			"excludedSourceFiles": [
-				"build/ut.d"
-			],
-			"name": "without-lib",
+			"targetType": "library",
 			"subConfigurations": {
 				"d2sqlite3": "without-lib"
 			},
-			"targetType": "library"
-		},
-		{
-			"excludedSourceFiles": [
-				"source/app.d"
-			],
-			"mainSourceFile": "build/ut.d",
-			"name": "unittest",
-			"preBuildCommands": [
-				"dub run unit-threaded -c gen_ut_main -- -f build/ut.d"
-			],
-			"targetType": "executable"
+			"name": "without-lib"
 		}
 	],
-	"copyright": "Copyright © 2019, Joakim Brännström",
-	"dependencies": {
-		"d2sqlite3": "~>1.0.0",
-		"unit-threaded": "~>2.1.9"
-	},
-	"description": "A minimalistic ORM for SQLite",
-	"importPaths": [
-		"source/"
+	"authors": [
+		"Joakim Brännström"
 	],
 	"license": "MIT",
+	"targetPath": "build",
+	"copyright": "Copyright © 2019, Joakim Brännström",
 	"name": "miniorm",
 	"sourcePaths": [
 		"source/"
 	],
-	"targetPath": "build",
+	"description": "A minimalistic ORM for SQLite",
+	"dependencies": {
+		"d2sqlite3": "~>1.0.0"
+	},
 	"targetType": "library",
-	"version": "0.0.10"
+	"version": "0.0.11",
+	"importPaths": [
+		"source/"
+	]
 }

@@ -17,15 +17,16 @@ import std.exception : collectException;
 import std.functional : toDelegate;
 import std.meta : staticMap;
 import std.sumtype;
-import std.traits : Parameters, Unqual, ReturnType, isFunctionPointer, isFunction;
+import std.traits : Parameters, Unqual;
 import std.typecons : Tuple, tuple;
 import std.variant : Variant;
 
-import my.actor.common : ExitReason, SystemError, makeSignature;
+import my.actor.common : ExitReason, SystemError, methodSignature;
 import my.actor.mailbox;
 import my.actor.msg;
 import my.actor.system : System;
-import my.actor.typed : isTypedAddress, isTypedActorImpl;
+import my.actor.behavior : ActorRef;
+import my.actor.registration : implActor;
 import my.gc.refc;
 
 public import my.actor.system_msg;
@@ -43,7 +44,6 @@ private struct PromiseData {
     @disable this(this);
 }
 
-// deliver can only be called one time.
 struct Promise(T) {
     private RefCounted!PromiseData data;
 
@@ -100,7 +100,7 @@ struct Promise(T) {
         data = rhs.data;
     }
 
-    /// True if the promise is not initialized and thus unusalbe.
+    /// True if the promise is not initialized and thus unusable.
     bool empty() {
         version (mylib_actor_trace) {
             logger.infof("Promise!(%s)(empty or replyId: %s)", T.stringof,
@@ -135,32 +135,32 @@ struct RequestResult(T) {
     SumType!(T, ErrorMsg, Promise!T) value;
 }
 
-private alias MsgHandler = void delegate(void* ctx, ref Variant msg) @safe;
-private alias RequestHandler = void delegate(void* ctx, ref Variant msg,
+package alias MsgHandler = void delegate(void* ctx, ref Variant msg) @safe;
+package alias RequestHandler = void delegate(void* ctx, ref Variant msg,
         ulong replyId, WeakAddress replyTo) @safe;
-private alias ReplyHandler = void delegate(void* ctx, ref Variant msg) @safe;
+package alias ReplyHandler = void delegate(void* ctx, ref Variant msg) @safe;
 
-alias DefaultHandler = void delegate(scope ref Actor self, ref Variant msg) @safe nothrow;
+alias DefaultHandler = void delegate(scope ref ActorShell self, ref Variant msg) @safe nothrow;
 
-/** Actors send error messages to others by returning an error (see Errors)
+/** Actors send error messages to others by returning an error
  * from a message handler. Similar to exit messages, error messages usually
  * cause the receiving actor to terminate, unless a custom handler was
  * installed. The default handler is used as fallback if request is used
  * without error handler.
  */
-alias ErrorHandler = void delegate(scope ref Actor self, scope ErrorMsg) @safe nothrow;
+alias ErrorHandler = void delegate(scope ref ActorShell self, scope ErrorMsg) @safe nothrow;
 
 /** Bidirectional monitoring with a strong lifetime coupling is established by
  * calling a `LinkRequest` to an address. This will cause the runtime to send
  * an `ExitMsg` if either this or other dies. Per default, actors terminate
- * after receiving an `ExitMsg` unless the exit reason is exit_reason::normal.
+ * after receiving an `ExitMsg` unless the exit reason is `ExitReason.normal`.
  * This mechanism propagates failure states in an actor system. Linked actors
  * form a sub system in which an error causes all actors to fail collectively.
  */
-alias ExitHandler = void delegate(scope ref Actor self, scope ExitMsg msg) @safe nothrow;
+alias ExitHandler = void delegate(scope ref ActorShell self, scope ExitMsg msg) @safe nothrow;
 
 /// An exception has been thrown while processing a message.
-alias ExceptionHandler = void delegate(scope ref Actor self, scope Exception e) @safe nothrow;
+alias ExceptionHandler = void delegate(scope ref ActorShell self, scope Exception e) @safe nothrow;
 
 /** Actors can monitor the lifetime of other actors by sending a `MonitorRequest`
  * to an address. This will cause the runtime system to send a `DownMsg` for
@@ -168,13 +168,13 @@ alias ExceptionHandler = void delegate(scope ref Actor self, scope Exception e) 
  *
  * Actors drop down messages unless they provide a custom handler.
  */
-alias DownHandler = void delegate(scope ref Actor self, scope DownMsg msg) @safe nothrow;
+alias DownHandler = void delegate(scope ref ActorShell self, scope DownMsg msg) @safe nothrow;
 
-void defaultHandler(scope ref Actor self, ref Variant msg) @safe nothrow {
+void defaultHandler(scope ref ActorShell self, ref Variant msg) @safe nothrow {
 }
 
 /// Write the name of the actor and the message type to the console.
-void logAndDropHandler(scope ref Actor self, ref Variant msg) @trusted nothrow {
+void logAndDropHandler(scope ref ActorShell self, ref Variant msg) @trusted nothrow {
     import std.stdio : writeln;
 
     try {
@@ -184,7 +184,7 @@ void logAndDropHandler(scope ref Actor self, ref Variant msg) @trusted nothrow {
     }
 }
 
-void defaultErrorHandler(scope ref Actor self, scope ErrorMsg msg) @safe nothrow {
+void defaultErrorHandler(scope ref ActorShell self, scope ErrorMsg msg) @safe nothrow {
     version (mylib_actor_trace) {
         try {
             logger.tracef("%X [%s] source %s shutdown: error: %s (source %s)",
@@ -196,7 +196,7 @@ void defaultErrorHandler(scope ref Actor self, scope ErrorMsg msg) @safe nothrow
     self.shutdown;
 }
 
-void defaultExitHandler(scope ref Actor self, scope ExitMsg msg) @safe nothrow {
+void defaultExitHandler(scope ref ActorShell self, scope ExitMsg msg) @safe nothrow {
     version (mylib_actor_trace) {
         try {
             logger.tracef("%X [%s] source %s shutdown: exit: %s", self.id,
@@ -208,7 +208,7 @@ void defaultExitHandler(scope ref Actor self, scope ExitMsg msg) @safe nothrow {
     self.forceShutdown;
 }
 
-void defaultExceptionHandler(scope ref Actor self, scope Exception e) @safe nothrow {
+void defaultExceptionHandler(scope ref ActorShell self, scope Exception e) @safe nothrow {
     version (mylib_actor_trace) {
         try {
             logger.tracef("%X [%s] shutdown: exception: %s", self.id, self.name, e.msg);
@@ -219,8 +219,8 @@ void defaultExceptionHandler(scope ref Actor self, scope Exception e) @safe noth
     self.forceShutdown;
 }
 
-// Write the name of the actor and the exception to stdout.
-void logExceptionHandler(scope ref Actor self, scope Exception e) @safe nothrow {
+// Log the name of the actor and the exception.
+void logExceptionHandler(scope ref ActorShell self, scope Exception e) @safe nothrow {
     self.errorReason = SystemError.runtimeError;
     try {
         logger.infof("[%s] shutdown: exception: %s: ", self.name, e.msg);
@@ -242,7 +242,7 @@ package enum ActorState {
     active,
     /// wait for all awaited responses to finish
     shutdown,
-    /// discard also the awaite responses, just shutdown fast
+    /// discard also the awaited responses, just shutdown fast
     forceShutdown,
     /// in process of shutting down
     finishShutdown,
@@ -269,7 +269,7 @@ private struct Behavior2(HandlerT) {
     }
 }
 
-struct Actor {
+struct ActorShell {
     import std.container.rbtree : RedBlackTree, redBlackTree;
 
     package StrongAddress addr;
@@ -285,7 +285,7 @@ struct Actor {
         Behavior2!(MsgHandler)[ulong] incoming2;
         Behavior2!(RequestHandler)[ulong] reqBehavior2;
 
-        // callbacks for awaited responses key:ed on their id.
+        // callbacks for awaited responses keyed on their id.
         AwaitReponse[ulong] awaitedResponses;
         ReplyHandlerTimeout[] replyTimeouts;
 
@@ -327,6 +327,17 @@ struct Actor {
         ExceptionHandler exceptionHandler_;
 
         DefaultHandler defaultHandler_;
+
+        /// One-shot launch hook (see `launchHandler`). Null if not set.
+        void delegate() @safe launch_;
+
+        /// Repeating self-tick (see `scheduleRepeating`): a valid pending
+        /// entry (in the delayed mailbox queue or `delayed`) exists while
+        /// `tickPending_` and its `seq` equals `tickSeq_`. At most one such
+        /// entry exists at any time.
+        bool tickPending_;
+        ulong tickSeq_;
+        Duration tickInterval_;
     }
 
     invariant () {
@@ -369,7 +380,7 @@ struct Actor {
     /** Clean shutdown of the actor
      *
      * Stopping incoming messages from triggering new behavior and finish all
-     * awaited respones.
+     * awaited responses.
      */
     void shutdown() @safe nothrow scope {
         if (state_.among(ActorState.waiting, ActorState.active))
@@ -378,8 +389,8 @@ struct Actor {
 
     /** Force an immediate shutdown.
      *
-     * Stopping incoming messages from triggering new behavior and finish all
-     * awaited respones.
+     * Stopping incoming messages from triggering new behavior and discard all
+     * awaited responses.
      */
     void forceShutdown() @safe nothrow scope {
         if (state_.among(ActorState.waiting, ActorState.active, ActorState.shutdown))
@@ -397,7 +408,7 @@ struct Actor {
 
     // dfmt off
 
-    /// Set name name of the actor.
+    /// Set the name of the actor.
     void name(string n) @safe pure nothrow @nogc scope {
         this.name_ = n;
     }
@@ -422,6 +433,16 @@ struct Actor {
         defaultHandler_ = v;
     }
 
+    /// Set the one-shot launch hook: runs on the actor's own context, before
+    /// the first message is processed; a throwing call follows the normal
+    /// actor error path (exceptionHandler_). The delegate and any state it
+    /// captures must stay valid until the first tick. If the actor is
+    /// force-shutdown before its first tick the hook is not invoked.
+    package void launchHandler(void delegate() @safe d) @safe pure nothrow @nogc
+    {
+        launch_ = d;
+    }
+
     /// Error reason to signal to monitors and links why the actor is terminated when forceShutdown is called.
     void errorReason(SystemError e) @safe pure nothrow @nogc scope {
         lastError_ = e;
@@ -444,6 +465,35 @@ package:
     Duration nextTimeout(const SysTime now, const Duration default_) @safe {
         return min(delayed.empty ? default_ : (delayed.front.triggerAt - now),
                 replyTimeouts.empty ? default_ : (replyTimeouts[0].timeout - now));
+    }
+
+    /** Arm a repeating self-tick: a one-shot message to this actor's own
+     * `method` is staged in the delayed mailbox queue to fire at
+     * +`interval`; on fire the shell dispatches it directly and re-arms the
+     * entry at +`interval` (at most one pending entry at any time). The
+     * first fire is at +`interval`, never immediately. A re-schedule
+     * replaces the pending entry; see `cancelTick`. No-op if the actor is
+     * no longer accepting messages. */
+    package void scheduleRepeating(Duration interval, ulong signature, Variant data) @trusted {
+        if (!isAccepting)
+            return;
+        cancelTick;
+        tickSeq_++;
+        auto d = DelayedMsg(Msg(signature, MsgType(MsgOneShot(data))), Clock.currTime + interval);
+        d.repeating = true;
+        d.seq = tickSeq_;
+        tickPending_ = true;
+        tickInterval_ = interval;
+        addr.get.put(d);
+    }
+
+    /** Cancel a pending repeating tick (no-op if none). The entry is not
+     * removed eagerly; it is dropped without dispatch when it comes due
+     * (its `seq` no longer matches `tickSeq_`). Safe from inside the tick
+     * handler — the in-flight entry simply does not re-arm. */
+    package void cancelTick() @trusted {
+        tickPending_ = false;
+        tickSeq_++;
     }
 
     bool waitingForReply() @safe pure nothrow const @nogc {
@@ -492,6 +542,8 @@ package:
     }
 
     void cleanupDelayed() @trusted nothrow scope {
+        tickPending_ = false;
+        tickSeq_++;
         foreach (const _; 0 .. delayed.length) {
             try {
                 delayed.front.msg = Msg.init;
@@ -541,26 +593,40 @@ package:
         return nextReplyId_++;
     }
 
-    void process(const SysTime now) @safe nothrow scope {
+    /// Public function to enable unittesting
+    public void process(const SysTime now) @safe nothrow scope {
         import core.memory : GC;
 
         assert(!GC.inFinalizer);
 
         messages_ = 0;
 
+        // Bounded mailbox support (see README, "Bounded mailbox"): mark this
+        // thread as an actor worker for the duration of the message loop so
+        // a full bounded mailbox drops our sends instead of blocking us —
+        // blocking a pool worker is the deadlock the bound exists to
+        // prevent. Unconditional (not gated on bounded mailboxes existing):
+        // a dispatch that started before the process's first spawnBounded
+        // must still count as a worker once that mailbox appears
+        // mid-dispatch, or its sends would take the blocking non-actor
+        // path. process() is re-entrant on one thread (the scoped actor
+        // request loop), so the mark is reference counted. The flag is a
+        // plain thread-local variable in mailbox.d, so the cost is an
+        // integer bump per dispatch, not per message.
+        setActorWorker(true);
+        scope (exit)
+            setActorWorker(false);
+
         void tick() @safe scope {
-            // philosophy of the order is that a timeout should only trigger if it
-            // is really required thus it is checked last. This order then mean
-            // that a request may have triggered a timeout but because
-            // `processReply` is called before `checkReplyTimeout` it is *ignored*.
-            // Thus "better to accept even if it is timeout rather than fail".
-            //
-            // NOTE: the assumption that a message that has timed out should be
-            // processed turned out to be... wrong. It is annoying that
-            // sometimes a timeout message triggers even though it shouldn't,
-            // because it is now too old to be useful!
-            // Thus the order is changed to first check for timeout, then process.
+            // Timeouts are checked before processing a reply: a reply that
+            // has already timed out is too old to be useful, so failing is
+            // better than delivering it.
             try {
+                if (launch_ !is null) {
+                    auto launch = launch_;
+                    launch_ = null; // once: clear before the call
+                    launch();
+                }
                 processSystemMsg();
                 checkReplyTimeout(now);
                 processDelayed(now);
@@ -594,7 +660,7 @@ package:
         case ActorState.waiting:
             state_ = ActorState.active;
             tick;
-            // the state can be changed before the actor have executed.
+            // the state can be changed before the actor has executed.
             break;
         case ActorState.active:
             tick;
@@ -634,30 +700,36 @@ package:
     }
 
     void sendToMonitors(scope DownMsg msg) @safe nothrow scope {
-        foreach (ref a; monitors.byValue) {
-            try {
-                auto tmp = a.lock;
-                auto rc = tmp.get;
-                if (rc)
-                    rc.put(SystemMsg(msg));
-                a.release;
-            } catch (Exception e) {
+        try {
+            foreach (ref a; monitors) {
+                try {
+                    auto tmp = a.lock;
+                    auto rc = tmp.get;
+                    if (rc)
+                        rc.put(SystemMsg(msg));
+                    a.release;
+                } catch (Exception e) {
+                }
             }
+        } catch (Exception e) {
         }
 
         monitors = null;
     }
 
     void sendToLinks(scope ExitMsg msg) @safe nothrow scope {
-        foreach (ref a; links.byValue) {
-            try {
-                auto tmp = a.lock;
-                auto rc = tmp.get;
-                if (rc)
-                    rc.put(SystemMsg(msg));
-                a.release;
-            } catch (Exception e) {
+        try {
+            foreach (ref a; links) {
+                try {
+                    auto tmp = a.lock;
+                    auto rc = tmp.get;
+                    if (rc)
+                        rc.put(SystemMsg(msg));
+                    a.release;
+                } catch (Exception e) {
+                }
             }
+        } catch (Exception e) {
         }
 
         links = null;
@@ -670,7 +742,7 @@ package:
         size_t removeTo;
         foreach (const i; 0 .. replyTimeouts.length) {
             if (now > replyTimeouts[i].timeout) {
-                const id = replyTimeouts[i].id;
+                auto id = replyTimeouts[i].id;
                 if (auto v = id in awaitedResponses) {
                     messages_++;
                     v.onError(this, ErrorMsg(addr.weakRef, SystemError.requestTimeout));
@@ -705,13 +777,13 @@ package:
         void doSend(ref MsgOneShot msg) @trusted {
             if (auto v = front.get.signature in incoming2) {
                 version (mylib_actor_trace) {
-                    logger.tracef("actor:%X [%s] send: %s (%X)", id, name,
-                            v.name, front.get.signature).collectException;
+                    logger.tracef("actor:%X [%s] process send: %s (%X)", id,
+                            name, v.name, front.get.signature).collectException;
                 }
                 v.behavior(context_, msg.data);
             } else {
                 version (mylib_actor_trace) {
-                    logger.tracef("actor:%X [%s] send: no message handler with signature: %s",
+                    logger.tracef("actor:%X [%s] process send: no message handler with signature: %s",
                             id, name, front.get.signature).collectException;
                 }
                 defaultHandler_(this, msg.data);
@@ -721,14 +793,14 @@ package:
         void doRequest(ref MsgRequest msg) @trusted {
             if (auto v = front.get.signature in reqBehavior2) {
                 version (mylib_actor_trace) {
-                    logger.tracef("actor:%X [%s] from %X request: %s (%X)", id, name,
+                    logger.tracef("actor:%X [%s] process request from %X: %s (%X)", id, name,
                             msg.replyTo.toHash, v.name, front.get.signature).collectException;
                 }
                 v.behavior(context_, msg.data, msg.replyId, msg.replyTo);
             } else {
                 version (mylib_actor_trace) {
-                    logger.tracef("actor:%X [%s] from %X request: no message handler with signature: %s", id, name,
-                            msg.replyTo.toHash, front.get.signature).collectException;
+                    logger.tracef("actor:%X [%s] process request from %X: no message handler with signature: %s", id,
+                            name, msg.replyTo.toHash, front.get.signature).collectException;
                 }
                 defaultHandler_(this, msg.data);
             }
@@ -743,13 +815,10 @@ package:
      *
      * Assuming:
      *  * they are not heavy to process
-     *  * very important that if there are any they should be handled as soon as possible
-     *  * ignoring the case when there is a "storm" of system messages which
-     *    "could" overload the actor system and lead to a crash. I classify this,
-     *    for now, as intentional, malicious coding by the developer themself.
-     *    External inputs that could trigger such a behavior should be controlled
-     *    and limited. Other types of input such as a developer trying to break
-     *    the actor system is out of scope.
+     *  * if there are any they should be handled as soon as possible
+     *  * the volume of system messages is bounded (a "storm" of system messages
+     *    is out of scope; external inputs that could trigger such a volume
+     *    should be controlled and limited)
      */
     void processSystemMsg() @safe scope {
         while (!addr.get.empty!SystemMsg) {
@@ -793,7 +862,7 @@ package:
                     break;
                 case ExitReason.kill:
                     exitHandler_(this, ExitMsg.init);
-                    // the user do NOT have an option here
+                    // the user has NO option here
                     forceShutdown;
                     break;
                 }
@@ -807,14 +876,14 @@ package:
         messages_++;
 
         auto front = addr.get.pop!Reply;
-        const msgId = front.get.id;
+        auto msgId = front.get.id;
         scope (exit)
             .destroy(front);
 
         if (auto v = msgId in awaitedResponses) {
             version (mylib_actor_trace) {
                 () @trusted {
-                    logger.tracef("actor:%X [%s] reply id %s: %s", id, name,
+                    logger.tracef("actor:%X [%s] reply_id:%s - %s", id, name,
                             msgId, v.name).collectException;
                 }();
             }
@@ -832,7 +901,7 @@ package:
         } else {
             version (mylib_actor_trace) {
                 () @trusted {
-                    logger.tracef("actor:%X [%s] reply id %s: no handler", id,
+                    logger.tracef("actor:%X [%s] reply_id:%s - no handler", id,
                             name, msgId).collectException;
                 }();
             }
@@ -843,10 +912,10 @@ package:
 
     void processDelayed(const SysTime now) @trusted scope {
         if (!addr.get.empty!DelayedMsg) {
-            // count as a message because handling them are "expensive".
-            // Ignoring the case that the message right away is moved to the
-            // incoming queue. This lead to "double accounting" but ohh well.
-            // Don't use delayedSend when you should have used send.
+            // count as a message because handling them is "expensive". A message
+            // moved to the incoming queue in the same tick is counted again
+            // (double accounting, accepted).
+            // Prefer plain sends; use delayed sends only when the delay is needed.
             messages_++;
             delayed.insert(addr.get.pop!DelayedMsg.unsafeMove);
         } else if (delayed.empty) {
@@ -855,11 +924,43 @@ package:
 
         foreach (const i; 0 .. delayed.length) {
             if (now > delayed.front.triggerAt) {
-                addr.get.put(delayed.front.msg);
+                auto d = delayed.front;
                 delayed.removeFront;
+                if (d.repeating)
+                    fireRepeatingTick(d, now);
+                else
+                    addr.get.put(d.msg);
             } else {
                 break;
             }
+        }
+    }
+
+    /** Fire a repeating self-tick entry (see `scheduleRepeating`):
+     * dispatch the message directly on this actor (no mailbox round trip —
+     * a throwing handler must stop the re-arm) and re-arm at +interval
+     * unless cancelled, replaced, or shutting down. An exception escapes to
+     * the tick's catch → `onException`; the repeat stops. */
+    private void fireRepeatingTick(DelayedMsg* d, const SysTime now) @trusted scope {
+        if (!tickPending_ || d.seq != tickSeq_)
+            return; // cancelled or replaced: drop without dispatch
+        messages_++;
+
+        d.msg.type.match!((ref MsgOneShot a) {
+            if (auto v = d.msg.signature in incoming2)
+                v.behavior(context_, a.data);
+            else
+                defaultHandler_(this, a.data);
+        }, (ref MsgRequest a) {
+            // repeating entries are built as one-shots by scheduleRepeating;
+            // a request payload here is malformed — default handling drops it.
+            defaultHandler_(this, a.data);
+        });
+
+        if (tickPending_ && d.seq == tickSeq_ && state_.among(ActorState.waiting,
+                ActorState.active)) {
+            d.triggerAt = now + tickInterval_;
+            delayed.insert(d);
         }
     }
 
@@ -907,7 +1008,7 @@ package:
         replyTimeouts ~= ReplyHandlerTimeout(replyId, timeout);
         schwartzSort!(a => a.timeout, (a, b) => a < b)(replyTimeouts);
         version (mylib_actor_trace) {
-            logger.tracef("actor:%X [%s] awaited reply id %s handler: %s ", id,
+            logger.tracef("actor:%X [%s] awaited reply_id:%s handler: %s ", id,
                     name, replyId, desc);
         }
     }
@@ -936,8 +1037,7 @@ struct Closure(Fn, CtxT) {
     }
 
     void free() {
-        // will crash, on purpuse, if there is a ctx and no cleanup registered.
-        // maybe a bad idea? dunno... lets see
+        // will crash on purpose if there is a ctx and no cleanup registered.
         if (ctx)
             cleanup(ctx);
         ctx = CtxT.init;
@@ -946,8 +1046,8 @@ struct Closure(Fn, CtxT) {
 
 @("shall register a behavior to be called when msg received matching signature")
 unittest {
-    auto addr = makeAddress2;
-    auto actor = Actor(addr);
+    auto addr = makeAddress;
+    auto actor = ActorShell(addr);
 
     bool processedIncoming;
     void fn(void* ctx, ref Variant msg) @trusted {
@@ -965,8 +1065,8 @@ unittest {
 
 @("shall register a behavior to be called when msg received matching signature")
 unittest {
-    auto addr = makeAddress2;
-    auto actor = Actor(addr);
+    auto addr = makeAddress;
+    auto actor = ActorShell(addr);
 
     struct LocalContext {
         bool processedIncoming;
@@ -989,7 +1089,6 @@ unittest {
 private void cleanupCtx(CtxT)(void* ctx)
         if (is(CtxT == Tuple!T, T) || is(CtxT == void)) {
     import std.traits;
-    import my.actor.typed;
     import core.memory : GC;
 
     static if (!is(CtxT == void)) {
@@ -1005,8 +1104,6 @@ private void cleanupCtx(CtxT)(void* ctx)
                 static if (!is(T == UT)) {
                     static assert(!is(UT : WeakAddress),
                             "WeakAddress must NEVER be const or immutable");
-                    static assert(!is(UT : TypedAddress!M, M...),
-                            "WeakAddress must NEVER be const or immutable: " ~ T.stringof);
                 }
                 // TODO: add a -version actor_ctx_diagnostic that prints when it is unable to deinit?
             }
@@ -1051,37 +1148,6 @@ struct Closure2(Fn) {
     }
 }
 
-package struct Action2 {
-    Closure2!MsgHandler action;
-    ulong signature;
-}
-
-/// An behavior for an actor when it receive a message of `signature`.
-package auto makeAction2(T, CtxT = void)(T handler) @safe
-        if (isFunction!T || isFunctionPointer!T) {
-    static if (is(CtxT == void))
-        alias Params = Parameters!T;
-    else {
-        alias CtxParam = Parameters!T[0];
-        alias Params = Parameters!T[1 .. $];
-        checkMatchingCtx!(CtxParam, CtxT);
-        checkRefForContext!handler;
-    }
-
-    alias HArgs = staticMap!(Unqual, Params);
-
-    void fn(void* ctx, ref Variant msg) @trusted {
-        static if (is(CtxT == void)) {
-            handler(msg.get!(Tuple!HArgs).expand);
-        } else {
-            auto userCtx = cast(CtxParam*) cast(CtxT*) ctx;
-            handler(*userCtx, msg.get!(Tuple!HArgs).expand);
-        }
-    }
-
-    return Action2(typeof(Action2.action)(&fn), makeSignature!HArgs);
-}
-
 package Closure!(ReplyHandler, void*) makeReply2(T, CtxT = void)(T handler) @safe {
     static if (is(CtxT == void))
         alias Params = Parameters!T;
@@ -1104,27 +1170,6 @@ package Closure!(ReplyHandler, void*) makeReply2(T, CtxT = void)(T handler) @saf
     }
 
     return typeof(return)(&fn, null, &cleanupCtx!CtxT);
-}
-
-package struct Request2 {
-    Closure2!RequestHandler request;
-    ulong signature;
-    string name;
-
-    string toString() @safe const {
-        return name;
-    }
-}
-
-package struct Request {
-    Closure!(RequestHandler, void*) request;
-    ulong signature;
-}
-
-private string locToString(Loc...)() {
-    import std.conv : to;
-
-    return Loc[0] ~ ":" ~ Loc[1].to!string ~ ":" ~ Loc[2].to!string;
 }
 
 /// Check that the context parameter is `ref` otherwise issue a warning.
@@ -1162,306 +1207,145 @@ package void checkMatchingCtx(CtxParam, CtxT)() {
     }
 }
 
-package auto makeRequest2(T, CtxT = void)(T handler) @safe {
-    static assert(!is(ReturnType!T == void), "handler returns void, not allowed");
-
-    alias RType = ReturnType!T;
-    enum isReqResult = is(RType : RequestResult!ReqT, ReqT);
-    enum isPromise = is(RType : Promise!PromT, PromT);
-
-    static if (is(CtxT == void))
-        alias Params = Parameters!T;
-    else {
-        alias CtxParam = Parameters!T[0];
-        alias Params = Parameters!T[1 .. $];
-        checkMatchingCtx!(CtxParam, CtxT);
-        checkRefForContext!handler;
-    }
-
-    alias HArgs = staticMap!(Unqual, Params);
-
-    void fn(void* rawCtx, ref Variant msg, ulong replyId, WeakAddress replyTo) @trusted {
-        static if (is(CtxT == void)) {
-            auto r = handler(msg.get!(Tuple!HArgs).expand);
-        } else {
-            auto ctx = cast(CtxParam*) cast(CtxT*) rawCtx;
-            auto r = handler(*ctx, msg.get!(Tuple!HArgs).expand);
-        }
-
-        static if (isReqResult) {
-            r.value.match!((ErrorMsg a) { sendSystemMsg(replyTo, a); }, (Promise!ReqT a) {
-                version (mylib_actor_trace) {
-                    logger.infof("promise is empty? %s %s ", a.data.empty, a.empty);
-                    if (!a.data.empty)
-                        logger.infof("promise is? %s %s ", a.data.get.replyId, a.data.get.replyTo);
-                }
-                assert(!a.data.empty, "the promise MUST be constructed before it is returned");
-                a.set(replyTo, replyId);
-            }, (data) {
-                enum wrapInTuple = !is(typeof(data) : Tuple!U, U);
-                if (auto rc = replyTo.lock.get) {
-                    static if (wrapInTuple)
-                        rc.put(Reply(replyId, Variant(tuple(data))));
-                    else
-                        rc.put(Reply(replyId, Variant(data)));
-                }
-            });
-        } else static if (isPromise) {
-            r.set(replyTo, replyId);
-        } else {
-            // TODO: is this syntax for U one variable or variable. I want it to be variable.
-            enum wrapInTuple = !is(RType : Tuple!U, U);
-            if (auto rc = replyTo.lock.get) {
-                static if (wrapInTuple)
-                    rc.put(Reply(replyId, Variant(tuple(r))));
-                else
-                    rc.put(Reply(replyId, Variant(r)));
-            }
-        }
-    }
-
-    return Request2(typeof(Request2.request)(&fn), makeSignature!HArgs, HArgs.stringof);
-}
-
 @("shall link two actors lifetime")
 unittest {
-    int count;
-    void countExits(ref Actor self, ExitMsg msg) @safe nothrow {
-        count++;
-        self.shutdown;
+    class LinkedActor {
+        int exited;
+
+        void foo(int x) @safe {
+        }
+
+        void onExit(ExitMsg msg) @safe {
+            exited++;
+        }
     }
 
-    auto aa1 = Actor(makeAddress2);
-    auto a1 = build(&aa1).set("foo1", (int x) {}).exitHandler(&countExits).finalize;
-    auto aa2 = Actor(makeAddress2);
-    auto a2 = build(&aa2).set("foo2", (int x) {}).exitHandler(&countExits).finalize;
+    auto aa1 = ActorShell(makeAddress);
+    auto a1 = new LinkedActor;
+    implActor(a1, &aa1);
+    auto aa2 = ActorShell(makeAddress);
+    auto a2 = new LinkedActor;
+    implActor(a2, &aa2);
 
-    a1.linkTo(a2.address);
-    a1.process(Clock.currTime);
-    a2.process(Clock.currTime);
+    linkTo(aa1.address, aa2.address);
+    aa1.process(Clock.currTime);
+    aa2.process(Clock.currTime);
 
-    assert(a1.isAlive);
-    assert(a2.isAlive);
+    assert(aa1.isAlive());
+    assert(aa2.isAlive());
 
-    sendExit(a1.address, ExitReason.userShutdown);
+    sendExit(aa1.address, ExitReason.kill);
     foreach (_; 0 .. 5) {
-        a1.process(Clock.currTime);
-        a2.process(Clock.currTime);
+        aa1.process(Clock.currTime);
+        aa2.process(Clock.currTime);
     }
 
-    assert(!a1.isAlive);
-    assert(!a2.isAlive);
-    assert(count == 2);
+    assert(!aa1.isAlive(), "the killed actor terminates");
+    assert(aa2.isAlive(), "receiving the exit message does not kill the linked actor");
+    assert(a1.exited == 1, "the killed actor ran its onExit hook");
+    assert(a2.exited == 1, "kill/exit propagated to the linked actor via onExit");
+
+    sendExit(aa2.address, ExitReason.kill);
+    foreach (_; 0 .. 5)
+        aa2.process(Clock.currTime);
+    assert(!aa2.isAlive(), "the survivor shuts down via the system message");
 }
 
 @("shall let one actor monitor the lifetime of the other one")
 unittest {
-    int count;
-    void downMsg(ref Actor self, DownMsg msg) @safe nothrow {
-        count++;
+    class MonitoringActor {
+        int downs;
+
+        void a1(int x) @safe {
+        }
+
+        void onDownMessage(DownMsg msg) @safe {
+            downs++;
+        }
     }
 
-    auto aa1 = Actor(makeAddress2);
-    auto a1 = build(&aa1).set("a1", (int x) {}).downHandler(&downMsg).finalize;
-    auto aa2 = Actor(makeAddress2);
-    auto a2 = build(&aa2).set("a2", (int x) {}).finalize;
+    class PlainActor {
+        void a2(int x) @safe {
+        }
+    }
 
-    a1.monitor(a2.address);
-    a1.process(Clock.currTime);
-    a2.process(Clock.currTime);
+    auto aa1 = ActorShell(makeAddress);
+    auto a1 = new MonitoringActor;
+    implActor(a1, &aa1);
+    auto aa2 = ActorShell(makeAddress);
+    auto a2 = new PlainActor;
+    implActor(a2, &aa2);
 
-    assert(a1.isAlive);
-    assert(a2.isAlive);
+    monitor(aa1.address, aa2.address);
+    aa1.process(Clock.currTime);
+    aa2.process(Clock.currTime);
 
-    sendExit(a2.address, ExitReason.userShutdown);
+    assert(aa1.isAlive());
+    assert(aa2.isAlive());
+
+    sendExit(aa2.address, ExitReason.userShutdown);
     foreach (_; 0 .. 5) {
-        a1.process(Clock.currTime);
-        a2.process(Clock.currTime);
+        aa1.process(Clock.currTime);
+        aa2.process(Clock.currTime);
     }
 
-    assert(a1.isAlive);
-    assert(!a2.isAlive);
-    assert(count == 1);
+    assert(aa1.isAlive());
+    assert(!aa2.isAlive());
+    assert(a1.downs == 1, "exactly one DownMsg delivered to the monitor");
+
+    sendExit(aa1.address, ExitReason.userShutdown);
+    foreach (_; 0 .. 5)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
-private struct BuildActor {
-    private Actor* actor;
-
-    Actor* finalize() @safe {
-        auto rval = actor;
-        actor = null;
-        return rval;
-    }
-
-    auto context(CtxT)(CtxT ctx) {
-        actor.setContext(cast(void*) new CtxT(ctx), &cleanupCtx!CtxT);
-        return BuildActorContext!CtxT(actor);
-    }
-
-    auto context(CtxT)(CtxT* ctx) {
-        actor.setContext(cast(void*) ctx, &cleanupCtx!CtxT);
-        return BuildActorContext!CtxT(actor);
-    }
-
-    auto errorHandler(ErrorHandler a) {
-        auto b = BuildActorContext!void(actor);
-        b.errorHandler(a);
-        return b;
-    }
-
-    auto downHandler_(DownHandler a) {
-        auto b = BuildActorContext!void(actor);
-        b.downHandler(a);
-        return b;
-    }
-
-    auto exitHandler_(ExitHandler a) {
-        auto b = BuildActorContext!void(actor);
-        b.exitHandler(a);
-        return b;
-    }
-
-    auto exceptionHandler_(ExceptionHandler a) {
-        auto b = BuildActorContext!void(actor);
-        b.exceptionHandler(a);
-        return b;
-    }
-
-    auto defaultHandler_(DefaultHandler a) {
-        auto b = BuildActorContext!void(actor);
-        b.defaultHandler(a);
-        return b;
-    }
-
-    auto set(BehaviorT)(string name, BehaviorT behavior)
-            if ((isFunction!BehaviorT || isFunctionPointer!BehaviorT)
-                && !is(ReturnType!BehaviorT == void)) {
-        auto b = BuildActorContext!void(actor);
-        b.set(name, behavior);
-        return b;
-    }
-
-    auto set(BehaviorT)(string name, BehaviorT behavior)
-            if ((isFunction!BehaviorT || isFunctionPointer!BehaviorT)
-                && is(ReturnType!BehaviorT == void)) {
-        auto b = BuildActorContext!void(actor);
-        b.set(name, behavior);
-        return b;
-    }
-}
-
-private struct BuildActorContext(CtxT = void) {
-    private Actor* actor;
-
-    Actor* finalize() @safe {
-        auto rval = actor;
-        actor = null;
-        return rval;
-    }
-
-    auto errorHandler(ErrorHandler a) {
-        actor.errorHandler = a;
-        return this;
-    }
-
-    auto downHandler(DownHandler a) {
-        actor.downHandler_ = a;
-        return this;
-    }
-
-    auto exitHandler(ExitHandler a) {
-        actor.exitHandler_ = a;
-        return this;
-    }
-
-    auto exceptionHandler(ExceptionHandler a) {
-        actor.exceptionHandler_ = a;
-        return this;
-    }
-
-    auto defaultHandler(DefaultHandler a) {
-        actor.defaultHandler_ = a;
-        return this;
-    }
-
-    auto set(BehaviorT)(string name, BehaviorT behavior)
-            if ((isFunction!BehaviorT || isFunctionPointer!BehaviorT)
-                && !is(ReturnType!BehaviorT == void)) {
-        auto act = makeRequest2!(BehaviorT, CtxT)(behavior);
-        actor.register(name, act.signature, act.request);
-        return this;
-    }
-
-    auto set(BehaviorT)(string name, BehaviorT behavior)
-            if ((isFunction!BehaviorT || isFunctionPointer!BehaviorT)
-                && is(ReturnType!BehaviorT == void)) {
-        auto act = makeAction2!(BehaviorT, CtxT)(behavior);
-        actor.register(name, act.signature, act.action);
-        return this;
-    }
-
-    auto set(BehaviorT, CtxT)(string name, BehaviorT behavior)
-            if ((isFunction!BehaviorT || isFunctionPointer!BehaviorT)
-                && is(ReturnType!BehaviorT == void)) {
-        auto act = makeAction2!(BehaviorT, CtxT)(behavior);
-        actor.register(name, act.signature, act.action);
-        return this;
-    }
-}
-
-package BuildActor build(Actor* a) @safe {
-    return typeof(return)(a);
-}
-
-/// Implement an actor.
-Actor* impl(Behavior...)(Actor* self, Behavior behaviors) {
-    import my.actor.msg : isCapture, Capture;
-
-    static if (Behavior.length > 1) {
-        static if (isCapture!(Behavior[0])) {
-            enum StartIdx = 1;
-            auto bactor = build(self).context(behaviors[0]);
-        } else {
-            auto bactor = build(self);
-            enum StartIdx = 0;
-        }
-    } else {
-        auto bactor = build(self);
-        enum StartIdx = 0;
-    }
-
-    static foreach (const i; StartIdx .. Behavior.length) {
-        {
-            alias b = Behavior[i];
-            static if (!(isFunction!(b) || isFunctionPointer!(b)))
-                static assert(0, "behavior may only be functions, not delgates: " ~ b.stringof);
-
-            bactor.set(Parameters!(b).stringof, behaviors[i]);
-        }
-    }
-
-    return bactor.finalize;
-}
-
-@("build dynamic actor from functions")
+@("shall build a class actor with void, string and tuple returning methods")
 unittest {
-    static void fn3(int s) @safe {
+    import my.actor.channel;
+
+    class Dyn {
+        void one(int s) @safe {
+        }
+
+        string two(int s) @safe {
+            return "foo";
+        }
+
+        Tuple!(int, string) three(const string s) @safe {
+            return typeof(return)(42, "hej");
+        }
     }
 
-    static string fn4(int s) @safe {
-        return "foo";
+    auto aa1 = ActorShell(makeAddress);
+    auto a1 = new Dyn;
+    implActor(a1, &aa1);
+
+    dynSend(aa1.address, "one", 1);
+    foreach (_; 0 .. 4)
+        aa1.process(Clock.currTime);
+    assert(aa1.addressRef.get.empty!Msg, "the void method ran");
+
+    Tuple!(int, string) r3;
+    static void onThree(ref Tuple!(Tuple!(int, string)*) ctx, int i, const string s) {
+        *ctx[0] = tuple(i, s);
     }
 
-    static Tuple!(int, string) fn5(const string s) @safe {
-        return typeof(return)(42, "hej");
-    }
+    dynRequest(&aa1, aa1.address, infTimeout, "three", "x").capture(&r3).then(&onThree);
+    foreach (_; 0 .. 4)
+        aa1.process(Clock.currTime);
+    assert(r3 == tuple(42, "hej"), "the tuple return round-tripped");
 
-    auto aa1 = Actor(makeAddress2);
-    auto a1 = build(&aa1).set("a1", &fn3).set("a1", &fn4).set("a1", &fn5).finalize;
+    sendExit(aa1.address, ExitReason.userShutdown);
+    int guard;
+    while (aa1.isAlive() && guard++ < 100)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
 @("shall copy and use the context in the actor")
 unittest {
+    import my.actor.channel;
+
     class AClassWithInnerPtr {
         int* v;
         this(int v) {
@@ -1470,23 +1354,37 @@ unittest {
         }
     }
 
-    bool tickCalled;
-    auto ctx = tuple!("inner", "tickCalled")(new AClassWithInnerPtr(42), &tickCalled);
-    alias CT = typeof(ctx);
+    class CtxActor {
+        AClassWithInnerPtr inner;
+        bool* tickCalled;
 
-    static void tick(ref CT ctx, int s) @safe {
-        assert(ctx.inner !is null);
-        assert(ctx.inner.v !is null);
-        assert(*ctx.inner.v == 42);
-        *ctx.tickCalled = true;
+        this(AClassWithInnerPtr inner, bool* tickCalled) @safe {
+            this.inner = inner;
+            this.tickCalled = tickCalled;
+        }
+
+        void tick(int s) @safe {
+            assert(inner !is null);
+            assert(inner.v !is null);
+            assert(*inner.v == 42);
+            *tickCalled = true;
+        }
     }
 
-    auto base = Actor(makeAddress2);
-    auto actor = build(&base).context(ctx).set("tick", &tick).finalize;
-    send(actor.address, 42);
+    bool tickCalled;
+    auto base = ActorShell(makeAddress);
+    auto actor = new CtxActor(new AClassWithInnerPtr(42), &tickCalled);
+    implActor(actor, &base);
+    dynSend(base.address, "tick", 42);
     foreach (_; 0 .. 10)
-        actor.process(Clock.currTime);
-    assert(ctx.tickCalled);
+        base.process(Clock.currTime);
+    assert(tickCalled);
+
+    sendExit(base.address, ExitReason.userShutdown);
+    int guard;
+    while (base.isAlive() && guard++ < 100)
+        base.process(Clock.currTime);
+    assert(!base.isAlive());
 }
 
 shared static this() {
@@ -1498,118 +1396,167 @@ shared static this() {
 
 @("shall receive the sent message")
 unittest {
+    import my.actor.channel;
+
+    class RecvActor {
+        bool* sendOk;
+        bool* shouldNeverHappen;
+
+        this(bool* sendOk, bool* shouldNeverHappen) @safe {
+            this.sendOk = sendOk;
+            this.shouldNeverHappen = shouldNeverHappen;
+        }
+
+        void actor(const string s) @safe {
+            *sendOk = true;
+        }
+
+        void actor(int s) @safe {
+            *shouldNeverHappen = true;
+        }
+    }
+
     bool sendOk;
-    static void fn1(ref Tuple!(bool*, "sendOk", bool*, "shouldNeverHappen") c, const string s) @safe {
-        *c.sendOk = true;
-    }
-
     bool shouldNeverHappen;
-    static void fn2(ref Tuple!(bool*, "sendOk", bool*, "shouldNeverHappen") c, int s) @safe {
-        *c.shouldNeverHappen = true;
-    }
+    auto aa1 = ActorShell(makeAddress);
+    auto actor = new RecvActor(&sendOk, &shouldNeverHappen);
+    implActor(actor, &aa1);
+    dynSend(aa1.address, "actor", "foo");
 
-    auto aa1 = Actor(makeAddress2);
-    auto actor = build(&aa1).context(capture(&sendOk, &shouldNeverHappen))
-        .set("actor", &fn1).set("actor", &fn2).finalize;
-    send(actor.address, "foo");
-
-    assert(actor.addressRef.get.empty!DelayedMsg);
-    assert(!actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    assert(aa1.addressRef.get.empty!DelayedMsg);
+    assert(!aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
     foreach (_; 0 .. 10)
-        actor.process(Clock.currTime);
+        aa1.process(Clock.currTime);
 
-    assert(actor.addressRef.get.empty!DelayedMsg);
-    assert(actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    assert(aa1.addressRef.get.empty!DelayedMsg);
+    assert(aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
-    actor.process(Clock.currTime);
-    actor.process(Clock.currTime);
+    aa1.process(Clock.currTime);
+    aa1.process(Clock.currTime);
 
-    assert(actor.addressRef.get.empty!DelayedMsg);
-    assert(actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    assert(aa1.addressRef.get.empty!DelayedMsg);
+    assert(aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
     assert(sendOk);
     assert(!shouldNeverHappen);
+
+    sendExit(aa1.address, ExitReason.userShutdown);
+    int guard;
+    while (aa1.isAlive() && guard++ < 100)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
 unittest {
+    import my.actor.channel;
+
+    class DelayActor {
+        bool* delayOk;
+        bool* delayShouldNeverHappen;
+
+        this(bool* delayOk, bool* delayShouldNeverHappen) @safe {
+            this.delayOk = delayOk;
+            this.delayShouldNeverHappen = delayShouldNeverHappen;
+        }
+
+        void actor(const string s) @safe {
+            *delayOk = true;
+        }
+
+        void actor(int s) @safe {
+            *delayShouldNeverHappen = true;
+        }
+    }
+
     bool delayOk;
-    static void fn1(ref Tuple!(bool*, "delayOk", bool*, "delayShouldNeverHappen") c, const string s) @safe {
-        *c.delayOk = true;
-    }
-
     bool delayShouldNeverHappen;
-    static void fn2(ref Tuple!(bool*, "delayOk", bool*, "delayShouldNeverHappen") c, int s) @safe {
-        *c.delayShouldNeverHappen = true;
-    }
+    auto aa1 = ActorShell(makeAddress);
+    auto actor = new DelayActor(&delayOk, &delayShouldNeverHappen);
+    implActor(actor, &aa1);
+    dynDelayedSend(aa1.address, Clock.currTime - 1.dur!"seconds", "actor", "foo");
+    dynDelayedSend(aa1.address, Clock.currTime + 1.dur!"hours", "actor", 42);
 
-    auto aa1 = Actor(makeAddress2);
-    auto actor = build(&aa1).context(capture(&delayOk, &delayShouldNeverHappen))
-        .set("actor", &fn1).set("actor", &fn2).finalize;
-    delayedSend(actor.address, Clock.currTime - 1.dur!"seconds", "foo");
-    delayedSend(actor.address, Clock.currTime + 1.dur!"hours", 42);
+    assert(!aa1.addressRef.get.empty!DelayedMsg);
+    assert(aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
-    assert(!actor.addressRef.get.empty!DelayedMsg);
-    assert(actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    aa1.process(Clock.currTime);
 
-    actor.process(Clock.currTime);
+    assert(!aa1.addressRef.get.empty!DelayedMsg);
+    assert(aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
-    assert(!actor.addressRef.get.empty!DelayedMsg);
-    assert(actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    aa1.process(Clock.currTime);
+    aa1.process(Clock.currTime);
 
-    actor.process(Clock.currTime);
-    actor.process(Clock.currTime);
-
-    assert(actor.addressRef.get.empty!DelayedMsg);
-    assert(actor.addressRef.get.empty!Msg);
-    assert(actor.addressRef.get.empty!Reply);
+    assert(aa1.addressRef.get.empty!DelayedMsg);
+    assert(aa1.addressRef.get.empty!Msg);
+    assert(aa1.addressRef.get.empty!Reply);
 
     assert(delayOk);
     assert(!delayShouldNeverHappen);
+
+    sendExit(aa1.address, ExitReason.userShutdown);
+    int guard;
+    while (aa1.isAlive() && guard++ < 100)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
 @("shall process a request->then chain xyz")
 @system unittest {
+    import my.actor.channel;
+
     // checking capture is correctly setup/teardown by using captured rc.
     auto rcReq = refCounted(42);
-    bool calledOk;
-    static string fn(ref Tuple!(bool*, "calledOk", RefCounted!int) ctx, const string s,
-            const string b) {
-        assert(2 == ctx[1].refCount);
-        if (s == "apa")
-            *ctx.calledOk = true;
-        return "foo";
+
+    class ReqActor {
+        bool* calledOk;
+        RefCounted!int rc;
+
+        this(bool* calledOk, RefCounted!int rc) @trusted {
+            this.calledOk = calledOk;
+            this.rc = rc;
+        }
+
+        string actor(const string s, const string b) @trusted {
+            assert(2 == rc.refCount);
+            if (s == "apa")
+                *calledOk = true;
+            return "foo";
+        }
     }
+
+    bool calledOk;
+    auto aa1 = ActorShell(makeAddress);
+    auto actor = new ReqActor(&calledOk, rcReq);
+    implActor(actor, &aa1);
 
     auto rcReply = refCounted(42);
     bool calledReply;
-    static void reply(ref Tuple!(bool*, "calledOk", RefCounted!int) ctx, const string s) {
+    static void reply(ref Tuple!(bool*, RefCounted!int) ctx, const string s) {
         *ctx[0] = s == "foo";
         assert(2 == ctx[1].refCount);
     }
 
-    auto aa1 = Actor(makeAddress2);
-    auto actor = build(&aa1).context(capture(&calledOk, rcReq)).set("actor", &fn).finalize;
-
     assert(2 == rcReq.refCount);
     assert(1 == rcReply.refCount);
 
-    actor.request(actor.address, infTimeout).send("apa", "foo")
-        .capture(&calledReply, rcReply).then(&reply);
+    auto chan = Channel!ReqActor(aa1.address, &aa1, infTimeout);
+    chan.actor("apa", "foo").capture(&calledReply, rcReply).then(&reply);
     assert(2 == rcReply.refCount);
 
-    assert(!actor.addr.get.empty!Msg);
-    assert(actor.addr.get.empty!Reply);
+    assert(!aa1.addr.get.empty!Msg);
+    assert(aa1.addr.get.empty!Reply);
 
     foreach (_; 0 .. 10)
-        actor.process(Clock.currTime);
-    assert(actor.addr.get.empty!Msg);
-    assert(actor.addr.get.empty!Reply);
+        aa1.process(Clock.currTime);
+    assert(aa1.addr.get.empty!Msg);
+    assert(aa1.addr.get.empty!Reply);
 
     assert(2 == rcReq.refCount);
     assert(1 == rcReply.refCount, "after the message is consumed the refcount should go back");
@@ -1617,13 +1564,17 @@ unittest {
     assert(calledOk);
     assert(calledReply);
 
-    actor.shutdown;
-    while (actor.isAlive)
-        actor.process(Clock.currTime);
+    sendExit(aa1.address, ExitReason.userShutdown);
+    int guard;
+    while (aa1.isAlive() && guard++ < 100)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
 @("shall process a request->then chain using promises")
 unittest {
+    import my.actor.channel;
+
     static struct A {
         string v;
     }
@@ -1632,22 +1583,32 @@ unittest {
         string v;
     }
 
-    int calledOk;
-    auto fn1p = makePromise!string;
-    static RequestResult!string fn1(ref Capture!(int*, "calledOk",
-            Promise!string, "fn1p", Promise!string, "fn2p") c, A a) @trusted {
-        if (a.v == "apa")
-            (*c.calledOk)++;
-        return typeof(return)(c.fn1p);
+    class PromiseActor {
+        int* calledOk;
+        Promise!string fn1p;
+        Promise!string fn2p;
+
+        this(int* calledOk, Promise!string fn1p, Promise!string fn2p) @safe {
+            this.calledOk = calledOk;
+            this.fn1p = fn1p;
+            this.fn2p = fn2p;
+        }
+
+        RequestResult!string actor(A a) @trusted {
+            if (a.v == "apa")
+                (*calledOk)++;
+            return typeof(return)(fn1p);
+        }
+
+        Promise!string actor(B a) {
+            (*calledOk)++;
+            return fn2p;
+        }
     }
 
+    int calledOk;
+    auto fn1p = makePromise!string;
     auto fn2p = makePromise!string;
-    static Promise!string fn2(ref Capture!(int*, "calledOk", Promise!string,
-            "fn1p", Promise!string, "fn2p") c, B a) {
-        writeln(5, " promise requeest");
-        (*c.calledOk)++;
-        return c.fn2p;
-    }
 
     int calledReply;
     static void reply(ref Tuple!(int*) ctx, const string s) {
@@ -1655,44 +1616,42 @@ unittest {
             *ctx[0] += 1;
     }
 
-    auto aa1 = Actor(makeAddress2);
-    auto actor = build(&aa1).context(capture(&calledOk, fn1p, fn2p))
-        .set("actor", &fn1).set("actor", &fn2).finalize;
+    auto aa1 = ActorShell(makeAddress);
+    auto actor = new PromiseActor(&calledOk, fn1p, fn2p);
+    implActor(actor, &aa1);
 
-    actor.request(actor.address, infTimeout).send(A("apa")).capture(&calledReply).then(&reply);
-    actor.request(actor.address, infTimeout).send(B("apa")).capture(&calledReply).then(&reply);
+    auto chan = Channel!PromiseActor(aa1.address, &aa1, infTimeout);
+    chan.actor(A("apa")).capture(&calledReply).then(&reply);
+    chan.actor(B("apa")).capture(&calledReply).then(&reply);
 
-    writeln(1);
     // process first request, which return a promise so calledReply should not be called
-    actor.process(Clock.currTime);
+    aa1.process(Clock.currTime);
     assert(calledOk == 1);
     assert(calledReply == 0);
 
     // by delivering an answer it is added to the actors mailbox
     fn1p.deliver("foo");
 
-    // but it shouldn't trigger until the actor proces
+    // but it shouldn't trigger until the actor processes
     assert(calledReply == 0);
 
-    writeln(2);
     // read the reply delivered by the promise fn1p
-    actor.process(Clock.currTime);
+    aa1.process(Clock.currTime);
     assert(calledOk == 2);
     assert(calledReply == 1);
 
     // by delivering the second answer to the actor the reply handler should again be called
     fn2p.deliver("foo");
 
-    writeln(3, " calledReply ", calledReply);
-    writeln(4, " ", fn2p.empty);
     foreach (_; 0 .. 3)
-        actor.process(Clock.currTime);
+        aa1.process(Clock.currTime);
     assert(calledReply == 2);
 
-    actor.shutdown;
-    while (actor.isAlive) {
-        actor.process(Clock.currTime);
-    }
+    sendExit(aa1.address, ExitReason.userShutdown);
+    int guard;
+    while (aa1.isAlive() && guard++ < 100)
+        aa1.process(Clock.currTime);
+    assert(!aa1.isAlive());
 }
 
 /// The timeout triggered.
@@ -1713,7 +1672,7 @@ enum ScopedActorError : ubyte {
     timeout,
     // the address where unable to process the received message
     unknownMsg,
-    // some type of fatal error occured.
+    // some type of fatal error occurred.
     fatal,
 }
 
@@ -1722,15 +1681,17 @@ enum ScopedActorError : ubyte {
  * `ScopedActor` is not thread safe.
  */
 struct ScopedActor {
-    import my.actor.typed : underlyingAddress, underlyingWeakAddress;
-
     private {
-        Actor actor;
+        ActorShell actor;
         ScopedActorError errSt;
+
+        /// Non-matching payloads retained for later receive calls (design
+        /// §3.B); survives across calls, entries cleared when dispatched.
+        Variant[] stash;
     }
 
     this(StrongAddress addr, string name) @safe {
-        actor = Actor(addr);
+        actor = ActorShell(addr);
         actor.name = name;
     }
 
@@ -1756,31 +1717,175 @@ struct ScopedActor {
         errSt = ScopedActorError.none;
     }
 
-    SRequestSend request(TAddress)(scope TAddress requestTo, SysTime timeout) @safe
-            if (isAddress!TAddress) {
+    auto dynRequest(TAddress, Args...)(scope TAddress requestTo, SysTime timeout,
+            string method, auto ref Args args) @safe if (isAddress!TAddress) {
         reset;
+        alias UArgs = staticMap!(Unqual, Args);
         auto rs = .request(() @trusted { return &actor; }(),
                 underlyingWeakAddress(requestTo), timeout);
-        return SRequestSend(() @trusted { return rs; }(), &this);
+        auto msg = () @trusted {
+            return Msg(methodSignature!UArgs(method),
+                    MsgType(MsgRequest(rs.self.addr.weakRef, rs.replyId,
+                        Variant(Tuple!UArgs(args)))));
+        }();
+        return SRequestSendThen(RequestSendThen(rs, msg), &this);
     }
 
-    private static struct SRequestSend {
-        RequestSend rs;
-        ScopedActor* self;
+    /// The address senders can target (design §3.B).
+    WeakAddress address() @safe nothrow scope {
+        return actor.addr.weakRef;
+    }
 
-        /// Copy constructor
-        this(ref return typeof(this) rhs) @safe pure nothrow @nogc {
-            rs = rhs.rs;
-            self = rhs.self;
+    /** Block until a message matching one of `handlers` arrives (design
+     * §3.B). A handler is a function or delegate `void f(P v)`; the first
+     * handler whose parameter type matches the message payload (mylib's
+     * exact `Unqual` rule, including the `makePayload` tuple box) is
+     * invoked.
+     *
+     * Non-matching messages are retained in the actor's stash and
+     * reconsidered, oldest first, by later receive calls. Only one thread
+     * may wait on an actor at a time — a receive inside another wait's
+     * handler is not supported. If the matching handler throws, its
+     * exception is rethrown at this wait point. */
+    void receive(Handlers...)(Handlers handlers) @safe {
+        () @trusted { receiveLoop(Duration.max, handlers); }();
+    }
+
+    /** Like `receive`, but returns `false` when `timeout` expires without
+     * a match (std-parity). */
+    bool receiveTimeout(Handlers...)(Duration timeout, Handlers handlers) @safe {
+        return () @trusted { return receiveLoop(timeout, handlers); }();
+    }
+
+    /// The wait loop shared by `receive` and `receiveTimeout` (design §3.B):
+    /// installs the dispatcher as the actor's default handler (restored on
+    /// exit), then scans the stash and pumps the mailbox until a handler
+    /// matches or the deadline expires. A throwing handler aborts the wait
+    /// and its exception is rethrown here.
+    private bool receiveLoop(Handlers...)(Duration timeout, Handlers handlers) @trusted {
+        auto hs = tuple(handlers);
+        auto ctx = new ReceiveDispatcher!(Handlers)(&this, &hs);
+        auto prev = actor.defaultHandler_;
+        actor.defaultHandler_ = &ctx.dispatch;
+        scope (exit)
+            actor.defaultHandler_ = prev;
+
+        Duration remaining = timeout;
+        SysTime prevTime = Clock.currTime;
+        uint backoff = 0;
+        while (true) {
+            // retained messages first (stale first)
+            if (ctx.scanStash) {
+                if (ctx.handlerError !is null)
+                    throw ctx.handlerError;
+                return true;
+            }
+
+            // pump the mailbox; the keep-alive mirrors SRequestSendThen.then
+            actor.process(Clock.currTime);
+            actor.state_ = ActorState.waiting;
+
+            if (ctx.matched) {
+                if (ctx.handlerError !is null)
+                    throw ctx.handlerError;
+                return true;
+            }
+
+            // Duration.max never expires: the subtraction stays positive.
+            remaining -= (Clock.currTime - prevTime);
+            prevTime = Clock.currTime;
+            if (remaining <= Duration.zero)
+                return false;
+
+            Thread.sleep(backoff.dur!"usecs");
+            backoff = min(backoff + 100, 20000);
+        }
+    }
+
+    /// Context for one blocking receive call (design §3.B): holds the
+    /// handlers tuple and per-call state, and manipulates the actor's
+    /// persistent `stash` so retained messages survive across calls.
+    private static class ReceiveDispatcher(Hs...) {
+        ScopedActor* self_;
+        Tuple!Hs* handlers;
+        bool matched;
+        Exception handlerError;
+
+        this(ScopedActor* self, Tuple!Hs* handlers) @safe nothrow @nogc {
+            this.self_ = self;
+            this.handlers = handlers;
         }
 
-        ~this() scope @safe {
+        /// Match `handler` against `msg`: parameter `P` accepts a payload
+        /// stored as `Unqual!P`, or (when `P` is not itself a tuple) the
+        /// `makePayload` box `Tuple!(Unqual!P)`. A throwing handler stores
+        /// its exception in `handlerError` instead of propagating it.
+        private static bool tryHandler(H)(H handler, ref Variant msg, ref Exception handlerError) @trusted nothrow {
+            alias P = Parameters!H[0];
+            P v;
+            bool found;
+            try {
+                if (auto p = msg.peek!(Unqual!P)) {
+                    v = cast(P)*p;
+                    found = true;
+                } else {
+                    static if (!is(Unqual!P : Tuple!U, U)) {
+                        if (auto t = msg.peek!(Tuple!(Unqual!P))) {
+                            v = cast(P)(*t).tupleof[0];
+                            found = true;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                return false;
+            }
+            if (!found)
+                return false;
+            try {
+                handler(v);
+            } catch (Exception e) {
+                handlerError = e;
+            }
+            return true;
         }
 
-        @disable this(this);
+        void dispatch(scope ref ActorShell self, ref Variant msg) @safe nothrow {
+            if (!matched) {
+                static foreach (i, H; Hs) {
+                    if (!matched && tryHandler!H((*handlers)[i], msg, handlerError))
+                        matched = true;
+                }
+            }
+            if (!matched) {
+                try {
+                    () @trusted { self_.stash ~= Variant(msg); }();
+                } catch (Exception e) {
+                }
+            }
+        }
 
-        SRequestSendThen send(Args...)(auto ref Args args) return scope @trusted {
-            return SRequestSendThen(.send(rs, args), self);
+        /// Scan the stash oldest first; dispatch the first handler match
+        /// and clear its entry.
+        bool scanStash() @safe nothrow {
+            for (size_t i = 0; i < self_.stash.length; ++i) {
+                bool hit;
+                static foreach (j, H; Hs) {
+                    if (!hit && tryHandler!H((*handlers)[j], self_.stash[i], handlerError)) {
+                        try {
+                            () @trusted {
+                                self_.stash = self_.stash[0 .. i] ~ self_.stash[i + 1 .. $];
+                            }();
+                        } catch (Exception e) {
+                        }
+                        hit = true;
+                    }
+                }
+                if (hit) {
+                    matched = true;
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -1802,10 +1907,10 @@ struct ScopedActor {
         @disable this(this);
 
         void dynIntervalSleep() scope @trusted {
-            // +100 usecs "feels good", magic number. current OS and
-            // implementation of message passing isn't that much faster than
-            // 100us. A bit slow behavior, ehum, for a scoped actor is OK. They
-            // aren't expected to be used for "time critical" sections.
+            // +100 usecs is a magic number that "feels good": current OS and
+            // message-passing implementation aren't much faster than 100us,
+            // and a bit slow behavior is OK for a scoped actor (not expected
+            // in time-critical sections).
             Thread.sleep(backoff.dur!"usecs");
             backoff = min(backoff + 100, 20000);
         }
@@ -1813,14 +1918,14 @@ struct ScopedActor {
         private static struct ValueCapture {
             ScopedActor* self;
 
-            void downHandler(scope ref Actor, scope DownMsg) @safe nothrow {
+            void downHandler(scope ref ActorShell, scope DownMsg) @safe nothrow {
                 try {
                     self.errSt = ScopedActorError.down;
                 } catch (Exception e) {
                 }
             }
 
-            void errorHandler(scope ref Actor, scope ErrorMsg msg) @safe nothrow {
+            void errorHandler(scope ref ActorShell, scope ErrorMsg msg) @safe nothrow {
                 try {
                     if (msg.reason == SystemError.requestTimeout)
                         self.errSt = ScopedActorError.timeout;
@@ -1830,7 +1935,7 @@ struct ScopedActor {
                 }
             }
 
-            void unknownMsgHandler(scope ref Actor a, ref Variant msg) @safe nothrow {
+            void unknownMsgHandler(scope ref ActorShell a, ref Variant msg) @safe nothrow {
                 logAndDropHandler(a, msg);
                 try {
                     self.errSt = ScopedActorError.unknownMsg;
@@ -1884,7 +1989,7 @@ struct ScopedActor {
 ScopedActor scopedActor(string file = __FILE__, uint line = __LINE__)() @safe {
     import std.format : format;
 
-    return ScopedActor(makeAddress2, format!"ScopedActor.%s:%s"(file, line));
+    return ScopedActor(makeAddress, format!"ScopedActor.%s:%s"(file, line));
 }
 
 @(
@@ -1892,17 +1997,27 @@ ScopedActor scopedActor(string file = __FILE__, uint line = __LINE__)() @safe {
 unittest {
     import my.actor.system;
 
-    auto sys = makeSystem;
+    static class ScopedTarget {
+        ActorRef self_;
 
-    auto a0 = sys.spawn((Actor* self) {
-        return impl(self, capture(self), (ref CSelf!() ctx, int x) {
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+        }
+
+        int slow(int x) @safe {
             Thread.sleep(50.dur!"msecs");
             return 42;
-        }, (ref CSelf!() ctx, double x) {}, (ref CSelf!() ctx, string x) {
-            ctx.self.shutdown;
+        }
+
+        int bye(string x) @safe {
+            sendExit(self_.address, ExitReason.kill);
             return 42;
-        });
-    });
+        }
+    }
+
+    auto sys = makeSystem;
+
+    auto a0 = sys.spawn!ScopedTarget;
 
     {
         auto self = scopedActor;
@@ -1910,7 +2025,8 @@ unittest {
         auto stopAt = Clock.currTime + 3.dur!"seconds";
         while (!excThrown && Clock.currTime < stopAt) {
             try {
-                self.request(a0, delay(1.dur!"nsecs")).send(42).then((int x) {});
+                self.dynRequest(a0, delay(1.dur!"nsecs"), "slow", 42).then((int x) {
+                });
             } catch (ScopedActorException e) {
                 excThrown = e.error == ScopedActorError.timeout;
             } catch (Exception e) {
@@ -1926,7 +2042,7 @@ unittest {
         auto stopAt = Clock.currTime + 3.dur!"seconds";
         while (!excThrown && Clock.currTime < stopAt) {
             try {
-                self.request(a0, delay(1.dur!"seconds")).send("hello").then((int x) {
+                self.dynRequest(a0, delay(1.dur!"seconds"), "bye", "hello").then((int x) {
                 });
             } catch (ScopedActorException e) {
                 excThrown = e.error == ScopedActorError.down;
@@ -1936,4 +2052,422 @@ unittest {
         }
         assert(excThrown, "detecting terminated actor did not trigger as expected");
     }
+}
+
+@("class actors can pass actor addresses as message arguments")
+unittest {
+    import my.actor.channel;
+
+    class Pinger {
+        ActorRef self_;
+        int helloBacks;
+
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+        }
+
+        void introduce(WeakAddress other) @safe {
+            dynSend(other, "remember", self_.address);
+        }
+
+        void helloBack() @safe {
+            helloBacks++;
+        }
+    }
+
+    class Echoer {
+        void remember(WeakAddress back) @safe {
+            dynSend(back, "helloBack");
+        }
+    }
+
+    auto aa1 = ActorShell(makeAddress);
+    auto pinger = new Pinger;
+    implActor(pinger, &aa1);
+    auto aa2 = ActorShell(makeAddress);
+    auto echoer = new Echoer;
+    implActor(echoer, &aa2);
+
+    // the first process runs onSpawn and stores the self handle.
+    aa1.process(Clock.currTime);
+    aa2.process(Clock.currTime);
+
+    dynSend(aa1.address, "introduce", aa2.address);
+    foreach (_; 0 .. 8) {
+        aa1.process(Clock.currTime);
+        aa2.process(Clock.currTime);
+    }
+
+    assert(pinger.helloBacks == 1, "the reply hop via the passed address landed");
+
+    sendExit(aa1.address, ExitReason.userShutdown);
+    sendExit(aa2.address, ExitReason.userShutdown);
+    int guard;
+    while ((aa1.isAlive() || aa2.isAlive()) && guard++ < 100) {
+        aa1.process(Clock.currTime);
+        aa2.process(Clock.currTime);
+    }
+    assert(!aa1.isAlive());
+    assert(!aa2.isAlive());
+}
+
+@("plain-class actors are shut down via sendExit, not handles")
+unittest {
+    static assert(!__traits(hasMember, ActorRef, "shutdown"),
+            "ActorRef has no shutdown member; use sendExit");
+
+    class Ping {
+        void ping() @safe {
+        }
+    }
+
+    auto kernel = ActorShell(makeAddress);
+    auto instance = new Ping;
+    implActor(instance, &kernel);
+    kernel.process(Clock.currTime);
+    assert(kernel.isAlive());
+
+    sendExit(kernel.address, ExitReason.userShutdown);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+    assert(!kernel.isAlive(), "the system exit message shuts the actor down");
+}
+
+@("launch hook runs once before the first message")
+unittest {
+    auto kernel = ActorShell(makeAddress);
+    string log;
+    kernel.launchHandler(() @safe { log ~= "launch;"; });
+    kernel.process(Clock.currTime);
+    kernel.process(Clock.currTime);
+    assert(log == "launch;", "launch runs exactly once, on the first process");
+}
+
+@("launch hook failures follow the normal actor error path")
+unittest {
+    auto kernel = ActorShell(makeAddress);
+    int handled;
+    kernel.exceptionHandler((scope ref ActorShell, scope Exception e) @safe nothrow{
+        handled++;
+    });
+    kernel.launchHandler(() @safe { throw new Exception("boom"); });
+    kernel.process(Clock.currTime);
+    assert(handled == 1, "the exception routed through exceptionHandler_");
+    kernel.process(Clock.currTime);
+    assert(handled == 1, "launch is not retried");
+}
+
+@("repeating tick: first fire at +interval, then re-arms on the fire time")
+unittest {
+    static class TickCounter {
+        int ticks;
+
+        void tick() @safe {
+            ticks++;
+        }
+    }
+
+    auto kernel = ActorShell(makeAddress);
+    auto a = new TickCounter;
+    implActor(a, &kernel);
+    auto selfRef = ActorRef(&kernel);
+
+    const I = 10.dur!"msecs";
+    auto t0 = Clock.currTime;
+    selfRef.scheduleRepeating(I, "tick");
+
+    kernel.process(t0);
+    kernel.process(t0 + I / 2);
+    kernel.process(t0 + I - 1.dur!"msecs");
+    assert(a.ticks == 0, "no fire before +interval (first fire is never immediate)");
+
+    kernel.process(t0 + I + 1.dur!"msecs");
+    assert(a.ticks == 1, "exactly one fire once +interval has passed");
+
+    // the re-arm is anchored on the fire time, not the schedule time.
+    kernel.process(t0 + 2 * I);
+    assert(a.ticks == 1, "no second fire before fire-time + interval");
+    kernel.process(t0 + 2 * I + 2.dur!"msecs");
+    assert(a.ticks == 2, "second fire at fire-time + interval");
+
+    sendExit(kernel.address, ExitReason.kill);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+    assert(!kernel.isAlive());
+}
+
+@("repeating tick: a throwing handler stops the repeat and fires onException")
+unittest {
+    static class ThrowingTick {
+        int fires;
+        int exceptions;
+
+        void tick() {
+            if (fires++ == 0)
+                throw new Exception("boom");
+        }
+
+        void onException(Exception e) @safe {
+            exceptions++;
+        }
+    }
+
+    auto kernel = ActorShell(makeAddress);
+    auto a = new ThrowingTick;
+    implActor(a, &kernel);
+    auto selfRef = ActorRef(&kernel);
+
+    const I = 10.dur!"msecs";
+    auto t0 = Clock.currTime;
+    selfRef.scheduleRepeating(I, "tick");
+
+    kernel.process(t0);
+    kernel.process(t0 + I + 1.dur!"msecs");
+    assert(a.fires == 1, "the first tick ran and threw");
+    assert(a.exceptions == 1, "the throw fired the onException hook");
+    assert(kernel.isAlive(), "a log-only onException does not shut the actor down");
+
+    // the repeat is stopped: no re-arm after a throwing handler.
+    foreach (const k; 1 .. 5) {
+        kernel.process(t0 + (k + 1) * I + 1.dur!"msecs");
+    }
+    assert(a.fires == 1, "no further tick fires after the throw");
+    assert(a.exceptions == 1, "no further onException");
+
+    sendExit(kernel.address, ExitReason.kill);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+    assert(!kernel.isAlive());
+}
+
+@("repeating tick: cancelTick from inside the handler stops the repeat")
+unittest {
+    static class SelfCancel {
+        int fires;
+        private ActorRef self_;
+
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+        }
+
+        void tick() {
+            fires++;
+            self_.cancelTick();
+        }
+    }
+
+    auto kernel = ActorShell(makeAddress);
+    auto a = new SelfCancel;
+    implActor(a, &kernel);
+    auto selfRef = ActorRef(&kernel);
+
+    const I = 10.dur!"msecs";
+    auto t0 = Clock.currTime;
+    selfRef.scheduleRepeating(I, "tick");
+
+    kernel.process(t0); // runs onSpawn, stages the entry
+    assert(a.fires == 0);
+
+    kernel.process(t0 + I + 1.dur!"msecs");
+    assert(a.fires == 1, "the first tick ran and cancelled the repeat");
+
+    foreach (const k; 2 .. 5) {
+        kernel.process(t0 + k * I + 1.dur!"msecs");
+    }
+    assert(a.fires == 1, "no fire after the in-handler cancelTick");
+
+    sendExit(kernel.address, ExitReason.kill);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+    assert(!kernel.isAlive());
+}
+
+@("repeating tick: a pending entry is dropped at shutdown, never firing")
+unittest {
+    static class TickCounter {
+        int ticks;
+
+        void tick() @safe {
+            ticks++;
+        }
+    }
+
+    auto kernel = ActorShell(makeAddress);
+    auto a = new TickCounter;
+    implActor(a, &kernel);
+    auto selfRef = ActorRef(&kernel);
+
+    const I = 10.dur!"msecs";
+    auto t0 = Clock.currTime;
+    selfRef.scheduleRepeating(I, "tick");
+
+    kernel.process(t0);
+    kernel.process(t0 + I + 1.dur!"msecs");
+    assert(a.ticks == 1, "one fire before the exit");
+
+    sendExit(kernel.address, ExitReason.kill);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+    assert(!kernel.isAlive());
+    // The shell's delayed tree is destroyed in cleanupDelayed and is not
+    // safe to inspect after shutdown; the observable pin is the fire count.
+    assert(a.ticks == 1, "no tick fire after the exit message");
+
+    // a later tick at a much later time cannot resurrect the entry.
+    kernel.process(Clock.currTime + 100.dur!"msecs");
+    assert(a.ticks == 1);
+}
+
+@system @("repeating tick: fires independently of mailbox activity (maxThroughput=1)")
+unittest {
+    import std.conv : to;
+    import std.parallelism : TaskPool;
+    import my.actor.system : SystemConfig;
+    import my.optional : some;
+
+    static class TickingActor {
+        private RefCounted!int ticks;
+        private ActorRef self_;
+
+        this(RefCounted!int counter) {
+            ticks = counter;
+        }
+
+        void onSpawn(ActorRef self) @safe {
+            self_ = self;
+            self_.scheduleRepeating(20.dur!"msecs", "tick");
+        }
+
+        void tick() {
+            ticks.get++;
+        }
+    }
+
+    // maxThroughput=1: a scheduled run consumes at most one message, so a
+    // tick that had to wait behind the mailbox for its own delivery would
+    // starve here. Direct dispatch must keep the cadence.
+    auto conf = SystemConfig.init;
+    conf.scheduler.maxThroughput = some(1uL);
+    auto sys = System(conf, new TaskPool(1), true);
+
+    auto counter = refCounted(0);
+    auto addr = sys.spawn!TickingActor(counter);
+
+    // ~25 ticks in 500msecs at 20msecs; allow a wide margin for scheduling
+    // jitter — the point is that the tick runs AT ALL under throughput=1.
+    const failAfter = Clock.currTime + 3.dur!"seconds";
+    while (counter.get < 3 && Clock.currTime < failAfter) {
+        Thread.sleep(10.dur!"msecs");
+    }
+    assert(counter.get >= 3,
+            "repeating tick should fire under maxThroughput=1 but got " ~ to!string(counter.get));
+    sys.shutdown;
+}
+
+@("ScopedActor.receive: handler dispatch + address-targeted send") unittest {
+    import my.actor.system;
+    import my.actor.channel;
+
+    static class Sender {
+        void go(WeakAddress to) {
+            dynSend(to, "hello", "world");
+        }
+    }
+
+    auto sup = scopedActor;
+    auto sys = makeSystem;
+    auto s = sys.spawn!Sender();
+    dynSend(s, "go", sup.address());
+    string got;
+    assert(sup.receiveTimeout(5.dur!"seconds", (string v) { got = v; }));
+    assert(got == "world");
+    sys.shutdown();
+}
+
+@("ScopedActor.receiveTimeout: false on deadline") unittest {
+    auto sup = scopedActor;
+    assert(!sup.receiveTimeout(50.dur!"msecs", (string s) { assert(false); }));
+}
+
+@("ScopedActor.receive: stash retains non-matching messages for later calls") unittest {
+    import my.actor.channel;
+
+    auto sup = scopedActor;
+    dynSend(sup.address(), "a", 42); // int payload — no handler in call 1
+    dynSend(sup.address(), "b", "text"); // string payload
+    string s1;
+    assert(sup.receiveTimeout(5.dur!"seconds", (string s) { s1 = s; }));
+    assert(s1 == "text");
+    int i1 = -1;
+    assert(sup.receiveTimeout(5.dur!"seconds", (int i) { i1 = i; }));
+    assert(i1 == 42);
+}
+
+@("ScopedActor.receive: sequential reuse with dynRequest") unittest {
+    import my.actor.system;
+
+    static class Target {
+        int sum(int a, int b) {
+            return a + b;
+        }
+    }
+
+    auto sup = scopedActor;
+    auto sys = makeSystem;
+    auto t = sys.spawn!Target();
+    assert(!sup.receiveTimeout(50.dur!"msecs", (string s) { assert(false); })); // wait times out
+    int got = -1;
+    sup.dynRequest(t, Clock.currTime + 5.dur!"seconds", "sum", 2, 3).then((int v) {
+        got = v;
+    });
+    assert(got == 5, "dynRequest must still work after receive calls");
+    sys.shutdown();
+}
+
+@("ScopedActor.receive: handler exceptions rethrow at the wait point") unittest {
+    import my.actor.channel;
+
+    auto sup = scopedActor;
+    dynSend(sup.address(), "x", "boom");
+    bool threw;
+    try {
+        sup.receiveTimeout(5.dur!"seconds", (string s) {
+            throw new Exception("handler boom");
+        });
+    } catch (Exception e) {
+        threw = e.msg == "handler boom";
+    }
+    assert(threw);
+}
+
+@("ScopedActor.receive: infinite wait (no timeout) returns on match") unittest {
+    import my.actor.channel;
+
+    auto sup = scopedActor;
+    dynSend(sup.address(), "m", "now");
+    string got;
+    sup.receive((string s) { got = s; });
+    assert(got == "now");
+}
+
+@("ScopedActor.receive: first matching handler wins across multiple handlers") unittest {
+    import my.actor.channel;
+
+    auto sup = scopedActor;
+    // dynSend boxes the payload as Variant(Tuple!(string)): the (string)
+    // handler matches via the box-unwrap path, the (Tuple!(string)) handler
+    // matches directly — the first one in the list must win.
+    dynSend(sup.address(), "m", "x");
+    string first;
+    bool secondHit;
+    sup.receiveTimeout(5.dur!"seconds", (string s) { first = s; }, (Tuple!(string) t) {
+        secondHit = true;
+    });
+    assert(first == "x");
+    assert(!secondHit, "the first matching handler must win");
 }
