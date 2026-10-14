@@ -9,7 +9,7 @@ import std.algorithm : filter;
 import std.range : ElementType, isOutputRange;
 
 struct Set(T) {
-    alias Type = void[0][T];
+    alias Type = ubyte[T];
     Type data;
 
     bool opBinaryRight(string op)(T key) if (op == "in") {
@@ -25,7 +25,7 @@ struct Set(T) {
     }
 
     void add(T value) @safe pure nothrow {
-        data[value] = (void[0]).init;
+        data[value] = 1;
     }
 
     void add(Set!T set) @safe pure nothrow {
@@ -34,12 +34,12 @@ struct Set(T) {
 
     void add(Type set) @safe pure nothrow {
         foreach (key; set.byKey)
-            data[key] = (void[0]).init;
+            data[key] = 1;
     }
 
     void add(Range)(Range r) @safe pure nothrow if (is(ElementType!Range == T)) {
         foreach (v; r)
-            data[v] = (void[0]).init;
+            data[v] = 1;
     }
 
     void remove(T value) {
