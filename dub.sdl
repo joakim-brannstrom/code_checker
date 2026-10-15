@@ -7,13 +7,15 @@ license "BSL-1.0"
 targetPath "build"
 
 dependency "mylib" version="~>1.0.3" default=true
-dependency "colorlog" version="~>0.0.11"  default=true
+dependency "colorlog" version="~>1.0.0"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
 dependency "compile_db" version="~>0.0.7" default=true
 dependency "miniorm" version="~>0.0.10" default=true
 dependency "dyaml" version="~>0.10.0"  default=true
 dependency "tinyendian" version="~>0.2.0"  default=true
 dependency "nusilly" version="~>1.0.0" default=true
+dependency "unit-threaded" version="~>2.1.9" default=true
+dependency "unit-threaded:runner" version="~>2.1.9" default=true
 
 configuration "application" {
     targetType "executable"
@@ -22,12 +24,29 @@ configuration "application" {
 configuration "unittest" {
     targetType "executable"
     targetName "code_checker_ut"
+    // update_ut.d also emits build/dub_test_root.d, which nusilly's silly.d
+    // (compiled with -unittest as a dependency source) requires. dub only
+    // generates it for test targets without a custom main; this project's
+    // unittest config has its own main (build/ut.d).
+    importPaths "build"
+    // silly.d (nusilly, compiled with -unittest into this binary)
+    // static-imports dub_test_root; nothing else imports it, so it must be
+    // listed explicitly or the link fails on its ModuleInfo.
+    sourceFiles "build/dub_test_root.d"
     mainSourceFile "build/ut.d"
     preBuildCommands "./update_ut.d build/ut.d"
     excludedSourceFiles "source/app.d"
 }
 
-// redirect testing which is primarily integration testing
+// Library configuration for the test project (test/dub.sdl): all
+// first-class configurations are executables, which dub does not compile
+// and link into dependents.
+configuration "library" {
+    targetType "library"
+    excludedSourceFiles "source/app.d"
+}
+
+// Runs test/redirect.d, whose main redirects testing to the test/ subdirectory.
 configuration "integration_test" {
     targetType "executable"
     targetName "integration_test"

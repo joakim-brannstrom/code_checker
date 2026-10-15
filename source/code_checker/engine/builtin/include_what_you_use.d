@@ -10,7 +10,6 @@ module code_checker.engine.builtin.include_what_you_use;
 
 import logger = std.experimental.logger;
 import std.array : appender, empty, array;
-import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
 import std.typecons : Tuple;
 
@@ -38,7 +37,7 @@ class IncludeWhatYouUse : BaseFixture {
         return "using iwyu (include what you use)";
     }
 
-    /// The environment the analyzers execute in.
+    /// The environment the analyzer executes in.
     override void putEnv(Environment v) {
         this.env = v;
     }
@@ -63,8 +62,77 @@ class IncludeWhatYouUse : BaseFixture {
     }
 
     override void execute() {
+        // Once-per-run semantics enforced, not assumed: a future multi-run
+        // registry would otherwise keep the first run's flag (mirrors
+        // clang_tidy.d).
+        logged_failure = false;
+
+        // The seed for the parallel run: iwyu's per-file merge only ever downgrades via
+        // mergeStatus(result_.status, Status.failed), so without this the
+        // merged result of a clean run stays Status.none and registry.d loses
+        // the "Congratulations!!!" for a passing run. clang-tidy's per-file
+        // merge seeds passed from the worker results instead; iwyu has no
+        // such write, so the seed must stay here.
         result_.status = Status.passed;
-        executeParallel(env, iwyuArgs, result_);
+
+        import my.actor.system : Config;
+        import my.actor.system : makeSystem;
+        import my.actor.utility.limiter : FlowControl;
+
+        import code_checker.engine.actor_engine : AnalyzerJob, ConsoleWriter, IwyuWorker,
+            JobCoordinator, ResultCollector, blockUntilReport, engineConcurrency;
+
+        // One System per analyzer run; scope (exit) shutdown drains the
+        // system.
+        auto sys = makeSystem();
+        scope (exit)
+            sys.shutdown();
+
+        // engineConcurrency(): one token per concurrently busy worker,
+        // minimum 1 - a 0-token limiter would hang the coordinator on a
+        // single-CPU host.
+        auto limiter = () @trusted {
+            return sys.spawn!FlowControl(engineConcurrency());
+        }();
+
+        // Detached placement: the writer drains its backlog on its own
+        // thread, and System.shutdown joins detached threads, so every
+        // per-file event is printed before execute() returns. A pooled
+        // writer would be killed with
+        // its queue undrained at shutdown.
+        auto writer = () @trusted {
+            return sys.spawn!(Config.detached, ConsoleWriter)();
+        }();
+
+        // The job is built on the driver thread. The collector's
+        // address is written into the job after its spawn: the collector
+        // copies the job struct at construction, and the coordinator reads
+        // the field only in start(job), dispatched by blockUntilReport -
+        // i.e. after the mutation.
+        AnalyzerJob job;
+        job.env = env;
+        job.args = iwyuArgs;
+        job.fileIncludeFilter = env.conf.staticCode.fileIncludeFilter;
+        job.fileExcludeFilter = env.conf.staticCode.fileExcludeFilter;
+        job.console = writer.weakRef;
+        job.limiter = limiter.weakRef;
+        job.mergeIwyu = &mergeIwyu;
+
+        auto collector = () @trusted {
+            return sys.spawn!(ResultCollector!(IwyuWork*))(job, writer.weakRef);
+        }();
+        job.collector = collector.weakRef;
+
+        auto coord = () @trusted {
+            return sys.spawn!(JobCoordinator!(IwyuWorker, IwyuWork*))();
+        }();
+
+        // `&sys` escapes the frame only for the duration of the helper (the
+        // contract: the system outlives the parked request), so the @safe
+        // escape check is bridged here like the spawns above.
+        result_ = () @trusted {
+            return blockUntilReport(&sys, coord.weakRef, collector.weakRef, job);
+        }();
     }
 
     override void tearDown() {
@@ -75,133 +143,51 @@ class IncludeWhatYouUse : BaseFixture {
     }
 }
 
-private:
+// TODO: refactor this so a global is not used by e.g. changing mergeIwyu.
+/// Set once the once-per-run "iwyu suggested improvements" message has been
+/// emitted. A module-level flag because mergeIwyu is a free function (the
+/// collector calls it through the job); the analyzer runs once per process,
+/// so this preserves the once-per-run behavior.
+private bool logged_failure;
 
-void executeParallel(Environment env, string[] iwyuArgs, ref Result result_) @safe {
-    import std.algorithm : copy, map, joiner;
-    import std.concurrency : thisTid, receiveTimeout;
-    import std.file : exists;
+/// Merge one iwyu file result into the aggregate run result.
+///
+/// Per-file console prints and file-sink logging live in the
+/// ConsoleWriter/collector in code_checker.engine.actor_engine. Runs on the
+/// ResultCollector actor's thread through the job's mergeIwyu function
+/// pointer.
+private void mergeIwyu(ref Result result_, IwyuResult res) @safe nothrow {
     import std.format : format;
-    import std.parallelism : task, TaskPool;
-    import code_checker.engine.compile_db;
-    import code_checker.engine.logger : Logger;
+    import code_checker.engine.types : Msg, MsgSeverity, Status, mergeStatus;
 
-    bool logged_failure;
-    auto logg = Logger(env.conf.logg.dir);
+    // seems like 2 also means OK.
+    const allIsOk = res.exitStatus == 0 || res.exitStatus == 2;
 
-    void collectResult(immutable(IwyuResult)* res_) @trusted nothrow {
-        import std.typecons : nullableRef;
-        import colorlog;
+    if (!allIsOk)
+        result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
 
-        auto res = nullableRef(cast() res_);
+    if (!allIsOk) {
+        result_.failed ~= res.file;
 
-        logger.infof("%s '%s'", "iwyu analyzing".color(Color.yellow)
-                .bg(Background.black), res.file).collectException;
-
-        // seems like 2 also means OK.
-        const allIsOk = res.exitStatus == 0 || res.exitStatus == 2;
-
-        if (!allIsOk)
-            result_.score -= res.exitStatus > 0 ? res.exitStatus : 0;
-
-        if (!allIsOk) {
-            result_.failed ~= res.file;
-            res.print;
-
-            if (env.conf.logg.toFile) {
-                try {
-                    const logFile = Path(res.file.toString ~ ".iwyu").AbsolutePath;
-                    logg.put(logFile, [res.output]);
-                } catch (Exception e) {
-                    logger.warning(e.msg).collectException;
-                    logger.warning("Unable to log to file").collectException;
-                }
-            }
-
-            if (!logged_failure) {
-                result_.msg ~= Msg(MsgSeverity.failReason, "iwyu suggested improvements");
-                logged_failure = true;
-            }
-
-            try {
-                result_.msg ~= Msg(MsgSeverity.improveSuggestion,
-                        format("iwyu: %s in %s", res.exitStatus, res.file));
-            } catch (Exception e) {
-                logger.warning(e.msg).collectException;
-                logger.warning("Unable to add user message to the result").collectException;
-            }
-
-            result_.status = mergeStatus(result_.status, Status.failed);
-        }
-    }
-
-    auto pool = new TaskPool;
-    scope (exit)
-        pool.finish;
-    ExpectedReplyCounter cond;
-
-    auto file_filter = ReFilter(env.conf.staticCode.fileIncludeFilter,
-            env.conf.staticCode.fileExcludeFilter);
-    auto fixedDb = toRange(env);
-
-    foreach (cmd; fixedDb) {
-        if (!exists(cmd.cmd.absoluteFile.toString)) {
-            result_.score -= 1000;
-            result_.msg ~= Msg(MsgSeverity.failReason, "iwyu where unable to find one of the specified files in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
-            continue;
-        } else if (!file_filter.match(cmd.cmd.absoluteFile)) {
-            continue;
+        if (!logged_failure) {
+            result_.msg ~= Msg(MsgSeverity.failReason, "iwyu suggested improvements");
+            logged_failure = true;
         }
 
-        cond.expected++;
+        try {
+            result_.msg ~= Msg(MsgSeverity.improveSuggestion,
+                    format("iwyu: %s in %s", res.exitStatus, res.file));
+        } catch (Exception e) {
+            logger.warning(e.msg).collectException;
+            logger.warning("Unable to add user message to the result").collectException;
+        }
 
-        immutable(IwyuWork)* w = () @trusted {
-            import std.path : relativePath;
-
-            auto args = appender!(string[])();
-            iwyuArgs.copy(args);
-            cmd.flags.cflags.copy(args);
-            cmd.flags
-                .includes
-                .map!(a => relativePath(a))
-                .map!(a => ["-I", a])
-                .joiner
-                .copy(args);
-            cmd.flags.systemIncludes.map!(a => ["-isystem", a]).joiner.copy(args);
-            args.put(cmd.cmd.absoluteFile);
-
-            return cast(immutable) new IwyuWork(args.data, cmd.cmd.absoluteFile);
-        }();
-
-        auto t = task!taskIwyu(thisTid, w);
-        pool.put(t);
-    }
-
-    while (cond.isWaitingForReplies) {
-        import core.time : dur;
-
-        () @trusted {
-            try {
-                if (receiveTimeout(1.dur!"seconds", &collectResult)) {
-                    cond.replies++;
-                }
-            } catch (Exception e) {
-                logger.error(e.msg);
-            }
-        }();
+        result_.status = mergeStatus(result_.status, Status.failed);
     }
 }
 
-struct ExpectedReplyCounter {
-    int expected;
-    int replies;
-
-    bool isWaitingForReplies() {
-        return replies < expected;
-    }
-}
-
-struct IwyuResult {
+/// The result of one include-what-you-use run.
+public struct IwyuResult {
     AbsolutePath file;
 
     /// Exit status from running iwyu.
@@ -220,33 +206,7 @@ struct IwyuResult {
     }
 }
 
-struct IwyuWork {
+public struct IwyuWork {
     string[] args;
     AbsolutePath file;
-}
-
-void taskIwyu(Tid owner, immutable IwyuWork* work_) nothrow @trusted {
-    import std.concurrency : send;
-    import code_checker.process;
-
-    IwyuWork* work = cast(IwyuWork*) work_;
-    auto rval = new IwyuResult;
-    rval.file = work.file;
-
-    try {
-        auto res = run(work.args);
-        rval.exitStatus = res.status;
-        rval.output = res.stdout ~ res.stderr;
-    } catch (Exception e) {
-        logger.warning(e.msg).collectException;
-    }
-
-    while (true) {
-        try {
-            owner.send(cast(immutable) rval);
-            break;
-        } catch (Exception e) {
-            logger.tracef("failed sending to: %s", owner).collectException;
-        }
-    }
 }
