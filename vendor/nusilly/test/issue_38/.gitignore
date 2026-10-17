@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/issue_38
+issue_38.so
+issue_38.dylib
+issue_38.dll
+issue_38.a
+issue_38.lib
+issue_38-test-*
+*.exe
+*.o
+*.obj
+*.lst

@@ -1,0 +1,12 @@
+# Editor config ripped from dlang repository : https://github.com/dlang/dlang.org/blob/master/.editorconfig
+root = true
+
+[*.{c,h,d,di,dd,ddoc,json,yml,sh}]
+end_of_line = lf
+indent_style = tab
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.d]
+dfmt_split_operator_at_line_end = true
+

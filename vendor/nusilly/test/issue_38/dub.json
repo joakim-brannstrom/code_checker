@@ -1,0 +1,16 @@
+{
+	"name": "issue_38",
+	"sourceFiles": ["issue_38.d", "../common.d"],
+	"importPaths": ["."],
+	"configurations": [
+		{
+			"name": "library"
+		},
+		{
+			"name": "unittest",
+			"dependencies": {
+				"silly": {"path": "../../"}
+			}
+		}
+	]
+}

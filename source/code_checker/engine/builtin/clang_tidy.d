@@ -8,18 +8,16 @@ This file contains an analyzer that uses clang-tidy.
 module code_checker.engine.builtin.clang_tidy;
 
 import logger = std.experimental.logger;
-import std.algorithm : copy, map, joiner, filter, among, max;
+import std.algorithm : copy, map, filter, among;
 import std.array : appender, array, empty;
-import std.concurrency : Tid, thisTid;
 import std.exception : collectException;
 import std.file : exists;
 import std.format : format;
 import std.path : buildPath;
 import std.process : spawnProcess, wait;
-import std.range : put, only, enumerate, chain;
+import std.range : put, enumerate;
 import std.typecons : Tuple;
-import std.datetime : Clock, SysTime;
-import core.time : dur, Duration;
+import std.datetime : SysTime;
 
 import colorlog;
 import my.path : AbsolutePath;
@@ -49,7 +47,7 @@ class ClangTidy : BaseFixture {
         return "using clang-tidy";
     }
 
-    /// The environment the analyzers execute in.
+    /// The environment the analyzer executes in.
     override void putEnv(Environment v) {
         this.env = v;
     }
@@ -89,154 +87,146 @@ class ClangTidy : BaseFixture {
         tidyArgs = app.data;
     }
 
-    /// Execute the analyzer.
     override void execute() {
+        // Once-per-run semantics enforced, not assumed: a future multi-run
+        // registry would otherwise keep the first run's flag.
+        logged_failure = false;
+
         if (env.conf.clangTidy.applyFixit || env.conf.clangTidy.applyFixitErrors) {
             executeFixit(env, tidyArgs, result_);
-        } else {
-            executeParallel(env, tidyArgs, result_);
+            return;
         }
+
+        // TODO: the code below should probably be generalized to avoid
+        // duplication between clang-tidy and iwyu.
+
+        import my.actor.system : Config;
+        import my.actor.system : makeSystem;
+        import my.actor.utility.limiter : FlowControl;
+
+        import code_checker.engine.actor_engine : AnalyzerJob, ClangTidyWorker, ConsoleWriter,
+            JobCoordinator, ResultCollector, blockUntilReport, engineConcurrency;
+
+        // One System per analyzer run; scope (exit) shutdown drains the
+        // system.
+        auto sys = makeSystem();
+        scope (exit)
+            sys.shutdown();
+
+        // engineConcurrency(): one token per concurrently busy worker,
+        // minimum 1 - a 0-token limiter would hang the coordinator on a
+        // single-CPU host.
+        auto limiter = () @trusted {
+            return sys.spawn!FlowControl(engineConcurrency());
+        }();
+
+        // Detached placement: the writer drains its backlog on its own
+        // thread, and System.shutdown joins detached threads, so every
+        // per-file event is printed before execute() returns. A pooled
+        // writer would be killed with
+        // its queue undrained at shutdown.
+        auto writer = () @trusted {
+            return sys.spawn!(Config.detached, ConsoleWriter)();
+        }();
+
+        // The job is built on the driver thread. The collector's
+        // address is written into the job after its spawn: the collector
+        // copies the job struct at construction, and the coordinator reads
+        // the field only in start(job), dispatched by blockUntilReport -
+        // i.e. after the mutation.
+        AnalyzerJob job;
+        job.env = env;
+        job.args = tidyArgs;
+        job.useColors = !env.conf.logg.toFile;
+        job.fileIncludeFilter = env.conf.staticCode.fileIncludeFilter;
+        job.fileExcludeFilter = env.conf.staticCode.fileExcludeFilter;
+        job.console = writer.weakRef;
+        job.limiter = limiter.weakRef;
+        job.mergeTidy = &mergeTidy;
+
+        auto collector = () @trusted {
+            return sys.spawn!(ResultCollector!(TidyWork*))(job, writer.weakRef);
+        }();
+        job.collector = collector.weakRef;
+
+        auto coord = () @trusted {
+            return sys.spawn!(JobCoordinator!(ClangTidyWorker, TidyWork*))();
+        }();
+
+        // `&sys` escapes the frame only for the duration of the helper (the
+        // contract: the system outlives the parked request), so the @safe
+        // escape check is bridged here like the spawns above.
+        result_ = () @trusted {
+            return blockUntilReport(&sys, coord.weakRef, collector.weakRef, job);
+        }();
     }
 
     /// Cleanup after analyze.
     override void tearDown() {
     }
 
-    /// Returns: the result of the analyzer.
     override Result result() {
         return result_;
     }
 }
 
-struct ExpectedReplyCounter {
-    int expected;
-    int replies;
+// TODO: refactor this so a global is not used by e.g. changing mergeTidy.
+/// Set once the once-per-run "clang-tidy warn about file(s)" message has
+/// been emitted. A module-level flag because mergeTidy is a free function
+/// (the collector calls it through the job); the analyzer runs once per
+/// process, so once-per-run is once-per-process.
+private bool logged_failure;
 
-    bool isWaitingForReplies() {
-        return replies < expected;
-    }
-}
-
-void executeParallel(Environment env, string[] tidyArgs, ref Result result_) @safe {
-    import core.time : dur;
-    import std.concurrency : Tid, thisTid, receiveTimeout;
+/// Merge one clang-tidy file result into the aggregate run result.
+///
+/// Per-file console prints and file-sink logging live in the
+/// ConsoleWriter/collector in code_checker.engine.actor_engine. Runs on the
+/// ResultCollector actor's thread through the job's mergeTidy function
+/// pointer.
+private void mergeTidy(ref Result result_, TidyResult res) @safe nothrow {
+    import std.exception : collectException;
     import std.format : format;
-    import std.parallelism : task, TaskPool;
-    import code_checker.engine.compile_db;
-    import code_checker.engine.logger : Logger;
+    import code_checker.engine.types : Msg, MsgSeverity, Status, mergeStatus;
+    import code_checker.process : exitCodeSegFault;
 
-    bool logged_failure;
-    auto logg = Logger(env.conf.logg.dir);
-    ExpectedReplyCounter cond;
-
-    void handleResult(immutable(TidyResult)* res_) @trusted nothrow {
-        import std.format : format;
-        import std.typecons : nullableRef;
-        import colorlog : Color, color, Background, Mode;
-        import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy;
-        import code_checker.process : exitCodeSegFault;
-
-        auto res = nullableRef(cast() res_);
-
-        logger.infof("%s/%s %s '%s'", cond.replies + 1, cond.expected,
-                "clang-tidy analyzed".color(Color.yellow).bg(Background.black), res.file)
-            .collectException;
-
-        result_.supp += res.suppressedWarnings;
-        foreach (a; res_.details.byKeyValue) {
-            if (auto d = a.key in result_.details)
-                *d ~= a.value;
-            else
-                result_.details[a.key] = a.value.dup;
-        }
-
-        if (res.clangTidyStatus == 0) {
-            if (res.toolFailed)
-                result_.analyzerFailed ~= res.file;
-            else if (res.timeout)
-                result_.timeout ~= res.file;
-            else
-                result_.success ~= res.file;
-        } else if (res.clangTidyStatus == exitCodeSegFault) {
-            res.print;
-            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy segfaulted for " ~ res.file);
-        } else {
-            result_.score += res.errors.score;
-            result_.failed ~= res.file;
-            res.print;
-
-            if (env.conf.logg.toFile) {
-                try {
-                    logg.put(res.file, [res.output]);
-                } catch (Exception e) {
-                    logger.warning(e.msg).collectException;
-                    logger.warning("Unable to log to file").collectException;
-                }
-            }
-
-            if (!logged_failure) {
-                result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy warn about file(s)");
-                logged_failure = true;
-            }
-
-            try {
-                result_.msg ~= Msg(MsgSeverity.improveSuggestion,
-                        format("clang-tidy: %-(%s, %) in %s", res.errors.toRange, res.file));
-            } catch (Exception e) {
-                logger.warning(e.msg).collectException;
-                logger.warning("Unable to add user message to the result").collectException;
-            }
-        }
-
-        // by treating a segfault as OK it wont block a pull request. this may be a bad idea....
-        result_.status = mergeStatus(result_.status, res.clangTidyStatus.among(0,
-                exitCodeSegFault) ? Status.passed : Status.failed);
+    result_.supp += res.suppressedWarnings;
+    foreach (a; res.details.byKeyValue) {
+        if (auto d = a.key in result_.details)
+            *d ~= a.value;
+        else
+            result_.details[a.key] = a.value.dup;
     }
 
-    auto pool = new TaskPool;
-    scope (exit)
-        pool.finish;
+    if (res.clangTidyStatus == 0) {
+        if (res.toolFailed)
+            result_.analyzerFailed ~= res.file;
+        else if (res.timeout)
+            result_.timeout ~= res.file;
+        else
+            result_.success ~= res.file;
+    } else if (res.clangTidyStatus == exitCodeSegFault) {
+        result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy segfaulted for " ~ res.file);
+    } else {
+        result_.score += res.errors.score;
+        result_.failed ~= res.file;
 
-    auto file_filter = ReFilter(env.conf.staticCode.fileIncludeFilter,
-            env.conf.staticCode.fileExcludeFilter);
-    auto fixedDb = toRange(env);
+        if (!logged_failure) {
+            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy warn about file(s)");
+            logged_failure = true;
+        }
 
-    foreach (p; fixedDb) {
-        if (!exists(p.cmd.absoluteFile.toString)) {
-            result_.status = Status.failed;
-            result_.score -= 100;
-            result_.msg ~= Msg(MsgSeverity.failReason, "clang-tidy where unable to find " ~ p.cmd.absoluteFile.toString ~ " in compile_commands.json on the filesystem. Your compile_commands.json is probably out of sync. Regenerate it.");
-            break;
-        } else if (!file_filter.match(p.cmd.absoluteFile)) {
-            if (logger.globalLogLevel == logger.LogLevel.all)
-                result_.msg ~= Msg(MsgSeverity.trace,
-                        format("Skipping analyze because it didn't pass the file filter (user supplied regex): %s ",
-                            p.cmd.absoluteFile));
-        } else {
-            cond.expected++;
-
-            immutable(TidyWork)* w = () @trusted {
-                return cast(immutable) new TidyWork(tidyArgs, p.cmd.absoluteFile,
-                        !env.conf.logg.toFile, env.conf.staticCode.fileExcludeFilter,
-                        env.conf.staticCode.fileIncludeFilter, cond.expected % 2 == 0,
-                        Clock.currTime);
-            }();
-            auto t = task!taskTidy(thisTid, w);
-            pool.put(t);
+        try {
+            result_.msg ~= Msg(MsgSeverity.improveSuggestion,
+                    format("clang-tidy: %-(%s, %) in %s", res.errors.toRange, res.file));
+        } catch (Exception e) {
+            logger.warning(e.msg).collectException;
+            logger.warning("Unable to add user message to the result").collectException;
         }
     }
 
-    while (cond.isWaitingForReplies) {
-        () @trusted {
-            try {
-                if (receiveTimeout(1.dur!"seconds", &handleResult)) {
-                    cond.replies++;
-                }
-            } catch (Exception e) {
-                logger.error(e.msg);
-            }
-        }();
-    }
+    // by treating a segfault as OK it wont block a pull request. this may be a bad idea....
+    result_.status = mergeStatus(result_.status, res.clangTidyStatus.among(0,
+            exitCodeSegFault) ? Status.passed : Status.failed);
 }
 
 /// Run clang-tidy to fix the code.
@@ -328,130 +318,6 @@ struct TidyWork {
     string[] fileIncludeFilter;
     bool reduceOnOverload;
     SysTime workQueued;
-}
-
-void taskTidy(Tid owner, immutable TidyWork* work_) nothrow @trusted {
-    import core.thread : Thread;
-    import core.time : dur;
-    import std.concurrency : send;
-    import std.format : format;
-    import std.parallelism : totalCPUs;
-    import code_checker.engine.builtin.clang_tidy_classification : mapClangTidy,
-        mapClangTidyStats, DiagMessage, StatMessage, color;
-
-    auto tres = new TidyResult;
-    TidyWork* work = cast(TidyWork*) work_;
-
-    void sleepUntilNotOverloaded() {
-        import code_checker.utility : osAverageLoad;
-        import std.algorithm : max;
-        import std.random : uniform;
-
-        if (!work_.reduceOnOverload)
-            return;
-
-        // progressively shorten the max wait time until it is <0 after two
-        // hours. After two hours the users probably just want to push through
-        // even if it overloads the system.
-        const maxWait = 1.dur!"minutes" - ((Clock.currTime - work_.workQueued)
-                .total!"minutes" / 2).dur!"seconds";
-        if (maxWait < Duration.zero)
-            return;
-
-        const maxWaitTime = Clock.currTime + maxWait;
-        const int maxLoadLimit = totalCPUs + 1;
-        while (osAverageLoad()[0] > maxLoadLimit && Clock.currTime < maxWaitTime) {
-            Thread.sleep(uniform(1, 60).dur!"seconds");
-            logger.tracef("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
-                    osAverageLoad[0], maxLoadLimit);
-        }
-    }
-
-    void sendToOwner() {
-        while (true) {
-            try {
-                owner.send(cast(immutable) tres);
-                break;
-            } catch (Exception e) {
-                logger.tracef("failed sending to: %s", owner).collectException;
-            }
-        }
-    }
-
-    ReFilter file_filter;
-    try {
-        file_filter = ReFilter(work.fileIncludeFilter, work.fileExcludeFilter);
-    } catch (Exception e) {
-        logger.error(e.msg).collectException;
-        tres.clangTidyStatus = -1;
-        sendToOwner;
-        return;
-    }
-
-    try {
-        // there may be warnings that are skipped. If all warnings are skipped
-        // the counter is zero and the result is an automatic pass: all the
-        // warnings were from excluded files.
-        int count_errors;
-
-        bool diagMsg(ref DiagMessage msg) {
-            if (!file_filter.match(msg.file))
-                return false;
-
-            auto d = Detail(Msg(MsgSeverity.trace, msg.diagnostic), msg.severity, msg.kind, msg.pos);
-            tres.details.update(AbsolutePath(msg.file), { return [d]; }, (ref Detail[] a) {
-                a ~= d;
-            });
-
-            count_errors++;
-            tres.errors.put(msg.severity);
-            if (work.useColors)
-                msg.diagnostic = format("%s[%s]", msg.fullToolOutput, color(msg.severity));
-            else
-                msg.diagnostic = format("%s[%s]", msg.fullToolOutput, msg.severity);
-            return true;
-        }
-
-        void statMsg(StatMessage msg) {
-            tres.suppressedWarnings = msg.nolint;
-            tres.errors.setSuppressed(msg.nolint);
-        }
-
-        tres.file = work.p;
-
-        sleepUntilNotOverloaded();
-        auto res = runClangTidy(work.args, work.p);
-
-        auto app = appender!(string[])();
-        mapClangTidy!diagMsg(res.stdout, app);
-
-        mapClangTidyStats!statMsg(res.stderr);
-
-        // clang-tidy returns exit status '0' and warnings when it runs successfully.
-
-        if (count_errors != 0) {
-            tres.clangTidyStatus = 1;
-        } else if (res.timeout) {
-            // a timeout is not an error to the user thus use a clean exit status.
-            tres.clangTidyStatus = 0;
-            tres.timeout = res.timeout;
-        } else if (res.status != 0 && count_errors != 0) {
-            // happens when there is e.g. a compilation error and warnings
-            tres.clangTidyStatus = res.status;
-        } else if (res.status != 0 && count_errors == 0) {
-            // the tool reported error but no errors were found thus the user
-            // can't actually do anything.
-            tres.toolFailed = true;
-            tres.clangTidyStatus = 0;
-        }
-
-        res.stderr.copy(app);
-        tres.output = app.data;
-    } catch (Exception e) {
-        logger.warning(e.msg).collectException;
-    }
-
-    sendToOwner;
 }
 
 struct ClangTidyConstants {
@@ -673,7 +539,7 @@ void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config co
     // ExcludeHeaderFilterRegex pair is substituted, not just the first
     // match, and pending filters are appended at the end of the mapping.
     // The rebuilt pair list is assigned back to the root as a fresh mapping
-    // node, which replaces the old line-based output state machine.
+    // node.
     Node[] newKeys;
     Node[] newValues;
     bool checksKeyPresent;
@@ -739,8 +605,8 @@ void writeClangTidyConfig(AbsolutePath baseConf, AbsolutePath outFile, Config co
     // and a wrapped double-quoted scalar trips the upstream scanner bug that
     // eats commas before a newline (dyaml 0.10.0, scanner.d)
     dumper.textWidth = 1_000_000;
-    // no %YAML version directive in the generated file (the old generator
-    // wrote none); the --- document-start line remains for a mapping root
+    // no %YAML version directive in the generated file; the ---
+    // document-start line remains for a mapping root
     dumper.YAMLVersion = null;
     dumper.dump(buf, root);
     write(outFile, buf.data);
@@ -1233,7 +1099,7 @@ unittest {
     auto entries = checksOf(checksNode);
     entries[0].shouldEqual("-*");
     (entries.length > 1).shouldBeTrue;
-    // The single quote no longer blocks the substitution.
+    // The single quote does not block the substitution.
     root["HeaderFilterRegex"].as!string.shouldEqual("foo'bar");
 }
 

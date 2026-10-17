@@ -1,0 +1,24 @@
+{
+	"authors": [
+		"Anton Fediushin",
+		"Luna Nielsen"
+	],
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "sourceLibrary"
+		}
+	],
+	"copyright": "Copyright © 2018-2019, Anton Fediushin, Copyright © 2025, Kitsunebi Games",
+	"description": "Better test runner for D",
+	"importPaths": [
+		"."
+	],
+	"license": "ISC",
+	"name": "nusilly",
+	"sourceFiles": [
+		"silly.d"
+	],
+	"targetType": "sourceLibrary",
+	"version": "1.0.0"
+}

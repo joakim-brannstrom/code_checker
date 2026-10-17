@@ -1,31 +1,31 @@
 {
+	"configurations": [
+		{
+			"targetType": "library",
+			"name": "library"
+		}
+	],
 	"authors": [
 		"Joakim Brännström"
 	],
-	"configurations": [
-		{
-			"name": "library",
-			"targetType": "library"
-		}
-	],
-	"copyright": "Copyright © 2019, Joakim Brännström",
-	"dependencies": {
-		"mylib": {
-			"default": true,
-			"optional": true,
-			"version": "~>0.0.45"
-		}
-	},
-	"description": "parse compile_commands.json",
-	"importPaths": [
-		"source/"
-	],
 	"license": "MPL-2",
+	"targetPath": "build",
+	"copyright": "Copyright © 2019, Joakim Brännström",
 	"name": "compile_db",
 	"sourcePaths": [
 		"source/"
 	],
-	"targetPath": "build",
+	"description": "parse compile_commands.json",
+	"dependencies": {
+		"mylib": {
+			"default": true,
+			"version": "~>1.0.1",
+			"optional": true
+		}
+	},
 	"targetType": "library",
-	"version": "0.0.6"
+	"version": "0.0.7",
+	"importPaths": [
+		"source/"
+	]
 }

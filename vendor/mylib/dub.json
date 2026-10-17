@@ -2,49 +2,46 @@
 	"authors": [
 		"Joakim Brännström"
 	],
-	"configurations": [
-		{
-			"dflags": [
-				"-preview=dip1008",
-				"-preview=dip1000"
-			],
-			"name": "default",
-			"targetType": "library"
-		},
-		{
-			"name": "nodip",
-			"targetType": "library"
-		},
-		{
-			"dependencies": {
-				"silly": "~>1.0.2"
-			},
-			"dflags-dmd": [
-				"-preview=dip1008",
-				"-preview=dip1000",
-				"-verrors=context"
-			],
-			"dflags-ldc": [
-				"--verrors-context"
-			],
-			"name": "unittest",
-			"targetType": "library",
-			"versions": [
-				"mylib_actor_trace"
-			]
-		}
-	],
-	"copyright": "Copyright © 2019, Joakim Brännström",
-	"description": "A library collection of algorithms and data structures for personal use",
-	"importPaths": [
-		"source/"
-	],
 	"license": "BSL-1.0",
+	"targetPath": "build",
+	"copyright": "Copyright © 2019, Joakim Brännström",
 	"name": "mylib",
 	"sourcePaths": [
 		"source/"
 	],
-	"targetPath": "build",
+	"description": "A library collection of algorithms and data structures for personal use",
+	"importPaths": [
+		"source/"
+	],
 	"targetType": "library",
-	"version": "0.0.45"
+	"version": "1.0.3",
+	"configurations": [
+		{
+			"targetType": "library",
+			"name": "default"
+		},
+		{
+			"targetType": "library",
+			"versions": [
+				"mylib_actor_trace"
+			],
+			"name": "actor_trace"
+		},
+		{
+			"dflags-dmd": [
+				"-verrors=context"
+			],
+			"dependencies": {
+				"nusilly": "~>1.0.0"
+			},
+			"targetType": "library",
+			"dflags-ldc": [
+				"--verrors-context"
+			],
+			"versions": [
+				"mylib_actor_trace"
+			],
+			"name": "unittest"
+		}
+	]
 }
