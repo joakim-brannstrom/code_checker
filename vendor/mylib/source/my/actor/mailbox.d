@@ -5,6 +5,7 @@ Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module my.actor.mailbox;
 
+import core.sync.condition : Condition;
 import core.sync.mutex : Mutex;
 import std.datetime : SysTime;
 import std.sumtype;
@@ -56,9 +57,20 @@ struct DelayedMsg {
     Msg msg;
     SysTime triggerAt;
 
+    /// Repeating self-tick entry (see `ActorShell.scheduleRepeating`): the
+    /// shell dispatches it directly on fire and re-arms it at +interval.
+    bool repeating;
+
+    /// Schedule generation of a repeating entry; stale entries (the shell's
+    /// generation was bumped by a re-schedule or `cancelTick`) are dropped
+    /// without dispatch when they come due.
+    ulong seq;
+
     this(ref return DelayedMsg a) @trusted {
         msg = a.msg;
         triggerAt = a.triggerAt;
+        repeating = a.repeating;
+        seq = a.seq;
     }
 
     this(const ref return DelayedMsg a) inout @safe {
@@ -68,12 +80,57 @@ struct DelayedMsg {
     @disable this(this);
 }
 
+/** Per-thread mark for "this thread is executing `ActorShell.process`",
+ * i.e. it is an actor worker. Lets a full bounded mailbox drop the
+ * message of a worker instead of blocking it — blocking a pool worker
+ * while the only thread that could free a mailbox slot may itself be
+ * stuck is the deadlock the bound exists to prevent.
+ *
+ * Reference counted: `process()` is re-entrant on one thread (the
+ * scoped actor request loop), and a mark must survive inner exits. */
+private ulong actorWorkerDepth_;
+
+/// True while the calling thread is inside `ActorShell.process` (i.e. it is
+/// an actor worker). Reference counted: true while at least one `process()`
+/// frame is on this thread's stack.
+package bool isActorWorker() @safe nothrow @nogc {
+    return actorWorkerDepth_ > 0;
+}
+
+/// Push or pop the actor-worker mark for the calling thread. `process()`
+/// is re-entrant on one thread (the scoped actor request loop), so the
+/// mark is a per-thread depth: set at each `process()` entry, cleared only
+/// when the outermost frame exits.
+package void setActorWorker(bool active) @safe nothrow @nogc {
+    if (active)
+        actorWorkerDepth_++;
+    else if (actorWorkerDepth_ > 0)
+        actorWorkerDepth_--;
+}
+
 struct Address {
     private {
         // If the actor that use the address is active and processing messages.
         bool open_;
         ulong id_;
         Mutex mtx;
+
+        // Bounded incoming mailbox (see README, "Bounded mailbox"): 0 =
+        // unbounded (default). Installed by `spawnBounded` before the actor
+        // is scheduled, so no message can outrun the bound.
+        size_t mailboxBound_;
+
+        // Messages dropped by the full-mailbox policy (worker senders only).
+        ulong dropped_;
+
+        // Wakes a non-actor sender blocked on a full bounded queue when a
+        // slot frees or the address shuts down. Lazily created by
+        // `setMailboxBound` — unbounded addresses pay nothing for it.
+        // Managed reference, not a raw pointer: the address roots it for
+        // its whole lifetime. A raw pointer to a heap-allocated Condition
+        // dangles once the GC scavenges it — notify/wait on the freed
+        // object segfaulted the bounded-mailbox tests (task 12).
+        Condition mailboxCond_;
     }
 
     package {
@@ -112,6 +169,10 @@ struct Address {
         try {
             synchronized (mtx) {
                 open_ = false;
+                // Wake non-actor senders blocked on a full bounded queue:
+                // the address is closed, their put must return.
+                if (mailboxCond_ !is null)
+                    () @trusted { mailboxCond_.notifyAll; }();
                 incoming.teardown((ref Msg a) { a.type = MsgType.init; });
                 sysMsg.teardown((ref SystemMsg a) { a = SystemMsg.init; });
                 delayed.teardown((ref DelayedMsg a) { a.msg.type = MsgType.init; });
@@ -127,9 +188,27 @@ struct Address {
             if (!open_)
                 return false;
 
-            static if (is(T : Msg))
+            static if (is(T : Msg)) {
+                if (mailboxBound_ == 0 || incoming.length < mailboxBound_)
+                    return incoming.put(msg);
+
+                // The bounded incoming mailbox is full. An actor worker must
+                // never block here: it holds a pool slot, and the only thread
+                // that could free a slot may itself be a worker — blocking
+                // would exhaust the pool and deadlock. Drop it instead.
+                if (isActorWorker()) {
+                    dropped_++;
+                    return false;
+                }
+
+                // A non-actor sender (supervisor thread, test main) may
+                // block until a slot frees or the address shuts down.
+                while (open_ && incoming.length >= mailboxBound_)
+                    mailboxCond_.wait;
+                if (!open_)
+                    return false;
                 return incoming.put(msg);
-            else static if (is(T : SystemMsg))
+            } else static if (is(T : SystemMsg))
                 return sysMsg.put(msg);
             else static if (is(T : DelayedMsg))
                 return delayed.put(msg);
@@ -145,7 +224,15 @@ struct Address {
             static if (is(T : Msg)) {
                 if (!open_)
                     return incoming.PopReturnType.init;
-                return incoming.pop;
+                // Bounded queue: the pop is the moment a slot frees — wake
+                // non-actor senders inside the pop's critical section (no
+                // lost wakeup). Unbounded keeps the plain pop. The Item is
+                // returned directly: binding it to a local first would let
+                // the local's destructor null the popped slot before the
+                // caller's copy could read it.
+                if (mailboxBound_ == 0)
+                    return incoming.pop;
+                return incoming.popNotifying(mailboxCond_);
             } else static if (is(T : SystemMsg)) {
                 if (!open_)
                     return sysMsg.PopReturnType.init;
@@ -209,6 +296,33 @@ struct Address {
 
     package void setClosed() @safe pure nothrow @nogc {
         open_ = false;
+    }
+
+    /** Install the bounded-incoming-mailbox bound (see README,
+     * "Bounded mailbox"). Called by `System.spawnBounded` before the actor
+     * is scheduled — no other thread can observe the address yet, so no
+     * synchronization is needed. `bound <= 0` leaves the mailbox unbounded. */
+    package void setMailboxBound(size_t bound) @safe {
+        if (bound > 0 && mailboxBound_ == 0) {
+            mailboxBound_ = bound;
+            mailboxCond_ = new Condition(mtx);
+        }
+    }
+
+    /// Bound installed by `spawnBounded` (0 = unbounded).
+    @property public size_t mailboxBound() @safe {
+        return mailboxBound_;
+    }
+
+    /// Number of messages dropped on the full bounded-incoming-mailbox path
+    /// (always 0 for unbounded addresses).
+    @property public ulong dropped() @safe {
+        try {
+            synchronized (mtx)
+                return dropped_;
+        } catch (Exception e) {
+        }
+        return dropped_;
     }
 }
 
@@ -282,6 +396,43 @@ struct StrongAddress {
     }
 }
 
-StrongAddress makeAddress2() @safe {
+/// An address that carries the actor's type: the result of `spawn!T`.
+/// Holding it lets `Channel!I` verify at compile time that the actor class
+/// implements `I`; erase explicitly (`.weakRef`) when the type must travel
+/// untyped (message payloads, dynamic sends).
+struct TypedAddress(T) {
+    private StrongAddress addr_;
+
+    /// Wrap an address of a known actor type (normally done by `spawn!T`).
+    this(StrongAddress addr) @safe nothrow @nogc {
+        this.addr_ = addr;
+    }
+
+    /// Strong form of the address.
+    @property StrongAddress addr() @safe nothrow @nogc {
+        return addr_;
+    }
+
+    /// Weak form — use it when the address travels, or for dynamic sends.
+    @property WeakAddress weakRef() @safe nothrow {
+        return addr_.weakRef;
+    }
+
+    /// True when the address is unset.
+    @property bool empty() @safe pure nothrow const @nogc scope {
+        return addr_.empty;
+    }
+
+    bool opCast(B : bool)() @safe nothrow const @nogc {
+        return cast(bool) addr_;
+    }
+}
+
+/// `true` when `T` is a `TypedAddress!U`.
+template isTypedAddress(T) {
+    enum isTypedAddress = is(T : TypedAddress!U, U);
+}
+
+StrongAddress makeAddress() @safe {
     return StrongAddress(new Address(new Mutex));
 }

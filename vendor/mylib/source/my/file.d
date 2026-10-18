@@ -167,7 +167,6 @@ void copyRecurse(Path src, Path dst) {
 /// Make a file executable by all users on the system.
 void setExecutable(Path p) nothrow {
     import core.sys.posix.sys.stat;
-    import std.file : getAttributes, setAttributes;
 
     uint attrs;
     if (getAttrs(p, attrs)) {
@@ -175,14 +174,25 @@ void setExecutable(Path p) nothrow {
     }
 }
 
-/// Check if a file is executable.
+/// Check if a path has the execute bit set.
 bool isExecutable(Path p) nothrow {
     import core.sys.posix.sys.stat;
-    import std.file : getAttributes;
 
     uint attrs;
     if (getAttrs(p, attrs)) {
         return (attrs & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0;
+    }
+    return false;
+}
+
+/// Check if the user has read/writee permission to path.
+bool isReadWrite(Path p) nothrow {
+    import core.sys.posix.sys.stat;
+
+    uint attrs;
+    if (getAttrs(p, attrs)) {
+        return (attrs & (S_IRUSR | S_IRGRP | S_IROTH)) != 0
+            && (attrs & (S_IWUSR | S_IWGRP | S_IWOTH)) != 0;
     }
     return false;
 }

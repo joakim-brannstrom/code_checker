@@ -1,25 +1,20 @@
 /**
-Copyright: Copyright (c) 2021, Joakim Brännström. All rights reserved.
+Copyright: Copyright (c) Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 */
 module my.actor.msg;
 
 import logger = std.logger;
-import std.meta : staticMap, AliasSeq;
-import std.traits : Unqual, Parameters, isFunction, isFunctionPointer;
+import std.traits : isFunction, isFunctionPointer;
 import std.typecons : Tuple, tuple;
-import std.variant : Variant;
 
 public import std.datetime : SysTime, Duration, dur;
 
 import my.actor.mailbox;
-import my.actor.common : ExitReason, makeSignature, SystemError;
-import my.actor.actor : Actor, makeReply2, makePromise, ErrorHandler, Promise, RequestResult;
+import my.actor.common : ExitReason, SystemError;
+import my.actor.actor : ActorShell, makeReply2, ErrorHandler;
 import my.actor.system_msg;
-import my.actor.typed : isTypedAddress, isTypedActor, isTypedActorImpl,
-    typeCheckMsg, ParamsToTuple, ReturnToTupleOrVoid,
-    underlyingActor, underlyingAddress, underlyingTypedAddress, underlyingWeakAddress;
 
 SysTime infTimeout() @safe pure nothrow {
     return SysTime.max;
@@ -31,12 +26,44 @@ SysTime timeout(Duration d) @safe nothrow {
     return Clock.currTime + d;
 }
 
-/// Code looks better if it says delay when using delayedSend.
+/// Alias of `timeout` so delayed-send call sites read as `delay(...)`.
 alias delay = timeout;
 
-enum isActor(T) = is(T == Actor*) || isTypedActor!T || isTypedActorImpl!T;
+enum isActor(T) = is(T == ActorShell*);
 enum isAddress(T) = is(T == WeakAddress) || is(T == StrongAddress) || isTypedAddress!T;
-enum isDynamicAddress(T) = is(T == WeakAddress) || is(T == StrongAddress);
+
+/// Convert any supported address form to a `StrongAddress`.
+package StrongAddress underlyingAddress(T)(scope T address) @safe
+        if (is(T == ActorShell*) || is(T == StrongAddress)
+            || is(T == WeakAddress) || isTypedAddress!T) {
+    static StrongAddress toStrong(scope WeakAddress wa) @safe {
+        if (auto a = wa.lock)
+            return a;
+        return StrongAddress.init;
+    }
+
+    static if (is(T == ActorShell*))
+        return address.addressRef;
+    else static if (is(T == WeakAddress))
+        return toStrong(address);
+    else static if (isTypedAddress!T)
+        return address.addr;
+    else
+        return address;
+}
+
+package WeakAddress underlyingWeakAddress(T)(scope T x) @safe
+        if (is(T == ActorShell*) || is(T == StrongAddress)
+            || is(T == WeakAddress) || isTypedAddress!T) {
+    static if (is(T == ActorShell*))
+        return x.address;
+    else static if (is(T == StrongAddress))
+        return x.weakRef;
+    else static if (isTypedAddress!T)
+        return x.weakRef;
+    else
+        return x;
+}
 
 /** Link the lifetime of `self` to the actor using `sendTo`.
  *
@@ -68,14 +95,14 @@ void unlinkTo(AddressT0, AddressT1)(AddressT0 self, AddressT1 sendTo) @safe
     auto self_ = underlyingAddress(self);
     auto addr = underlyingAddress(sendTo);
 
-    // do NOT check if the addresses exist becuase it doesn't matter. Just
+    // do NOT check if the addresses exist because it doesn't matter. Just
     // remove the link.
 
     sendSystemMsg(self_, UnlinkRequest(addr.weakRef));
     sendSystemMsg(addr, UnlinkRequest(self_.weakRef));
 }
 
-/** Actor `self` will receive a `DownMsg` when `sendTo` shutdown.
+/** ActorShell `self` will receive a `DownMsg` when `sendTo` shutdown.
  *
  * `DownMsg` triggers `downHandler`.
  */
@@ -116,15 +143,6 @@ package void sendSystemMsg(AddressT, T)(scope AddressT sendTo, scope T msg) @saf
         addr.put(SystemMsg(msg));
 }
 
-/// Trigger the message in the future.
-void delayedSend(AddressT, Args...)(AddressT sendTo, SysTime delayTo, auto ref Args args) @trusted
-        if (is(AddressT == WeakAddress) || is(AddressT == StrongAddress) || is(AddressT == Actor*)) {
-    alias UArgs = staticMap!(Unqual, Args);
-    if (auto addr = underlyingAddress(sendTo).get)
-        addr.put(DelayedMsg(Msg(makeSignature!UArgs,
-                MsgType(MsgOneShot(Variant(Tuple!UArgs(args))))), delayTo));
-}
-
 void sendExit(AddressT)(AddressT sendTo, const ExitReason reason) @safe
         if (isAddress!AddressT) {
     import my.actor.system_msg : SystemExitMsg;
@@ -132,16 +150,8 @@ void sendExit(AddressT)(AddressT sendTo, const ExitReason reason) @safe
     sendSystemMsg(sendTo, SystemExitMsg(reason));
 }
 
-// TODO: add verification that args do not have interior pointers
-void send(AddressT, Args...)(AddressT sendTo, auto ref Args args) @trusted
-        if (isDynamicAddress!AddressT || is(AddressT == Actor*)) {
-    alias UArgs = staticMap!(Unqual, Args);
-    if (auto addr = underlyingAddress(sendTo).get)
-        addr.put(Msg(makeSignature!UArgs, MsgType(MsgOneShot(Variant(Tuple!UArgs(args))))));
-}
-
 package struct RequestSend {
-    Actor* self;
+    ActorShell* self;
     WeakAddress requestTo;
     SysTime timeout;
     ulong replyId;
@@ -170,24 +180,8 @@ package struct RequestSendThen {
 }
 
 RequestSend request(ActorT)(ActorT self, WeakAddress requestTo, SysTime timeout)
-        if (is(ActorT == Actor*)) {
+        if (is(ActorT == ActorShell*)) {
     return RequestSend(self, requestTo, timeout, self.nextReplyId);
-}
-
-RequestSendThen send(Args...)(RequestSend r, auto ref Args args) {
-    alias UArgs = staticMap!(Unqual, Args);
-
-    auto replyTo = r.self.addr.weakRef;
-
-    // dfmt off
-    auto msg = () @trusted {
-        return Msg(
-        makeSignature!UArgs,
-        MsgType(MsgRequest(replyTo, r.replyId, Variant(Tuple!UArgs(args)))));
-    }();
-    // dfmt on
-
-    return () @trusted { return RequestSendThen(r, msg); }();
 }
 
 private struct ThenContext(CtxT, Captures...) {
@@ -213,11 +207,11 @@ package void thenUnsafe(T, CtxT = void)(scope RequestSendThen r, T handler,
         return;
     }
 
-    // TODO: compiler bug? how can SysTime be inferred to being scoped?
+    // TODO: compiler bug? how can SysTime be inferred as scoped?
     SysTime timeout = () @trusted { return r.rs.timeout; }();
 
     // first register a handler for the message.
-    // this order ensure that there is always a handler that can receive the message.
+    // this order ensures that there is always a handler that can receive the message.
 
     () @safe {
         auto reply = makeReply2!(T, CtxT)(handler);
@@ -227,7 +221,6 @@ package void thenUnsafe(T, CtxT = void)(scope RequestSendThen r, T handler,
         r.rs.self.register(desc, r.rs.replyId, timeout, reply, onError);
     }();
 
-    // then send it
     requestTo.put(r.msg);
 }
 
@@ -236,79 +229,10 @@ void then(T, CtxT = void)(scope RequestSendThen r, T handler, ErrorHandler onErr
     thenUnsafe!(T, CtxT)(r, handler, null, onError);
 }
 
-void send(T, Args...)(T sendTo, auto ref Args args)
-        if ((isTypedAddress!T || isTypedActorImpl!T) && typeCheckMsg!(T, void, Args)) {
-    send(underlyingAddress(sendTo), args);
-}
-
-void delayedSend(T, Args...)(T sendTo, SysTime delayTo, auto ref Args args)
-        if ((isTypedAddress!T || isTypedActorImpl!T) && typeCheckMsg!(T, void, Args)) {
-    delayedSend(underlyingAddress(sendTo), delayTo, args);
-}
-
-private struct TypedRequestSend(TAddress) {
-    alias TypeAddress = TAddress;
-    RequestSend rs;
-}
-
-TypedRequestSend!TAddress request(TActor, TAddress)(ref TActor self, TAddress sendTo,
-        SysTime timeout)
-        if (isActor!TActor && (isTypedActorImpl!TAddress || isTypedAddress!TAddress)) {
-    return typeof(return)(.request(underlyingActor(self), underlyingWeakAddress(sendTo), timeout));
-}
-
-private struct TypedRequestSendThen(TAddress, Params_...) {
-    alias TypeAddress = TAddress;
-    alias Params = Params_;
-    RequestSendThen rs;
-
-    /// Copy constructor
-    this(ref return scope typeof(this) rhs) {
-        rs = rhs.rs;
-    }
-}
-
-auto send(TR, Args...)(scope TR tr, auto ref Args args)
-        if (is(TR == TypedRequestSend!TAddress, TAddress)) {
-    return TypedRequestSendThen!(TR.TypeAddress, Args)(send(tr.rs, args));
-}
-
-void then(TR, T, CtxT = void)(scope TR tr, T handler, ErrorHandler onError = null)
-        if ((isFunction!T || isFunctionPointer!T) && is(TR : TypedRequestSendThen!(TAddress,
-            Params), TAddress, Params...) && typeCheckMsg!(TAddress,
-            ParamsToTuple!(Parameters!T), Params)) {
-    then(tr.rs, handler, onError);
-}
-
-private struct TypedThenContext(TR, CtxT, Captures...) {
-    import my.actor.actor : checkRefForContext, checkMatchingCtx;
-
-    TR r;
-    CtxT* ctx;
-
-    void then(T)(T handler, ErrorHandler onError = null)
-            if ((isFunction!T || isFunctionPointer!T) && typeCheckMsg!(TR.TypeAddress,
-                ParamsToTuple!(Parameters!T[1 .. $]), TR.Params)) {
-        // better error message for the user by checking in the body instead of
-        // the constraint because the constraint gagges the static assert
-        // messages.
-        checkMatchingCtx!(Parameters!T[0], CtxT);
-        checkRefForContext!handler;
-        .thenUnsafe!(T, CtxT)(r.rs, handler, cast(void*) ctx, onError);
-        ctx = null;
-    }
-}
-
 alias Capture(T...) = Tuple!T;
 enum isCapture(T) = is(T == Tuple!U, U);
-enum isFirstParamCtx(Fn, CtxT) = is(Parameters!Fn[0] == CtxT);
 
-/// Convenient function for capturing the actor itself when spawning.
-alias CSelf(T = Actor*) = Capture!(T, "self");
-
-auto capture(T...)(auto ref T args)
-        if (!is(T[0] == RequestSendThen)
-            && !is(T[0] == TypedRequestSendThen!(TAddress, Params), TAddress, Params...)) {
+auto capture(T...)(auto ref T args) if (!is(T[0] == RequestSendThen)) {
     static if (T.length == 1 && isCapture!(T[0])) {
         return args[0];
     } else {
@@ -325,19 +249,6 @@ auto capture(Captures...)(RequestSendThen r, auto ref Captures captures) {
     } else {
         auto ctx = new Tuple!Captures(captures);
         return ThenContext!(Tuple!Captures, Captures)(r, ctx);
-    }
-}
-
-auto capture(TR, Captures...)(TR r, auto ref Captures captures)
-        if (is(TR : TypedRequestSendThen!(TAddress, Params), TAddress, Params...)) {
-    static if (Captures.length == 1 && isCapture!(Captures[0])) {
-        alias CtxT = Captures[0];
-        auto ctx = new CtxT;
-        *ctx = captures;
-        return TypedThenContext!(TR, CtxT, Captures)(r, ctx);
-    } else {
-        auto ctx = new Tuple!Captures(captures);
-        return TypedThenContext!(TR, Tuple!Captures, Captures)(r, ctx);
     }
 }
 
@@ -362,7 +273,7 @@ unittest {
         int v;
     }
 
-    { // common user pattern when there is uncertainty of what "capture()" do
+    { // common user pattern when there is uncertainty of what "capture()" does
         auto userValues = tuple!("aint", "aclass", "astruct", "ainner")(42,
                 new AClass(42), AStruct(42), new AClassWithInnerPtr(42));
         auto userCtx = capture(userValues);

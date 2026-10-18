@@ -16,9 +16,14 @@ __dummy.html
 *.lst
 __test__*__
 
+build_test.log
+
 # rust
 target/
 
 # python
 *.pyc
 
+
+# environment-specific dependency selections (path-based; see git history)
+dub.selections.json
