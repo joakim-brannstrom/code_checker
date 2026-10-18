@@ -7,7 +7,7 @@ module test_toml_config;
 
 import config;
 
-@("shall load all sections from the TOML config and successfully execute")
+@("loads all sections from the TOML config and executes successfully")
 unittest {
     auto ta = makeTestArea;
     mkdir(ta.inSandboxPath("db"));
@@ -19,15 +19,15 @@ unittest {
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
 
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
     foreach (l; res.output.splitLines) {
-        l.canFind("Unknown key").shouldBeFalse;
+        assert(!l.canFind("Unknown key"));
     }
 
-    ta.inSandboxPath("mydb.sqlite3").exists.shouldBeTrue;
+    assert(ta.inSandboxPath("mydb.sqlite3").exists);
 }
 
-@("shall exclude files based on the regex from the config file")
+@("excludes files based on the regex from the config file")
 unittest {
     auto ta = makeTestArea;
     copy(buildPath(testData, "conf", "file_filter", "exclude_a_file.toml"),
@@ -44,37 +44,37 @@ unittest {
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
 
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 }
 
-@("shall run the generate command before reading the DB")
+@("runs the generate command before reading the DB")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "gen_db_cmd"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace", "-c", "gen_cmd.toml"]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 }
 
-@("shall log the output from a failed command to generate a compile commands DB to the user")
+@("logs the output from a failed command to generate a compile commands DB to the user")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "fail_gen_db_cmd"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace", "-c", "gen_cmd.toml"]);
-    res.status.shouldEqual(1);
+    assert(res.status == 1);
 
-    res.output.splitLines.any!(a => a.canFind("--workdir")).shouldBeTrue;
-    res.output.splitLines.any!(a => a.canFind("error: exit 1")).shouldBeTrue;
+    assert(res.output.splitLines.any!(a => a.canFind("--workdir")));
+    assert(res.output.splitLines.any!(a => a.canFind("error: exit 1")));
 }
 
-@("shall use the user specified compiler to determine system includes")
+@("uses the user specified compiler to determine system includes")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "specify_system_compiler"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     foreach (l; res.output.splitLines) {
         if (l.canFind(`Compiler:./fake_cc.d flags: -isystem /foo/bar`))
@@ -82,10 +82,10 @@ unittest {
     }
 
     // no -isystem /foo/bar found
-    shouldBeTrue(false);
+    assert(false);
 }
 
-@("shall only execute the specified analyser iwyu when checking")
+@("only executes the specified analyser iwyu when checking")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "specify_analysers"), ta.sandboxPath);
@@ -96,30 +96,30 @@ unittest {
     }
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     foreach (l; res.output.splitLines) {
         if (l.canFind(`staticCode: using iwyu`))
             return;
-        l.canFind(`staticCode: using iwyu`).shouldBeFalse;
+        assert(!l.canFind(`staticCode: using iwyu`));
     }
 
     // failed
-    shouldBeTrue(false);
+    assert(false);
 }
 
-@("shall generate a new config file from the default settings when called with --init")
+@("generates a new config file from the default settings when called with --init")
 unittest {
     auto ta = makeTestArea;
 
     auto res = ta.exec([appPath, "--verbose", "trace", "--init"]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     ".*system_conf.*=.*code_checker/default.toml".regexIn(
             File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
 }
 
-@("shall generate a new config file from a custom template when called with --init")
+@("generates a new config file from a custom template when called with --init")
 unittest {
     auto ta = makeTestArea;
 
@@ -127,12 +127,12 @@ unittest {
         appPath, "--verbose", "trace", "--init", "--init-template",
         buildPath(testData, "conf", "default_conf", "my_conf_template.toml")
     ]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     ".*foo.imp.*".regexIn(File(ta.inSandboxPath(".code_checker.toml")).byLineCopy.array);
 }
 
-@("shall use the compiler flag filter from the config when analyzing a file")
+@("uses the compiler flag filter from the config when analyzing a file")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "compiler_filter"), ta.sandboxPath);
@@ -142,13 +142,13 @@ unittest {
     auto res = ta.exec([
         appPath, "--verbose", "trace", "-c", "code_checker.toml"
     ]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     ".*mremove-dummy=foobar.*".regexNotIn(
             File(ta.inSandboxPath("compile_commands.json")).byLineCopy.array);
 }
 
-@("shall dedup files for analyze")
+@("dedups files for analyze")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "dedup"), ta.sandboxPath);
@@ -158,7 +158,7 @@ unittest {
     auto res = ta.exec([
         appPath, "--verbose", "trace", "-c", "code_checker.toml"
     ]);
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 
     int cnt;
     foreach (l; res.output.splitLines) {
@@ -166,10 +166,10 @@ unittest {
             cnt++;
     }
 
-    cnt.shouldEqual(2);
+    assert(cnt == 2);
 }
 
-@("shall read binary path from env variable in config")
+@("reads the binary path from the env variable in config")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "conf", "binary_from_env"), ta.sandboxPath);
@@ -180,6 +180,6 @@ unittest {
         appPath, "--verbose", "trace", "-c", "code_checker.toml"
     ], env);
 
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
     ".*fake_code_checker.*".regexIn(res.output.splitLines);
 }

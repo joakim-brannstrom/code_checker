@@ -112,8 +112,7 @@ interface IResultCollector {
 
     /// Driver → collector: has every expected result arrived? The reply
     /// carries the merged Result report - the analyzer's aggregate; the
-    /// registry merges it into its TotalResult and logs the summary
-    /// (registry code unchanged).
+    /// registry merges it into its TotalResult and logs the summary.
     /// A report() that arrives before begin() parks the requester until
     /// begin() + the fileDone messages complete (the driver can send its
     /// report() request before the coordinator's begin()).
@@ -430,8 +429,8 @@ final class JobCoordinator(Worker, Payload) : IJobCoordinator {
             const maxLoadLimit = totalCPUs + 1;
             while (osAverageLoad[0] > maxLoadLimit && Clock.currTime < maxWaitTime) {
                 const backoff = uniform(1, 60).dur!"seconds";
-                // Same user-visible signal as the original's per-wait trace: the only output during a load-shed
-                // wait of up to ~2 h.
+                // The only user-visible output during a load-shed wait of up
+                // to ~2 h.
                 logger.tracef("Average load too high, waiting to start the next clang-tidy instance. %s > %s",
                         osAverageLoad[0], maxLoadLimit);
                 dynDelayedSend(self_.address, delay(backoff), "CheckLoadMsg");
@@ -1005,10 +1004,9 @@ in (sys !is null, "the caller's system owns the pooled actors' lifetime") {
 /// returns the token to the limiter and self-exits (the userShutdown exit
 /// rides the default exit handler since the worker defines no `onExit` hook).
 ///
-/// The load-shedding sleep (`sleepUntilNotOverloaded`)
-/// is NOT here: the coordinator's fan-out loop gates on the load average
-/// before taking the token and spawning (the gateOpen check), so a spawned
-/// worker never waits.
+/// No load-shedding sleep in the worker: the coordinator's fan-out loop
+/// gates on the load average before taking the token and spawning (the
+/// gateOpen check), so a spawned worker never waits.
 ///
 /// `run` is the only analysis message; `stop` is the coordinator's
 /// requested-exit signal (the missing-file abort path, chStop). Requested
@@ -1380,7 +1378,7 @@ class IwyuWorker : IFileWorker {
 /// and the hooks are no-ops.
 version (CodeCheckerActorDebug) {
     import std.experimental.logger : Logger, LogLevel;
-    import unit_threaded.runner.attrs : Serial;
+    import code_checker.testing : Serial;
 
     @("actor_engine: a dropped payload is logged with its payload type")
     unittest {

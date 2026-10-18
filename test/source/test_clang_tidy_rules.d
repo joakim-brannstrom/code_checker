@@ -7,7 +7,7 @@ module test_clang_tidy_rules;
 
 import config;
 
-@("shall successfully run clang-tidy on a c++ file")
+@("runs clang-tidy successfully on a c++ file")
 unittest {
     auto ta = makeTestArea;
     // action
@@ -15,10 +15,10 @@ unittest {
             buildPath(testData, "cpp", "empty", compileCommandsFile));
 
     // assert
-    res.status.shouldEqual(0);
+    assert(res.status == 0);
 }
 
-@("shall warn about name style in a c++ file")
+@("warns about name style in a c++ file")
 unittest {
     auto ta = makeTestArea;
     // action
@@ -26,5 +26,5 @@ unittest {
             "name_style", compileCommandsFile), "-c", buildPath(testData, "all_checks.toml"));
 
     // assert
-    res.status.shouldNotEqual(0);
+    assert(res.status != 0);
 }

@@ -39,7 +39,7 @@ import my.actor.utility.limiter : IFlowControl, Token;
 import my.path : AbsolutePath;
 
 import config : TestArea, makeTestArea;
-import unit_threaded.runner.attrs : Serial;
+import code_checker.testing : Serial;
 
 /// Thread-safe event log, the same pattern as the coordinator tests' Recorder.
 final class WorkerRecorder {

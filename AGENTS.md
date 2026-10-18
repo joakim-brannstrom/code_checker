@@ -1,4 +1,4 @@
-# AGENTS.md — code_checker
+# AGENTS.md - code_checker
 
 ## Overview
 
@@ -14,29 +14,27 @@ changed.
 - Language: D (dmd 2.079+ / ldc 1.8.0+ per README)
 - Build system / package manager: dub (`dub.sdl`)
 - Vendored D dependencies in `vendor/`: colorlog, compile_db, d2sqlite3, dyaml,
-  miniorm, mylib, silly, tinyendian, toml, unit-threaded (+ subpackages)
+  miniorm, mylib, nusilly, tinyendian, toml
 - Runtime tool dependencies: `clang-tidy` (4.0+) and `iwyu` (optional, for
   include-what-you-use analysis)
-- Test runner: unit-threaded
+- Test runner: nusilly (vendored fork of silly, `vendor/nusilly/`)
 
 ## Directory Layout
 
-- `source/` — application sources
-  - `source/app.d` — main entry point (excluded from the unittest build)
-  - `source/app_normal.d` — CLI wiring, analysis pipeline callbacks
-  - `source/code_checker/engine/` — analysis engine; `builtin/` holds the
+- `source/` - application sources
+  - `source/app.d` - main entry point (excluded from the unittest build)
+  - `source/app_normal.d` - CLI wiring, analysis pipeline callbacks
+  - `source/code_checker/engine/` - analysis engine; `builtin/` holds the
     clang-tidy and iwyu integrations
-  - `source/code_checker/database/` — sqlite persistence of pass/fail state
-- `vendor/` — all dub dependencies, vendored so the project builds offline.
+  - `source/code_checker/database/` - sqlite persistence of pass/fail state
+- `vendor/` - all dub dependencies, vendored so the project builds offline.
   Never edit these; they are upstream packages.
-- `test/` — integration tests; run from this directory (see Testing). Has its
+- `test/` - integration tests; run from this directory (see Testing). Has its
   own `dub.sdl`. `test/redirect.d` (config `integration_test`) only chdirs into
   `test/` and runs from there.
-- `etc/code_checker/` — shipped config: `default.toml` (default config read at
+- `etc/code_checker/` - shipped config: `default.toml` (default config read at
   runtime), `default_template.toml`, `clang-tidy.json`, `clang_tidy.conf`
-- `doc/` — end-user documentation
-- `update_ut.d` — rdmd script run as a unittest pre-build step; generates
-  `build/ut.d` (unit-threaded main) from the vendored unit-threaded package
+- `doc/` - end-user documentation
 
 ## Commands
 
@@ -70,32 +68,27 @@ Notes:
 - For `compile_db`, the last `version` match in its `dub.json` is the real one
   (0.0.6); an earlier match (`~>0.0.45`) is a sub-configuration entry. The
   `tail -1` above handles this.
-- The `if [ -n "$n" ]` guard skips directories without a `dub.json` (the eight
-  `vendor/unit-threaded_*` subpackage directories); the `2>/dev/null` on the
-  `grep` calls keeps the loop quiet for them. The `if` form (not
-  `[ -n "$n" ] && ...`) also keeps the loop's exit status at 0 when the LAST
-  directory has no `dub.json` - with `&&`, a failing guard would make the loop
-  return non-zero and break `&& dub build` chaining in a one-liner.
+- Every vendored directory has a `dub.json`, so the loop registers all of
+  them. The `if` form (not `[ -n "$n" ] && ...`) also keeps the loop's exit
+  status at 0 when a directory has no `dub.json` - with `&&`, a failing guard
+  would make the loop return non-zero and break `&& dub build` chaining in a
+  one-liner.
 - `--offline` is NOT a valid dub flag in dub 1.41; use `--skip-registry=all`.
 
 ### Test
 
 ```sh
-dub test                      # unit tests (unit-threaded); the pre-build step
-                              # ./update_ut.d generates build/ut.d and builds
-                              # vendor/unit-threaded's gen_ut_main config
+dub test                      # unit tests (nusilly); dub auto-generates the
+                              # main and dub_test_root modules
 dub run -c integration_test   # integration tests; must run from the repo root.
                               # It builds the app (`dub build -c application`),
                               # chdirs into test/ and runs `dub test` there.
 dub run -c integration_test -- -h   # pass args through to the test runner
 ```
 
-Caveat: offline, `dub run -c integration_test` fails after the redirect: the
-inner `dub test` in `test/` resolves `test/dub.sdl`, which pins
-`unit-threaded ~>2.0.3` while only 2.1.9 is vendored. Registry access (or a
-vendored 2.0.x unit-threaded) is needed for integration tests. Resolution of
-the outer config (`dub describe -c integration_test` from the root) works fine
-offline.
+Integration tests pin no test runner of their own: the inner `dub test` in
+`test/` resolves `test/dub.sdl`, which depends on the same vendored `nusilly`
+runner as the root project.
 
 ### Run
 
@@ -113,7 +106,7 @@ directory.
   (4-space indent, OTBS braces, space after cast, LF endings, final newline,
   trimmed trailing whitespace). Never hand-reformat unrelated code.
 - Header style: every source file starts with a `Copyright:` / `License:` /
-  `Author:` DDoc block (BSL-1.0 for this repo; some vendored deps are MPL-2 —
+  `Author:` DDoc block (BSL-1.0 for this repo; some vendored deps are MPL-2 -
   never change vendored files).
 - Use DDoc (`///` or `/** */`) for public declarations; document intent, not
   syntax.
@@ -138,8 +131,7 @@ directory.
   package and rewritten with the user's filter/severity settings;
   `HeaderFilterRegex`/`ExcludeHeaderFilterRegex` values are substituted, and
   when `[static_code] severity` is set the disabled checks are spliced into a
-  `Checks` value normalized to a one-line flow sequence (the check set matches
-  the previous generator's output; only the YAML layout changes). An unreadable,
+  `Checks` value normalized to a one-line flow sequence. An unreadable,
   unparseable, or non-mapping base config is used as-is for the generated
   `.clang-tidy` with a warning instead (verbatim, as far as the file is
   readable as text; no settings applied). The
@@ -155,9 +147,10 @@ directory.
 
 ## Testing
 
-- Unit tests: colocated `unittest` blocks, executed with `dub test`. The
-  unittest build excludes `source/app.d`, uses `build/ut.d` as main source and
-  requires the `./update_ut.d` pre-build step (needs `rdmd` on PATH).
+- Unit tests: colocated `unittest` blocks, executed with `dub test`. Failing
+  asserts print plain diagnostics (file:line). The unittest build excludes
+  `source/app.d`; dub auto-generates the test main and `dub_test_root` module.
+  Runner flags: `dub test -- -t1` (serial), `-i <regex>` (filter).
 - Integration tests: `test/source/*.d` with fixtures in `test/testdata/`
   (cpp sources, toml configs, expected logs). Run with
   `dub run -c integration_test` from the repo root, NOT from `test/`.
@@ -184,21 +177,24 @@ directory.
 
 ## Agent Rules
 
-- Do NOT edit anything under `vendor/` — it is upstream code; build problems
+- Do NOT edit anything under `vendor/` - it is upstream code; build problems
   there are solved by version selection, not patching.
-- Do NOT edit `build/` or any generated artifact (e.g. `build/ut.d`); it is
-  regenerated by `update_ut.d`.
+- Do NOT edit `build/` or any generated artifact (e.g. dub's generated test
+  main); it is regenerated by dub.
 - Always build (`dub build`) after changing sources, and run `dub test` before
   claiming a change works; for changes under `source/code_checker/engine/`,
   also run `dub run -c integration_test`.
 - Never fix compile errors by weakening attributes (`nothrow`, `@safe`,
   `shared`) in `source/` without understanding the invariant being enforced.
-  This codebase targets dmd-2.0xx-era compilers — building with much newer
-  frontends (e.g. ldc 1.42 / DMD 2.112) currently fails in `clang_tidy.d`
-  (AA `update` nothrow) and `clang_tidy_classification.d` (shared-AA lookup @safe), independent of any local edits.
+  Toolchain note: LDC 1.42 (DMD 2.112) failed to build in `clang_tidy.d`
+  (AA `update` nothrow) and `clang_tidy_classification.d` (shared-AA lookup
+  @safe) independent of any local edits; the current toolchain (LDC 1.43.0 /
+  DMD 2.113.0) builds the application and both unittest configurations
+  cleanly - check the compiler version before attributing attribute-inference
+  failures to local edits.
 - Keep `dub.sdl` and the vendored package versions in sync: the version
   registered with `dub add-local` must satisfy the constraint in `dub.sdl`.
 - Do not introduce shell scripts or tooling outside dub/dfmt; the project's
-  tooling is dub plus the `update_ut.d` rdmd script.
+  tooling is dub.
 - When documentation in `doc/` and behavior in `source/` disagree, verify
   against the source and fix the doc in the same change.

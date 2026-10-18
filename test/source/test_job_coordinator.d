@@ -33,7 +33,7 @@ import my.actor.utility.limiter : IFlowControl, Token;
 import config : TestArea;
 import config : makeTestArea;
 
-import unit_threaded.runner.attrs : Serial;
+import code_checker.testing : Serial;
 
 final class Recorder {
     private Mutex mtx;
@@ -291,7 +291,7 @@ private void runScenario(alias Payload)(Recorder rec, Environment env,
             format("late events after the scenario went quiet: %s -> %s", quiet, rec.totalEvents));
 
     // The scenario is complete; drain the system so its pool threads do not
-    // leak into the unit-threaded runner (which waits for all threads).
+    // leak into the test runner (which waits for all threads).
     // Stubs killed here drop undelivered mailbox messages by design
     // (SystemExitMsg(kill)); the drain above already waited for them.
     sys.wait();

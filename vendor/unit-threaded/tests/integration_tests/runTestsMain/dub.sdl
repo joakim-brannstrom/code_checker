@@ -1,4 +1,0 @@
-name "run_tests_main"
-mainSourceFile "main.d"
-targetType "executable"
-dependency "unit-threaded" path="../../.."
