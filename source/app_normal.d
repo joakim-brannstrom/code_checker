@@ -3,7 +3,7 @@ Copyright: Copyright (c) 2018, Joakim Brännström. All rights reserved.
 License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost Software License 1.0)
 Author: Joakim Brännström (joakim.brannstrom@gmx.com)
 
-Normal appliation mode.
+Normal application mode.
 */
 module app_normal;
 
@@ -26,10 +26,6 @@ import code_checker.cli : Config, Progress, Compiler;
 import code_checker.database : Database, TrackFile;
 import code_checker.engine : Environment;
 import code_checker.engine.types : TotalResult;
-
-version (unittest) {
-    import unit_threaded : shouldEqual, shouldBeTrue, UnitTestException;
-}
 
 immutable compileCommandsFile = "compile_commands.json";
 
@@ -76,10 +72,10 @@ struct NormalFSM {
     /// If the compile_commands.json that is written to the file system should be deleted when code_checker is done.
     bool removeCompileDb;
 
-    /// Root directory from which the program where initially started.
+    /// Root directory from which the program was initially started.
     AbsolutePath root;
 
-    /// Exit status of used to indicate the success to the user.
+    /// Exit status returned to the caller to indicate success or failure.
     int exitStatus;
 
     Database db;
@@ -110,7 +106,7 @@ struct NormalFSM {
 
     /** The next state is calculated. Only dependent on current state and state data.
      *
-     * These clean depenencies should make it easier to reason about the flow.
+     * These clean dependencies should make it easier to reason about the flow.
      */
     static State next(const State curr, const StateData d) {
         State next_ = curr;
@@ -212,7 +208,6 @@ struct NormalFSM {
         if (res == 0) {
             updateCompileDbTrack(db, conf.compileDb.generateDbDeps, fcache);
         } else {
-            // the user need some helpful feedback for what failed
             logger.errorf("Failed running the command to generate %(%s, %)", conf.compileDb.dbs);
             logger.error("Executed the following commands:");
             logger.error("# if this directory is wrong use --workdir", root);
@@ -431,7 +426,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
 
             e.flags.completeFlags.copy(app);
 
-            // add back dummy -c otherwise clang-tidy do not work.
+            // add back dummy -c otherwise clang-tidy does not work.
             // clang-tidy says "Passed" on everything.
             ["-c", e.cmd.absoluteFile.toString].copy(app);
 
@@ -478,7 +473,7 @@ void unifyCompileDb(AppT)(CompileCommandDB db, const DbCompiler user_compiler,
     formattedWrite(app, "]");
 }
 
-@(`shall quote compile_commands entries as JSON requires when the value is a string containing "`)
+@(`quotes compile_commands entries as JSON requires when a string value contains a double quote`)
 unittest {
     import std.algorithm : canFind;
 
@@ -496,11 +491,7 @@ unittest {
     unifyCompileDb(db, DbCompiler.init,
             CompileCommandFilter(defaultCompilerFilter.filter.dup, 0), Compiler.init, unified);
     // assert
-    try {
-        unified.data.canFind(`-DFOO=\"bar\"`).shouldBeTrue;
-    } catch (UnitTestException e) {
-        unified.data.shouldEqual("a trick to print the unified string when the test fail");
-    }
+    assert(unified.data.canFind(`-DFOO=\"bar\"`));
 }
 
 Path toIncludePath(AbsolutePath f, AbsolutePath root) {

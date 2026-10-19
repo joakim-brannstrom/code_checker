@@ -17,9 +17,6 @@ public import std.process;
 public import std.range;
 public import std.stdio;
 public import std.string;
-public import std.string;
-
-public import unit_threaded.light;
 
 immutable compileCommandsFile = "compile_commands.json";
 
@@ -29,7 +26,7 @@ string appPath() {
     assert(0, "unable to find an app binary");
 }
 
-/// Path to where data used for integration tests exists
+/// Path to the data used by the integration tests.
 string testData() {
     return "testdata".absolutePath;
 }
@@ -120,22 +117,19 @@ auto regexIn(T)(string rawRegex, T[] array, string file = __FILE__, in size_t li
             return;
     }
 
-    import unit_threaded.exception : fail;
-
-    fail(formatValueInItsOwnLine("Value ",
-            rawRegex) ~ formatValueInItsOwnLine("not in ", array), file, line);
+    assert(0, (formatValueInItsOwnLine("Value ", rawRegex) ~ formatValueInItsOwnLine("not in ",
+            array)).join("\n") ~ format(" (%s:%s)", file, line));
 }
 
 auto regexNotIn(T)(string rawRegex, T[] array, string file = __FILE__, in size_t line = __LINE__) {
     import std.regex : regex, matchFirst;
-    import unit_threaded.exception : fail;
 
     auto r = regex(rawRegex);
 
     foreach (v; array) {
         if (!matchFirst(v, r).empty) {
-            fail(formatValueInItsOwnLine("Value ",
-                    rawRegex) ~ formatValueInItsOwnLine("in ", array), file, line);
+            assert(0, (formatValueInItsOwnLine("Value ", rawRegex) ~ formatValueInItsOwnLine("in ",
+                    array)).join("\n") ~ format(" (%s:%s)", file, line));
             return;
         }
     }
@@ -164,7 +158,7 @@ string[] formatRange(T)(in string prefix, scope auto ref T value) {
     import std.range : ElementType;
     import std.algorithm : map, reduce, max;
 
-    //some versions of `text` are @system
+    // some versions of `text` are @system
     auto defaultLines = () @trusted { return [prefix ~ value.text]; }();
 
     static if (!isInputRange!(ElementType!T))
@@ -197,7 +191,6 @@ void prepare() {
         scope (exit)
             g_isPrepared = true;
 
-        // prepare by cleaning up
         if (exists(tmpDir)) {
             while (true) {
                 try {

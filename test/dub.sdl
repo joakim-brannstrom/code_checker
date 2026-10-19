@@ -9,8 +9,6 @@ targetPath "build"
 // add its source/ to the import path; do it explicitly
 importPaths "../source"
 
-dependency "unit-threaded" version="~>2.1.9" default=true
-dependency "unit-threaded:runner" version="~>2.1.9" default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
 // the root project (registered locally with dub add-local) provides the
 // code_checker.* modules under test
@@ -27,18 +25,7 @@ dependency "tinyendian" version="*"
 dependency "nusilly" version="*"
 
 configuration "unittest" {
-    targetType "executable"
-    // -verrors=0: without it the error limit aborts mid-template-analysis of
-    // the actor registration and hides the real errors behind ~20 spurious
-    // Channel/SumType/getOverloads failures.
     dflags "-verrors=0"
-    mainSourceFile "build/ut.d"
-    preBuildCommands "../update_ut.d build/ut.d"
-    // nusilly silly.d (compiled with -unittest as a dependency source)
-    // requires a `dub_test_root` module; update_ut.d emits it next to ut.d
-    // unit-threaded reflection mixin imports the test modules by bare
-    // name; dub does not add the package own source dir to -I.
     importPaths "source"
-    sourceFiles "build/dub_test_root.d"
     excludedSourceFiles "source/app.d"
 }

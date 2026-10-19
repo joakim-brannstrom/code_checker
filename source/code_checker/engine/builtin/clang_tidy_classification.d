@@ -9,10 +9,6 @@ public import code_checker.engine.types : Severity, Position;
 
 import my.path;
 
-version (unittest) {
-    import unit_threaded : shouldEqual, shouldBeTrue;
-}
-
 private shared Severity[string] diagnosticSeverity;
 private shared SeverityColor[Severity] severityColor;
 
@@ -103,7 +99,7 @@ struct CountErrorsResult {
     /// Returns: the score when summing up the found occurrences.
     int score() @safe pure nothrow const @nogc {
         int sum;
-        // just chose some numbers. The intent is that warnings should carry a high penalty
+        // Deliberate weights; the intent is that a higher severity carries a higher penalty.
         foreach (kv; score_.byKeyValue) {
             final switch (kv.key) {
             case Severity.style:
@@ -152,19 +148,19 @@ struct CountErrorsResult {
     }
 }
 
-@("shall sort the error counts")
+@("sorts the error counts by severity")
 @system unittest {
     import std.traits : EnumMembers;
     import code_checker.engine.types : Severity;
-    import unit_threaded;
+    import std.algorithm.comparison : equal;
 
     CountErrorsResult r;
     foreach (s; [EnumMembers!Severity])
         r.put(s);
 
-    r.toRange.shouldEqual([
+    assert(equal(r.toRange, [
         "1 critical", "1 high", "1 medium", "1 low", "1 style"
-    ]);
+    ]));
 }
 
 struct DiagMessage {
@@ -347,17 +343,17 @@ void mapClangTidyStats(alias statFn)(string[] lines) {
     auto app = appender!(string[])();
     mapClangTidy!diagMsg(lines, app);
 
-    msgs.length.shouldEqual(3);
+    assert(msgs.length == 3);
 
-    msgs[0].file.shouldEqual("gmock-matchers.h");
-    msgs[0].diagnostic.startsWith("invalid case style for private").shouldBeTrue;
-    msgs[0].trailing.length.shouldEqual(3);
+    assert(msgs[0].file == "gmock-matchers.h");
+    assert(msgs[0].diagnostic.startsWith("invalid case style for private"));
+    assert(msgs[0].trailing.length == 3);
 
-    msgs[2].file.shouldEqual("gmock-matchers2.h");
-    msgs[2].diagnostic.shouldEqual("invalid case style for parameter 'elem_last'");
-    msgs[2].trailing.length.shouldEqual(3);
+    assert(msgs[2].file == "gmock-matchers2.h");
+    assert(msgs[2].diagnostic == "invalid case style for parameter 'elem_last'");
+    assert(msgs[2].trailing.length == 3);
 
-    app.data.length.shouldEqual(8);
+    assert(app.data.length == 8);
 }
 
 @("shall report the number of suppressed warnings")
@@ -379,7 +375,7 @@ unittest {
     mapClangTidyStats!statFn(lines);
 
     // assert
-    stat.nolint.shouldEqual(55);
+    assert(stat.nolint == 55);
 }
 
 /// Returns: the classification of the diagnostic message.

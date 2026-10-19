@@ -1,3 +1,0 @@
-name "issue121"
-targetType "executable"
-dependency "unit-threaded" path="../../.."

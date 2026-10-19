@@ -1,5 +1,0 @@
-name "from"
-description "Dependency Carrying Declaration utility"
-authors "Atila Neves"
-license "BSD 3-clause"
-targetType "library"

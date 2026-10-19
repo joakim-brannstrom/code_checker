@@ -43,7 +43,7 @@ import my.actor.system : ActorShell, makeAddress, makeSystem;
 import config : TestArea;
 import config : makeTestArea;
 
-import unit_threaded.runner.attrs : Serial;
+import code_checker.testing : Serial;
 
 final class Recorder {
     private Mutex mtx;

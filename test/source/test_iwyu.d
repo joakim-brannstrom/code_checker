@@ -7,13 +7,13 @@ module test_iwyu;
 
 import config;
 
-@("shall suggest including the leaf headerfile when running the iwyu analyzer")
+@("suggests including the leaf headerfile when running the iwyu analyzer")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "cpp", "suggest_improved_include"), ta.sandboxPath);
 
     auto res = ta.exec([appPath, "--verbose", "trace"]);
-    res.status.shouldEqual(1);
+    assert(res.status == 1);
 
     auto lines = res.output.splitLines.array;
 
@@ -25,7 +25,7 @@ unittest {
     `You scored -1 points`.regexIn(lines);
 }
 
-@("shall use the map file for iwyu when suggesting improvements to includes")
+@("uses the map file for iwyu when suggesting improvements to includes")
 unittest {
     auto ta = makeTestArea;
     dirContentCopy(buildPath(testData, "cpp", "use_a_mapping_file_for_iwyu"), ta.sandboxPath);
