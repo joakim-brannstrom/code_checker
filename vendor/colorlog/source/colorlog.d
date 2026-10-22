@@ -115,8 +115,14 @@ class SimpleLogger : logger.Logger {
         default:
         }
 
-        out_.writefln("%s: %s", payload.logLevel.to!string.color(useColor)
-                .bg(useBg).mode(useMode), payload.msg);
+        try {
+            out_.writefln("%s: %s", payload.logLevel.to!string.color(useColor)
+                    .bg(useBg).mode(useMode), payload.msg);
+        } catch (Exception e) {
+            // silently ignore, this shouldn't happen but do not want to crash
+            // the program. a common exception is ErrnoException when stderr is
+            // in NOBLOCKING mode and is full.
+        }
     }
 }
 
@@ -154,8 +160,14 @@ class DebugLogger : logger.Logger {
         default:
         }
 
-        out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(useColor)
-                .bg(useBg).mode(useMode), payload.msg, payload.funcName, payload.line);
+        try {
+            out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(useColor)
+                    .bg(useBg).mode(useMode), payload.msg, payload.funcName, payload.line);
+        } catch (Exception e) {
+            // silently ignore, this shouldn't happen but do not want to crash
+            // the program. a common exception is ErrnoException when stderr is
+            // in NOBLOCKING mode and is full.
+        }
     }
 }
 
@@ -418,9 +430,9 @@ unittest {
 @("shall parse a comma separate list")
 unittest {
     assert(parseLogNames("hej=trace,foo") == [
-            NameLevel("hej", logger.LogLevel.trace),
-            NameLevel("foo", logger.LogLevel.all)
-            ]);
+        NameLevel("hej", logger.LogLevel.trace),
+        NameLevel("foo", logger.LogLevel.all)
+    ]);
 }
 
 private:
