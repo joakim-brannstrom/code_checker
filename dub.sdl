@@ -6,10 +6,10 @@ license "BSL-1.0"
 
 targetPath "build"
 
-dependency "mylib" version="~>1.0.3" default=true
-dependency "colorlog" version="~>1.0.0"  default=true
+dependency "mylib" version="~>1.2.0" default=true
+dependency "colorlog" version="~>1.0.1"  default=true
 dependency "toml" version="~>1.0.0-rc.3"  default=true
-dependency "compile_db" version="~>0.0.7" default=true
+dependency "compile_db" version="~>0.0.8" default=true
 dependency "miniorm" version="~>0.0.10" default=true
 dependency "dyaml" version="~>0.10.0"  default=true
 dependency "tinyendian" version="~>0.2.0"  default=true
