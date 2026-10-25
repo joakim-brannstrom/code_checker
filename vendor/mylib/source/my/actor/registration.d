@@ -16,7 +16,8 @@ import my.actor.actor : ActorShell, Closure2, MsgHandler, RequestHandler,
     defaultErrorHandler, defaultExitHandler, defaultExceptionHandler, Promise, RequestResult;
 import my.actor.behavior : ActorRef, isHookName;
 import my.actor.common : ExitReason, methodSignature;
-import my.actor.mailbox : Msg, MsgOneShot, MsgRequest, MsgType, Reply, WeakAddress, makeAddress;
+import my.actor.mailbox : Msg, MsgOneShot, MsgRequest, MsgType, PayloadMismatch,
+    Reply, WeakAddress, makeAddress, peekOneArg;
 import my.actor.msg : sendExit, sendSystemMsg;
 import my.actor.system_msg : DownMsg, ErrorMsg, ExitMsg;
 
@@ -246,12 +247,21 @@ T implActor(T)(T instance, ActorShell* kernel) @safe {
                                 ~ "excludes const-ness and ref-ness, so rename one "
                                 ~ "or change its parameter types");
 
+                        /// Unpack by the value-or-box rule (see `peekOneArg`):
+                        /// the value itself for one parameter, the
+                        /// single-element `Tuple` box as the alternative, the
+                        /// tuple expansion for several.
                         static R callImpl(T self, ref Variant msg) @trusted {
                             static if (HArgs.length == 0)
                                 return __traits(getMember, self, name)();
-                            else
-                                return __traits(getMember, self, name)(msg.get!(Tuple!HArgs)
-                                        .expand);
+                            else static if (HArgs.length == 1) {
+                                if (auto p = peekOneArg!(HArgs[0])(msg))
+                                    return __traits(getMember, self, name)(*p);
+                            } else {
+                                if (auto t = msg.peek!(Tuple!HArgs))
+                                    return __traits(getMember, self, name)(t.expand);
+                            }
+                            throw new PayloadMismatch(name ~ HArgs.stringof, msg.type);
                         }
 
                         static if (is(R == void)) {
@@ -271,31 +281,23 @@ T implActor(T)(T instance, ActorShell* kernel) @safe {
                                 }();
                                 R r = callImpl(self, msg);
 
-                                // deliver the result to the requester
+                                // deliver the result to the requester: a reply
+                                // is one value, stored as-is (consumers also
+                                // accept a single-element `Tuple` box)
                                 static if (is(R : RequestResult!ReqT, ReqT)) {
                                     r.value.match!((ErrorMsg a) {
                                         sendSystemMsg(replyTo, a);
                                     }, (Promise!ReqT a) {
                                         a.set(replyTo, replyId);
                                     }, (data) {
-                                        enum wrapInTuple = !is(typeof(data) : Tuple!U, U);
-                                        if (auto rc = replyTo.lock.get) {
-                                            static if (wrapInTuple)
-                                                rc.put(Reply(replyId, Variant(tuple(data))));
-                                            else
-                                                rc.put(Reply(replyId, Variant(data)));
-                                        }
+                                        if (auto rc = replyTo.lock.get)
+                                            rc.put(Reply(replyId, Variant(data)));
                                     });
                                 } else static if (is(R : Promise!PromT, PromT)) {
                                     r.set(replyTo, replyId);
                                 } else {
-                                    enum wrapInTuple = !is(R : Tuple!U, U);
-                                    if (auto rc = replyTo.lock.get) {
-                                        static if (wrapInTuple)
-                                            rc.put(Reply(replyId, Variant(tuple(r))));
-                                        else
-                                            rc.put(Reply(replyId, Variant(r)));
-                                    }
+                                    if (auto rc = replyTo.lock.get)
+                                        rc.put(Reply(replyId, Variant(r)));
                                 }
                             };
                             kernel.register(name, methodSignature!HArgs(name),
@@ -535,8 +537,8 @@ unittest {
         }
     }
 
-    // a request message dispatches to the request handler and the value
-    // reply is boxed into the caller's mailbox.
+    // a request message dispatches to the request handler and the reply
+    // value lands in the caller's mailbox
     {
         auto addr = makeAddress;
         auto kernel = ActorShell(addr);
@@ -548,6 +550,7 @@ unittest {
         auto replyAddr = makeAddress;
         replyAddr.get.setOpen;
         ulong replyId = 7;
+        // a hand-built box is accepted on the request side too
         kernel.addr.weakRef.lock.get.put(Msg(methodSignature!int("echo"),
                 MsgType(MsgRequest(replyAddr.weakRef, replyId, Variant(Tuple!(int)(42))))));
         kernel.process(Clock.currTime);
@@ -555,7 +558,8 @@ unittest {
         assert(!replyAddr.get.empty!Reply);
         auto reply = replyAddr.get.pop!Reply;
         assert(reply.get.id == replyId);
-        assert(reply.get.data.get!(Tuple!(int)) == Tuple!(int)(42));
+        // replies carry the value itself, not a Tuple box
+        assert(reply.get.data.get!int == 42);
 
         sendExit(kernel.addr.weakRef, ExitReason.userShutdown);
         int guard;

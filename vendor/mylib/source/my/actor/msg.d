@@ -177,6 +177,14 @@ package struct RequestSendThen {
 
     ~this() scope {
     }
+
+    /// Register the reply handler for this request; see the free `then` for the
+    /// accepted handler forms. Declared as a member as well, so that
+    /// `chan.method(...).then(handler)` needs no extra import (the one-shot
+    /// `.capture(...).then(...)` chain already resolves through `ThenContext`).
+    void then(T)(T handler, ErrorHandler onError = null) if (isReplyHandler!T) {
+        thenUnsafe!T(this, handler, null, onError);
+    }
 }
 
 RequestSend request(ActorT)(ActorT self, WeakAddress requestTo, SysTime timeout)
@@ -184,20 +192,26 @@ RequestSend request(ActorT)(ActorT self, WeakAddress requestTo, SysTime timeout)
     return RequestSend(self, requestTo, timeout, self.nextReplyId);
 }
 
+/// A reply handler may be a function, a function pointer, or a delegate.
+/// A delegate that closes over the requester's locals is GC-allocated and stays
+/// alive until the reply arrives or the request times out; a delegate bound to a
+/// stack object (`&stackStruct.method`) is not, and nothing here can detect it.
+enum isReplyHandler(T) = isFunction!T || isFunctionPointer!T || is(T == delegate);
+
 private struct ThenContext(CtxT, Captures...) {
     RequestSendThen r;
     CtxT* ctx;
 
-    void then(T)(T handler, ErrorHandler onError = null)
-            if (isFunction!T || isFunctionPointer!T) {
+    void then(T)(T handler, ErrorHandler onError = null) if (isReplyHandler!T) {
         thenUnsafe!(T, CtxT)(r, handler, cast(void*) ctx, onError);
         ctx = null;
     }
 }
 
-// allows delegates but the context for them may be corrupted by the GC if they
-// are used in another thread thus use of `thenUnsafe` must ensure it is not
-// escaped.
+// accepts delegates: a closure over the requester's locals is GC-managed and is
+// kept alive by the request chain; a delegate bound to a stack object
+// (`&stackStruct.method`) is not, and cannot be told apart here - so a handler
+// must never be one (see `then`).
 package void thenUnsafe(T, CtxT = void)(scope RequestSendThen r, T handler,
         void* ctx, ErrorHandler onError = null) @trusted {
     auto requestTo = r.rs.requestTo.lock.get;
@@ -224,8 +238,22 @@ package void thenUnsafe(T, CtxT = void)(scope RequestSendThen r, T handler,
     requestTo.put(r.msg);
 }
 
+/** Register the reply handler for a request.
+ *
+ * The handler runs later, on the requesting actor's context, and may be:
+ *
+ * - a function or function pointer — `then(&onTotal)`: no per-request state;
+ * - a delegate — `then((int v) { sum = v; })`: a closure over the requester's
+ *   locals is GC-allocated and kept alive by the request chain until the reply
+ *   arrives or the request times out. It must not be bound to a stack object
+ *   (`&stackStruct.method`): nothing keeps that object alive, and no check here
+ *   catches it;
+ * - `capture(...)` plus a function — `capture(&sum).then(&onTotal)`: gives a
+ *   shared handler per-request state (the captured pointers arrive as the
+ *   handler's first parameter, a `ref` tuple) without a closure of your own.
+ */
 void then(T, CtxT = void)(scope RequestSendThen r, T handler, ErrorHandler onError = null) @trusted
-        if (isFunction!T || isFunctionPointer!T) {
+        if (isReplyHandler!T) {
     thenUnsafe!(T, CtxT)(r, handler, null, onError);
 }
 

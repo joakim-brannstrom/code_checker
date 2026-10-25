@@ -940,8 +940,8 @@ private final class DetachedExecutor {
             if (!actor.isAlive)
                 break;
             if (!atomicLoad(stopRequested))
-                Thread.sleep(min(detachedPollInterval,
-                        actor.nextTimeout(Clock.currTime, detachedPollInterval)));
+                Thread.sleep(max(Duration.zero, min(detachedPollInterval,
+                        actor.nextTimeout(Clock.currTime, detachedPollInterval))));
         }
     }
 
@@ -956,6 +956,19 @@ private final class DetachedExecutor {
 
 /// Idle poll interval for detached executors.
 private immutable Duration detachedPollInterval = 10.dur!"msecs";
+
+/// Smallest poll interval the scheduler accepts; anything shorter makes the watchers busy-spin.
+private immutable Duration schedulerMinPollInterval = 100.dur!"usecs";
+
+/** Resolve the configured poll interval: a non-positive value is treated as unset (the default is
+ * used) and a value below `schedulerMinPollInterval` is raised to it, so a bogus config can neither
+ * reach `Thread.sleep` as a negative duration nor make the scheduler spin. */
+private Duration resolvePollInterval(Optional!Duration conf, Duration fallback) {
+    const configured = conf.orElse(fallback);
+    if (configured <= Duration.zero)
+        return fallback;
+    return configured < schedulerMinPollInterval ? schedulerMinPollInterval : configured;
+}
 
 /** Schedule actors for execution.
  *
@@ -1026,9 +1039,9 @@ class Scheduler {
         const maxThroughput = sched.conf.maxThroughput.orElse(50UL);
         const shutdownPoll = sched.conf.pollInterval.orElse(20.dur!"msecs");
 
-        const minPoll = 100.dur!"usecs";
+        const minPoll = schedulerMinPollInterval;
         const stepPoll = minPoll;
-        const maxPoll = sched.conf.pollInterval.orElse(10.dur!"msecs");
+        const maxPoll = resolvePollInterval(sched.conf.pollInterval, 10.dur!"msecs");
 
         Duration pollInterval = minPoll;
 
@@ -1083,9 +1096,9 @@ class Scheduler {
 
         const shutdownPoll = sched.conf.pollInterval.orElse(20.dur!"msecs");
 
-        const minPoll = 100.dur!"usecs";
+        const minPoll = schedulerMinPollInterval;
         const stepPoll = minPoll;
-        const maxPoll = sched.conf.pollInterval.orElse(10.dur!"msecs");
+        const maxPoll = resolvePollInterval(sched.conf.pollInterval, 10.dur!"msecs");
 
         Duration pollInterval = minPoll;
 
@@ -1128,7 +1141,7 @@ class Scheduler {
         import my.actor.mailbox : SystemExitMsg;
 
         const maxThroughput = sched.conf.maxThroughput.orElse(50UL);
-        const pollInterval = sched.conf.pollInterval.orElse(50.dur!"msecs");
+        const pollInterval = resolvePollInterval(sched.conf.pollInterval, 50.dur!"msecs");
         const inactiveLimit = min(500.dur!"msecs", pollInterval * 3);
 
         while (sched.isActive) {

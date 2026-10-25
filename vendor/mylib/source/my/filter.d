@@ -80,9 +80,7 @@ struct ReFilter {
 unittest {
     auto r = ReFilter(["foo.*"], [".*bar.*", ".*batman"]);
     assert(["foo", "foobar", "foo smurf batman", "batman", "fo",
-            "foo mother"].filter!(a => r.match(a)).array == [
-            "foo", "foo mother"
-            ]);
+        "foo mother"].filter!(a => r.match(a)).array == ["foo", "foo mother"]);
 }
 
 @("shall match everything by default")
@@ -95,9 +93,9 @@ unittest {
 unittest {
     auto r = ReFilter(null, [".*bar.*", ".*batman"]);
     assert(["foo", "foobar", "foo smurf batman", "batman", "fo",
-            "foo mother"].filter!(a => r.match(a)).array == [
-            "foo", "fo", "foo mother"
-            ]);
+        "foo mother"].filter!(a => r.match(a)).array == [
+        "foo", "fo", "foo mother"
+    ]);
 }
 
 /** Filter strings by first cutting out a region (include) and then selectively
@@ -156,9 +154,7 @@ unittest {
     auto r = GlobFilter(["foo*"], ["*bar*", "*batman"]);
 
     assert(["foo", "foobar", "foo smurf batman", "batman", "fo",
-            "foo mother"].filter!(a => r.match(a)).array == [
-            "foo", "foo mother"
-            ]);
+        "foo mother"].filter!(a => r.match(a)).array == ["foo", "foo mother"]);
 }
 
 @("shall not crash")

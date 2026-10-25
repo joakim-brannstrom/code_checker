@@ -820,7 +820,7 @@ struct FdPoll {
 
 /// Uses the linux poll syscall to wait for activity on the file descriptors.
 struct FdPoller {
-    import std.algorithm : min, filter;
+    import std.algorithm : min, max, filter;
 
     private {
         pollfd[] fds;
@@ -858,7 +858,9 @@ struct FdPoller {
         import core.sys.posix.poll;
         import std.bitmanip : BitArray;
 
-        const code = poll(&fds[0], fds.length, cast(int) min(int.max, timeout.total!"msecs"));
+        // `poll` reads a negative timeout as "wait forever", so a negative duration means "do not wait".
+        const timeoutMs = max(0L, min(cast(long) int.max, timeout.total!"msecs"));
+        const code = poll(&fds[0], fds.length, cast(int) timeoutMs);
 
         if (code < 0) {
             import core.stdc.errno : errno, EINTR;

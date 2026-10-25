@@ -10,9 +10,8 @@ import std.meta : staticMap;
 import std.traits : Unqual;
 
 import my.actor.actor : ActorShell;
-import my.actor.channel : makePayload;
 import my.actor.common : methodSignature;
-import my.actor.mailbox : WeakAddress;
+import my.actor.mailbox : WeakAddress, makePayload;
 
 /// Hook names: optional class methods the shell calls when present.
 /// They are never message methods — nothing can be sent to them.

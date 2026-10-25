@@ -8,8 +8,13 @@ module my.actor.mailbox;
 import core.sync.condition : Condition;
 import core.sync.mutex : Mutex;
 import std.datetime : SysTime;
+import std.meta : staticMap;
 import std.sumtype;
+import std.traits : isAssignable, Unqual;
+import std.typecons : Tuple, tuple;
 import std.variant : Variant;
+
+version (mylib_actor_trace) import logger = std.logger;
 
 import my.actor.common;
 public import my.actor.system_msg;
@@ -36,6 +41,99 @@ struct Msg {
     }
 
     @disable this(this);
+}
+
+/// True when `T` can be copied into a `Variant`'s storage. False for
+/// `@disable this(this)` types, true for structs with `const`/`immutable`
+/// members: a Variant copies (blits) the value, it never assigns it.
+package enum isPayloadStorable(T) = __traits(compiles, { T a = T.init; T b = a; });
+
+/** Box the send arguments the way the dispatch side unboxes them: the value
+ * itself for a single argument, a `Tuple!UArgs` box for several, and an empty
+ * tuple for a zero-arg message.
+ *
+ * A single argument is stored unwrapped on purpose: `Variant(Tuple!T)` cannot
+ * be instantiated when `T` is a struct with `const`/`immutable` members (the
+ * Phobos tuple `indexAssign` branch assigns the element, and D forbids
+ * assigning such a struct), while `Variant(T)` copies it in place. This is
+ * also how `std.concurrency` boxes.
+ *
+ * Each rejection carries a `pragma(msg)` — a failure inside
+ * `Channel.opDispatch` is reported only as `no property <method>`, and the
+ * pragma is the one diagnostic that survives that speculative instantiation.
+ */
+package Variant makePayload(Args...)(auto ref Args args) @trusted {
+    alias UArgs = staticMap!(Unqual, Args);
+    static if (UArgs.length == 0) {
+        return Variant(tuple());
+    } else static if (UArgs.length == 1) {
+        alias P = UArgs[0];
+        static if (!isPayloadStorable!P) {
+            enum notStorable = "message parameter type `" ~ P.stringof
+                ~ "` is not copy-constructible, so it cannot be stored in the payload Variant";
+            pragma(msg, "mylib: " ~ notStorable);
+            static assert(0, notStorable);
+        } else static if (!is(typeof(args[0]) : P)) {
+            enum notConvertible = "message argument of type `" ~ typeof(args[0])
+                    .stringof ~ "` does not convert to its payload type `" ~ P.stringof
+                    ~ "`; passing a const/immutable view does not transfer ownership";
+            pragma(msg, "mylib: " ~ notConvertible);
+            static assert(0, notConvertible);
+        } else {
+            // the assert above proves this cast is a plain conversion
+            return Variant(cast(P) args[0]);
+        }
+    } else {
+        static if (!isAssignable!(Tuple!UArgs)) {
+            enum notAssignable = "message payload `" ~ UArgs.stringof
+                ~ "` is boxed as a Tuple, whose elements must be assignable;"
+                ~ " drop `const`/`immutable` from the payload struct or send a single argument";
+            pragma(msg, "mylib: " ~ notAssignable);
+            static assert(0, notAssignable);
+        } else {
+            return Variant(Tuple!UArgs(args));
+        }
+    }
+}
+
+/// Thrown when a payload does not carry the arguments a handler expects — a
+/// malformed (typically hand-built) message. Method dispatch is keyed by
+/// method name + parameter types, so a normally produced message cannot reach
+/// this; the exception names what was expected and what arrived.
+class PayloadMismatch : Exception {
+    this(string expected, TypeInfo stored, string file = __FILE__, size_t line = __LINE__) {
+        super("message payload mismatch: expected `" ~ expected ~ "`, stored `" ~ (stored is null
+                ? "<none>" : stored.toString()) ~ "`", file, line);
+    }
+}
+
+/** Pointer to the payload of a one-parameter message: the value form
+ * `Variant(P)`, else the single-element `Tuple!(P)` box (the shape a
+ * multi-argument payload has, and what hand-built messages may use). Null when
+ * neither matches.
+ *
+ * The two probes are disjoint by construction — the box probe is skipped when
+ * `P` is itself a `Tuple`, and otherwise `Tuple!P` is a different type than
+ * `P` — so the order is a cheap-case-first choice, not a matching rule.
+ * Package-visible: the dispatch and receive paths all go through it, so the
+ * probe logic exists once.
+ */
+package P* peekOneArg(P)(ref Variant msg) @trusted {
+    static assert(isPayloadStorable!P, "message payload type `" ~ P.stringof
+            ~ "` must be copy-constructible: a payload is stored type-erased in a Variant, so every "
+            ~ "message and handler parameter type has to be copyable");
+    if (auto p = msg.peek!P)
+        return p;
+    static if (!is(P : Tuple!U, U)) {
+        if (auto t = msg.peek!(Tuple!P)) {
+            version (mylib_actor_trace) {
+                logger.tracef("mylib: payload `%s` arrived in a single-element Tuple box",
+                        msg.type.toString());
+            }
+            return &(*t)[0];
+        }
+    }
+    return null;
 }
 
 alias SystemMsg = SumType!(ErrorMsg, DownMsg, ExitMsg, SystemExitMsg,

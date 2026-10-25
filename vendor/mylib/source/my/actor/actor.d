@@ -87,13 +87,8 @@ struct Promise(T) {
             data.release;
 
         // TODO: should probably call delivering actor with an ErrorMsg if replyTo is closed.
-        if (auto replyTo = data.replyTo.lock.get) {
-            enum wrapInTuple = !is(T : Tuple!U, U);
-            static if (wrapInTuple)
-                replyTo.put(Reply(data.replyId, Variant(tuple(reply))));
-            else
-                replyTo.put(Reply(data.replyId, Variant(reply)));
-        }
+        if (auto replyTo = data.replyTo.lock.get)
+            replyTo.put(Reply(data.replyId, Variant(reply)));
     }
 
     void opAssign(Promise!T rhs) {
@@ -461,10 +456,12 @@ package:
         return false;
     }
 
-    /// How long until a delayed message or a timeout fires.
+    // How long until a delayed message or a timeout fires. A due deadline
+    // reports zero, never a negative duration.
     Duration nextTimeout(const SysTime now, const Duration default_) @safe {
-        return min(delayed.empty ? default_ : (delayed.front.triggerAt - now),
+        const remaining = min(delayed.empty ? default_ : (delayed.front.triggerAt - now),
                 replyTimeouts.empty ? default_ : (replyTimeouts[0].timeout - now));
+        return remaining < Duration.zero ? Duration.zero : remaining;
     }
 
     /** Arm a repeating self-tick: a one-shot message to this actor's own
@@ -1149,27 +1146,42 @@ struct Closure2(Fn) {
 }
 
 package Closure!(ReplyHandler, void*) makeReply2(T, CtxT = void)(T handler) @safe {
-    static if (is(CtxT == void))
-        alias Params = Parameters!T;
-    else {
+    static if (!is(CtxT == void)) {
         alias CtxParam = Parameters!T[0];
-        alias Params = Parameters!T[1 .. $];
         checkMatchingCtx!(CtxParam, CtxT);
         checkRefForContext!handler;
     }
 
-    alias HArgs = staticMap!(Unqual, Params);
-
     void fn(void* ctx, ref Variant msg) @trusted {
-        static if (is(CtxT == void)) {
-            handler(msg.get!(Tuple!HArgs).expand);
-        } else {
-            auto userCtx = cast(CtxParam*) cast(CtxT*) ctx;
-            handler(*userCtx, msg.get!(Tuple!HArgs).expand);
-        }
+        static if (is(CtxT == void))
+            unpackReply(handler, msg);
+        else
+            unpackReply(handler, msg, *cast(CtxParam*) cast(CtxT*) ctx);
     }
 
     return typeof(return)(&fn, null, &cleanupCtx!CtxT);
+}
+
+/// Invoke `handler` with `msg`'s payload unpacked by the value-or-box rule
+/// (see `peekOneArg`). `front` is the handler's optional leading `ref` context
+/// parameter, forwarded as-is.
+private void unpackReply(T, Front...)(T handler, ref Variant msg, auto ref Front front) @trusted {
+    alias HArgs = staticMap!(Unqual, Parameters!T[Front.length .. $]);
+    static if (HArgs.length == 0) {
+        handler(front);
+        return;
+    } else static if (HArgs.length == 1) {
+        if (auto p = peekOneArg!(HArgs[0])(msg)) {
+            handler(front, *p);
+            return;
+        }
+    } else {
+        if (auto t = msg.peek!(Tuple!HArgs)) {
+            handler(front, t.expand);
+            return;
+        }
+    }
+    throw new PayloadMismatch("reply handler " ~ HArgs.stringof, msg.type);
 }
 
 /// Check that the context parameter is `ref` otherwise issue a warning.
@@ -1725,8 +1737,7 @@ struct ScopedActor {
                 underlyingWeakAddress(requestTo), timeout);
         auto msg = () @trusted {
             return Msg(methodSignature!UArgs(method),
-                    MsgType(MsgRequest(rs.self.addr.weakRef, rs.replyId,
-                        Variant(Tuple!UArgs(args)))));
+                    MsgType(MsgRequest(rs.self.addr.weakRef, rs.replyId, makePayload(args))));
         }();
         return SRequestSendThen(RequestSendThen(rs, msg), &this);
     }
@@ -1739,8 +1750,8 @@ struct ScopedActor {
     /** Block until a message matching one of `handlers` arrives (design
      * §3.B). A handler is a function or delegate `void f(P v)`; the first
      * handler whose parameter type matches the message payload (mylib's
-     * exact `Unqual` rule, including the `makePayload` tuple box) is
-     * invoked.
+     * exact `Unqual` rule: the value itself, or the single-element `Tuple` box
+     * that a multi-argument payload and a hand-built message use) is invoked.
      *
      * Non-matching messages are retained in the actor's stash and
      * reconsidered, oldest first, by later receive calls. Only one thread
@@ -1818,29 +1829,23 @@ struct ScopedActor {
 
         /// Match `handler` against `msg`: parameter `P` accepts a payload
         /// stored as `Unqual!P`, or (when `P` is not itself a tuple) the
-        /// `makePayload` box `Tuple!(Unqual!P)`. A throwing handler stores
+        /// single-element box `Tuple!(Unqual!P)`. A throwing handler stores
         /// its exception in `handlerError` instead of propagating it.
         private static bool tryHandler(H)(H handler, ref Variant msg, ref Exception handlerError) @trusted nothrow {
             alias P = Parameters!H[0];
-            P v;
-            bool found;
+            // locate the payload before materialising it: `P v; v = ...;` is a
+            // struct assignment, which D forbids for payloads with
+            // const/immutable members. The initialised copy below keeps `ref`
+            // handler parameters working.
+            const(Unqual!P)* pp;
             try {
-                if (auto p = msg.peek!(Unqual!P)) {
-                    v = cast(P)*p;
-                    found = true;
-                } else {
-                    static if (!is(Unqual!P : Tuple!U, U)) {
-                        if (auto t = msg.peek!(Tuple!(Unqual!P))) {
-                            v = cast(P)(*t).tupleof[0];
-                            found = true;
-                        }
-                    }
-                }
+                pp = peekOneArg!(Unqual!P)(msg);
             } catch (Exception e) {
                 return false;
             }
-            if (!found)
+            if (pp is null)
                 return false;
+            P v = cast(P)*pp;
             try {
                 handler(v);
             } catch (Exception e) {
@@ -2459,9 +2464,9 @@ unittest {
     import my.actor.channel;
 
     auto sup = scopedActor;
-    // dynSend boxes the payload as Variant(Tuple!(string)): the (string)
-    // handler matches via the box-unwrap path, the (Tuple!(string)) handler
-    // matches directly — the first one in the list must win.
+    // dynSend stores the single argument unwrapped: the (string) handler
+    // matches the value form, the (Tuple!(string)) handler would only match
+    // the box shape — the first one in the list must win.
     dynSend(sup.address(), "m", "x");
     string first;
     bool secondHit;
@@ -2470,4 +2475,79 @@ unittest {
     });
     assert(first == "x");
     assert(!secondHit, "the first matching handler must win");
+}
+
+@("ScopedActor.receive: payload struct with immutable members") unittest {
+    import my.actor.channel;
+
+    // not assignable (immutable member), so it can only be received if the
+    // handler parameter is filled by copy-initialisation, not by assignment
+    struct ImmutableArg {
+        string tag;
+        immutable(int[]) values;
+    }
+
+    auto sup = scopedActor;
+    dynSend(sup.address(), "m", ImmutableArg("a", [4, 5]));
+
+    string seenTag;
+    int seen = -1;
+    assert(sup.receiveTimeout(5.dur!"seconds", (ImmutableArg p) {
+            seenTag = p.tag;
+            seen = p.values[0];
+        }), "receive must match the payload");
+    assert(seen == 4 && seenTag == "a", "receive must unpack an immutable-bearing payload");
+}
+
+@("ScopedActor.receive: single-element Tuple box also matches") unittest {
+    import my.actor.channel;
+    import my.actor.mailbox : Msg, MsgOneShot, MsgType, makeAddress;
+    import my.actor.common : methodSignature;
+
+    // hand-built box, the shape a multi-argument payload has
+    auto sup = scopedActor;
+    sup.address().lock.get.put(Msg(methodSignature!string("m"),
+            MsgType(MsgOneShot(Variant(Tuple!(string)("boxed"))))));
+
+    string got;
+    assert(sup.receiveTimeout(5.dur!"seconds", (string s) { got = s; }),
+            "the box fallback must still match");
+    assert(got == "boxed");
+}
+
+@("unpackReply: value form and single-element box both reach the handler") unittest {
+    int fromValue = -1;
+    int fromBox = -1;
+    auto valueCtx = Tuple!(int*)(&fromValue);
+    auto boxCtx = Tuple!(int*)(&fromBox);
+    static void handler(ref Tuple!(int*) ctx, int v) {
+        *ctx[0] = v;
+    }
+
+    auto valueForm = Variant(42);
+    auto boxForm = Variant(Tuple!(int)(7));
+    unpackReply(&handler, valueForm, valueCtx);
+    unpackReply(&handler, boxForm, boxCtx);
+    assert(fromValue == 42, "the value form reaches the reply handler");
+    assert(fromBox == 7, "the box form reaches the reply handler");
+
+    // a multi-argument reply unpacks through the tuple expansion
+    int sum = -1;
+    auto sumCtx = Tuple!(int*)(&sum);
+    static void two(ref Tuple!(int*) ctx, int a, int b) {
+        *ctx[0] = a + b;
+    }
+
+    auto twoArgs = Variant(Tuple!(int, int)(2, 3));
+    unpackReply(&two, twoArgs, sumCtx);
+    assert(sum == 5, "a multi-argument reply unpacks through the tuple expansion");
+
+    // a payload of the wrong type raises PayloadMismatch, not VariantException
+    bool threw;
+    auto wrong = Variant("nope");
+    try
+        unpackReply(&handler, wrong, valueCtx);
+    catch (PayloadMismatch e)
+        threw = true;
+    assert(threw, "a malformed payload raises PayloadMismatch");
 }

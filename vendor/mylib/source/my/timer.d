@@ -30,14 +30,12 @@ struct Timers {
         timers.stableInsert(Timer(t, action));
     }
 
-    /// Get how long until the next timer expire. The default is defaultSleep.
+    /// Get how long until the next timer expires, or `defaultSleep` when there is none; never negative.
     Duration expireAt(Duration defaultSleep) nothrow {
         import std.algorithm : max;
 
-        if (empty) {
-            return defaultSleep;
-        }
-        return max(Duration.zero, timers.front.expire - Clock.currTime);
+        const remaining = empty ? defaultSleep : timers.front.expire - Clock.currTime;
+        return max(Duration.zero, remaining);
     }
 
     /// Sleep until the next action triggers.

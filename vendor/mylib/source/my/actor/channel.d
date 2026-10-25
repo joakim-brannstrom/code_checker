@@ -8,27 +8,15 @@ module my.actor.channel;
 import std.datetime : SysTime;
 import std.meta : staticMap;
 import std.traits : Parameters, ReturnType, Unqual;
-import std.typecons : Tuple, tuple;
-import std.variant : Variant;
+import std.typecons : Tuple;
 
-import my.actor.actor : ActorShell;
+import my.actor.actor : ActorShell, Promise;
 import my.actor.behavior : ActorRef;
 import my.actor.common : methodSignature;
 import my.actor.mailbox : DelayedMsg, Msg, MsgOneShot, MsgRequest, MsgType,
-    TypedAddress, WeakAddress, isTypedAddress;
+    TypedAddress, WeakAddress, isTypedAddress, makePayload;
 import my.actor.msg : request, RequestSendThen;
 import my.actor.registration : countMethods, messageMethod;
-
-/// Box the send arguments the same way `implActor` unboxes them at dispatch:
-/// an empty tuple for zero-arg messages, a `Tuple!UArgs` otherwise.
-/// Package-visible: `my.actor.behavior` reuses it for `ActorRef` sends.
-package Variant makePayload(Args...)(auto ref Args args) @trusted {
-    alias UArgs = staticMap!(Unqual, Args);
-    static if (UArgs.length == 0)
-        return Variant(tuple());
-    else
-        return Variant(Tuple!UArgs(args));
-}
 
 /// Build the request/reply message and chain; the reply lands in the
 /// requesting actor's mailbox (the `.capture(...).then(...)` machinery of
@@ -176,7 +164,7 @@ unittest {
 
     import my.actor.common : ExitReason;
     import my.actor.mailbox : makeAddress;
-    import my.actor.msg : capture, infTimeout, sendExit;
+    import my.actor.msg : capture, infTimeout, sendExit, then;
     import my.actor.registration : implActor;
 
     interface IDing {
@@ -345,6 +333,22 @@ unittest {
         foreach (_; 0 .. 4)
             actorV.process(Clock.currTime);
         assert(t == 21, "zero-arg request/reply dispatched");
+
+        // a delegate handler needs no capture at all
+        int t2 = -1;
+        then(chan.total(), (int v) { t2 = v; });
+        foreach (_; 0 .. 4)
+            actorV.process(Clock.currTime);
+        assert(t2 == 21, "a capturing delegate handler is invoked");
+
+        // a delegate handler still receives a captured context when one is given
+        int t3 = -1;
+        chan.total().capture(&t3).then((ref Tuple!(int*) ctx, int v) {
+            *ctx[0] = v;
+        });
+        foreach (_; 0 .. 4)
+            actorV.process(Clock.currTime);
+        assert(t3 == 21, "a delegate handler also receives the captured context");
 
         sendExit(addr.weakRef, ExitReason.userShutdown); // shutdown = system message
         int guardV;
@@ -582,4 +586,206 @@ unittest {
             actorTV.process(Clock.currTime);
         assert(!actorTV.isAlive(), "shutdown through the typed handle");
     }
+}
+
+/// A payload struct with an `immutable` member is not assignable (D forbids
+/// `a = b` for it), so it can only reach an actor if the payload is stored as
+/// the value itself — `Variant(Tuple!T)` cannot be instantiated for it.
+private struct ImmutablePayload {
+    string tag;
+    immutable(int[]) values;
+}
+
+private interface IImmutablePayload {
+    void take(ImmutablePayload p);
+    ImmutablePayload give();
+    Promise!ImmutablePayload deferred();
+    void add(int a, int b);
+    void tick();
+    void takeTuple(Tuple!(int, string) t);
+    void takeTwo(int a, string b);
+}
+
+private class ImmutableActor : IImmutablePayload {
+    size_t calls;
+    int sum;
+    int tupleInt;
+    string tupleText;
+    Promise!ImmutablePayload prom;
+
+    this(Promise!ImmutablePayload prom) {
+        this.prom = prom;
+    }
+
+    // do not store the struct itself: `field = p;` is the very assignment
+    // that is illegal for an immutable-bearing payload
+    override void take(ImmutablePayload p) {
+        ++calls;
+        sum = p.values[0];
+    }
+
+    override ImmutablePayload give() {
+        return ImmutablePayload("g", [7]);
+    }
+
+    override Promise!ImmutablePayload deferred() {
+        return prom;
+    }
+
+    override void add(int a, int b) {
+        sum = a + b;
+    }
+
+    override void tick() {
+        ++calls;
+    }
+
+    override void takeTuple(Tuple!(int, string) t) {
+        tupleInt = t[0];
+        tupleText = t[1];
+    }
+
+    override void takeTwo(int a, string b) {
+        tupleInt = a;
+        tupleText = b;
+    }
+}
+
+@("Channel: a payload struct with immutable members (value form, box fallback kept)") unittest {
+    import std.datetime : Clock, dur;
+
+    import my.actor.actor : makePromise;
+    import my.actor.common : ExitReason;
+    import my.actor.mailbox : makeAddress;
+    import my.actor.msg : capture, infTimeout, sendExit;
+    import my.actor.registration : implActor;
+
+    auto addr = makeAddress;
+    auto kernel = ActorShell(addr);
+    auto deferredProm = makePromise!ImmutablePayload;
+    auto a = new ImmutableActor(deferredProm);
+    implActor(a, &kernel);
+
+    auto ch = Channel!IImmutablePayload(addr.weakRef, &kernel, infTimeout());
+    kernel.process(Clock.currTime);
+
+    // one argument: stored as Variant(ImmutablePayload), not as a Tuple box
+    ch.take(ImmutablePayload("a", [1, 2]));
+    kernel.process(Clock.currTime);
+    assert(a.calls == 1, "immutable-bearing payload dispatched");
+    assert(a.sum == 1, "the handler read the immutable member");
+
+    // dynamic path boxes identically
+    dynSend(addr.weakRef, "take", ImmutablePayload("b", [3]));
+    kernel.process(Clock.currTime);
+    assert(a.calls == 2 && a.sum == 3, "dynSend of an immutable-bearing payload");
+
+    // request/reply carrying the payload in both directions
+    int got;
+    static void onGive(ref Tuple!(int*) ctx, ImmutablePayload p) {
+        *ctx[0] = p.values[0]; // read a member: assigning the struct is illegal
+    }
+
+    ch.give().capture(&got).then(&onGive);
+    kernel.process(Clock.currTime);
+    assert(got == 7, "reply carrying an immutable-bearing payload");
+
+    // deferred reply: Promise.deliver boxes the payload the same way
+    int gotLater = -1;
+    static void onLater(ref Tuple!(int*) ctx, ImmutablePayload p) {
+        *ctx[0] = p.values[0];
+    }
+
+    ch.deferred().capture(&gotLater).then(&onLater);
+    kernel.process(Clock.currTime);
+    assert(gotLater == -1, "the deferred reply is not delivered yet");
+    auto laterPayload = ImmutablePayload("d", [9]);
+    deferredProm.deliver(laterPayload);
+    kernel.process(Clock.currTime);
+    assert(gotLater == 9, "Promise.deliver of an immutable-bearing payload");
+
+    // dynamic request: same boxing rule as the checked path
+    int gotDyn = -1;
+    dynRequest(&kernel, addr.weakRef, infTimeout(), "give").capture(&gotDyn).then(&onGive);
+    kernel.process(Clock.currTime);
+    assert(gotDyn == 7, "dynRequest of an immutable-bearing payload");
+
+    // multi-argument and zero-argument messages keep the Tuple box / empty box
+    ch.add(2, 3);
+    ch.tick();
+    foreach (_; 0 .. 4)
+        kernel.process(Clock.currTime);
+    assert(a.sum == 5, "multi-argument payload still dispatches");
+    assert(a.calls == 3, "zero-argument payload still dispatches");
+
+    // a one-parameter message whose parameter is a tuple, and a two-parameter
+    // message with the same element types: same stored Variant type, distinct
+    // message signatures
+    ch.takeTuple(Tuple!(int, string)(4, "x"));
+    kernel.process(Clock.currTime);
+    assert(a.tupleInt == 4 && a.tupleText == "x", "tuple-typed single parameter");
+
+    ch.takeTwo(5, "y");
+    kernel.process(Clock.currTime);
+    assert(a.tupleInt == 5 && a.tupleText == "y", "two parameters of the same element types");
+
+    sendExit(addr.weakRef, ExitReason.userShutdown);
+    int guard;
+    while (kernel.isAlive() && guard++ < 100)
+        kernel.process(Clock.currTime);
+}
+
+@("peekOneArg: value form, single-element box, tuple-typed payload") unittest {
+    import std.variant : Variant;
+
+    import my.actor.mailbox : peekOneArg;
+
+    auto value = Variant(7);
+    assert(peekOneArg!int(value) !is null);
+    assert(*peekOneArg!int(value) == 7, "the value form is found");
+
+    auto box = Variant(Tuple!(int)(9));
+    assert(peekOneArg!int(box) !is null);
+    assert(*peekOneArg!int(box) == 9, "the single-element box is found");
+
+    // a tuple-typed parameter only ever matches the value form: the box probe
+    // would ask for a nested Tuple and never matches, so the two are disjoint
+    auto tup = Variant(Tuple!(int, string)(1, "x"));
+    assert(peekOneArg!(Tuple!(int, string))(tup) !is null);
+    assert(peekOneArg!(Tuple!(int, string))(box) is null);
+
+    auto nope = Variant("nope");
+    assert(peekOneArg!int(nope) is null, "no match is null, not an exception");
+
+    // a payload type that cannot be copied into a Variant is rejected at compile
+    // time, whatever the shape of the message
+    struct NoCopy {
+        int x;
+        @disable this(this);
+    }
+
+    static assert(!__traits(compiles, peekOneArg!NoCopy(value)),
+            "a non-copyable payload type must not instantiate the probe");
+}
+
+@("makePayload: value form for one argument, Tuple box for several") unittest {
+    // guard predicate: a struct with immutable members is storable (a Variant
+    // copies it, it never assigns it); a non-copyable type is not
+    import my.actor.mailbox : isPayloadStorable;
+
+    static assert(isPayloadStorable!ImmutablePayload);
+    struct NoCopy {
+        int x;
+        @disable this(this);
+    }
+
+    static assert(!isPayloadStorable!NoCopy);
+
+    // the protocol pin: a single argument must not be wrapped in a Tuple,
+    // otherwise a payload with const/immutable members cannot be boxed at all
+    assert(makePayload(ImmutablePayload("a", [1]))
+            .type == typeid(ImmutablePayload), "a single argument is stored unwrapped");
+    assert(makePayload(1, "x").type == typeid(Tuple!(int, string)),
+            "several arguments are stored in the Tuple box");
+    assert(makePayload().type == typeid(Tuple!()), "zero arguments store the empty tuple");
 }

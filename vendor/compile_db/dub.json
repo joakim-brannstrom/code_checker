@@ -19,12 +19,12 @@
 	"dependencies": {
 		"mylib": {
 			"default": true,
-			"version": "~>1.0.1",
+			"version": "~>1.0",
 			"optional": true
 		}
 	},
 	"targetType": "library",
-	"version": "0.0.7",
+	"version": "0.0.8",
 	"importPaths": [
 		"source/"
 	]

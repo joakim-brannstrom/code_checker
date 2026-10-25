@@ -70,7 +70,7 @@ struct Vector(T) {
     }
 
     /// Returns a new vector after appending to the given vector.
-    Vector opBinary(string s, T)(auto ref T other) const
+    Vector opBinary(string s, T)(auto ref T other) const 
             if (s == "~" && is(Unqual!T == Vector)) {
         return vector(data ~ other.data);
     }
@@ -85,7 +85,7 @@ struct Vector(T) {
     }
 
     /// Append to the vector from a range
-    void opOpAssign(string op, R)(scope R range) scope
+    void opOpAssign(string op, R)(scope R range) scope 
             if (op == "~" && isForwardRange!(R)) {
         data ~= range.array;
     }

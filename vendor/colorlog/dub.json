@@ -13,7 +13,7 @@
 		"source/"
 	],
 	"dependencies": {
-		"mylib": "~>1.0.0"
+		"mylib": "~>1.0"
 	},
 	"targetType": "library",
 	"configurations": [
@@ -22,5 +22,5 @@
 			"name": "library"
 		}
 	],
-	"version": "1.0.0"
+	"version": "1.0.1"
 }
